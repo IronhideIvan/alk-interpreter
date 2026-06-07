@@ -27,6 +27,7 @@ Reserved words that cannot be used as identifiers:
 if  else  while  for  function  return  var  true  false  null
 int  long  float  string  bool  void
 async  await
+try  catch  finally  throw
 class  new  this  base  extends  public  protected  private  virtual  abstract  override
 import  export  from  as
 ```
@@ -215,6 +216,8 @@ statement      = exprStatement
                | whileStatement
                | forStatement
                | returnStatement
+               | tryStatement
+               | throwStatement
                | block ;
 
 exprStatement  = expression ";" ;
@@ -228,6 +231,19 @@ forStatement   = "for" "(" ( variableDecl | exprStatement | ";" )
                            expression? ")" statement ;
 
 returnStatement = "return" expression? ";" ;
+
+tryStatement   = "try" block catchClause* finallyClause? ;
+                 (* at least one catchClause or a finallyClause must be present *)
+
+catchClause    = "catch" ( "(" type IDENTIFIER ")" )? block ;
+                 (* the parenthesized type/binding may be omitted to catch any
+                    exception without binding it to a name *)
+
+finallyClause  = "finally" block ;
+
+throwStatement = "throw" expression ";" ;
+                 (* the thrown expression's type must be "Error" or a type
+                    that extends "Error" (directly or transitively) *)
 
 block          = "{" declaration* "}" ;
 
@@ -341,6 +357,49 @@ while (x < 10) {
 
 for (var i = 0; i < 10; i = i + 1) {
   // ...
+}
+```
+
+#### Exception handling: `try` / `catch` / `finally` / `throw`
+
+The `throw` statement raises an exception. The thrown expression's type must be
+the built-in `Error` class or a class that extends it (directly or
+transitively, see [§10.2](#error)) — attempting to throw a value of any
+other type is a compile-time type error. A `try` statement runs its block and
+may be followed by one or more `catch` clauses and an optional `finally`
+clause — at least one of the two must be present:
+
+```
+try {
+  riskyOperation();
+} catch (IOError e) {
+  print(e.message);
+} catch {
+  print("something went wrong");
+} finally {
+  cleanup();
+}
+```
+
+A `catch` clause's parenthesized type, when present, must likewise be
+`Error` or one of its subclasses; it may be omitted entirely to catch any
+exception without binding it to a name, as shown in the second clause above.
+Clauses are tried in order, and the first whose declared type matches the
+thrown value's type (or which omits a type) handles the exception. The
+`finally` block, when present, always runs after the `try`/`catch` blocks
+complete, whether or not an exception was thrown or handled.
+
+```
+class InvalidAgeError extends Error {
+  public new(string message) {
+    base(message);
+  }
+}
+
+function void validate(int age) {
+  if (age < 0) {
+    throw new InvalidAgeError("age cannot be negative");
+  }
 }
 ```
 
@@ -777,6 +836,28 @@ names.push("Ada");
 names.push("Grace");
 print(names[0]);       // "Ada"
 print(names.length);   // 2
+```
+
+#### `Error`
+
+`Error` is the root of the exception hierarchy: every value thrown with
+`throw`, and every type named in a `catch` clause, must be `Error` or a
+class that `extends` it (directly or transitively) — see
+[§5.3](#exception-handling-try--catch--finally--throw). User code defines its
+own error types by extending `Error`, typically to add context-specific
+fields or override `message`:
+
+| Member                                  | Description                              |
+|-----------------------------------------|------------------------------------------|
+| `public new(string message)`            | Constructs an error with the given message |
+| `string message`                        | A human-readable description of the error |
+
+```
+class NotFoundError extends Error {
+  public new(string message) {
+    base(message);
+  }
+}
 ```
 
 #### `Task` / `Task<T>`

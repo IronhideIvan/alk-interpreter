@@ -20,6 +20,11 @@ namespace ALKScript.Interpreter.Lexer
       { "async", TokenType.Async },
       { "await", TokenType.Await },
 
+      { "try", TokenType.Try },
+      { "catch", TokenType.Catch },
+      { "finally", TokenType.Finally },
+      { "throw", TokenType.Throw },
+
       { "int", TokenType.IntKeyword },
       { "long", TokenType.LongKeyword },
       { "float", TokenType.FloatKeyword },

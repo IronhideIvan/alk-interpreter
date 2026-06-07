@@ -23,6 +23,12 @@ namespace ALKScript.Interpreter.Lexer
     Async,
     Await,
 
+    // Keywords - exception handling
+    Try,
+    Catch,
+    Finally,
+    Throw,
+
     // Keywords - type names
     IntKeyword,
     LongKeyword,
