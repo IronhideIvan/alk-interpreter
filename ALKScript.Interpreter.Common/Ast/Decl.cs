@@ -52,25 +52,34 @@ namespace ALKScript.Interpreter.Common.Ast
 
   /// <summary>
   /// A top-level function declaration:
-  ///   "async"? "function" typeParameters? type IDENTIFIER "(" parameters? ")" block ;
+  ///   "native"? "async"? "function" typeParameters? type IDENTIFIER "(" parameters? ")" ( block | ";" ) ;
+  /// "native" marks a declaration whose implementation is supplied by the
+  /// host runtime rather than ALKScript source; such declarations end with
+  /// ";" and have a null <see cref="Body"/>, mirroring how abstract methods
+  /// are declared without one.
   /// </summary>
   public class FunctionDecl : Decl
   {
+    public bool IsNative { get; }
     public bool IsAsync { get; }
     public IReadOnlyList<string> TypeParameters { get; }
     public TypeNode ReturnType { get; }
     public ALKScriptToken Name { get; }
     public IReadOnlyList<Parameter> Parameters { get; }
-    public BlockStmt Body { get; }
+
+    /// <summary>The function's body, or null when <see cref="IsNative"/> is true.</summary>
+    public BlockStmt? Body { get; }
 
     public FunctionDecl(
+      bool isNative,
       bool isAsync,
       IReadOnlyList<string> typeParameters,
       TypeNode returnType,
       ALKScriptToken name,
       IReadOnlyList<Parameter> parameters,
-      BlockStmt body)
+      BlockStmt? body)
     {
+      IsNative = isNative;
       IsAsync = isAsync;
       TypeParameters = typeParameters;
       ReturnType = returnType;
@@ -146,13 +155,16 @@ namespace ALKScript.Interpreter.Common.Ast
 
   /// <summary>
   /// A method declaration:
-  ///   accessModifier? overrideModifier? "async"? "function" typeParameters?
+  ///   accessModifier? overrideModifier? "native"? "async"? "function" typeParameters?
   ///   type IDENTIFIER "(" parameters? ")" ( block | ";" ) ;
-  /// The body is null only for "abstract" methods, whose declaration ends with ";".
+  /// The body is null for "abstract" methods and for "native" methods —
+  /// the latter's implementation is supplied by the host runtime rather
+  /// than ALKScript source, and its declaration ends with ";" accordingly.
   /// </summary>
   public class MethodDecl : MemberDecl
   {
     public OverrideModifier OverrideModifier { get; }
+    public bool IsNative { get; }
     public bool IsAsync { get; }
     public IReadOnlyList<string> TypeParameters { get; }
     public TypeNode ReturnType { get; }
@@ -163,6 +175,7 @@ namespace ALKScript.Interpreter.Common.Ast
     public MethodDecl(
       AccessModifier accessModifier,
       OverrideModifier overrideModifier,
+      bool isNative,
       bool isAsync,
       IReadOnlyList<string> typeParameters,
       TypeNode returnType,
@@ -172,6 +185,7 @@ namespace ALKScript.Interpreter.Common.Ast
       : base(accessModifier)
     {
       OverrideModifier = overrideModifier;
+      IsNative = isNative;
       IsAsync = isAsync;
       TypeParameters = typeParameters;
       ReturnType = returnType;

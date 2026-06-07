@@ -12,6 +12,7 @@ public class FunctionsTests
   [InlineData("while", ALKScriptTokenType.While)]
   [InlineData("for", ALKScriptTokenType.For)]
   [InlineData("function", ALKScriptTokenType.Function)]
+  [InlineData("native", ALKScriptTokenType.Native)]
   [InlineData("return", ALKScriptTokenType.Return)]
   [InlineData("true", ALKScriptTokenType.True)]
   [InlineData("false", ALKScriptTokenType.False)]

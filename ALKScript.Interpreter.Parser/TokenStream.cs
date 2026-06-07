@@ -55,12 +55,24 @@ namespace ALKScript.Interpreter.Parser
 
     public bool CheckNext(ALKScriptTokenType type)
     {
-      if (_current + 1 >= _tokens.Count)
+      return CheckAhead(1, type);
+    }
+
+    /// <summary>
+    /// True when the token <paramref name="offset"/> positions ahead of the
+    /// cursor (0 = current) has the given type. Lets callers look past a
+    /// variable run of optional modifier tokens without consuming them.
+    /// </summary>
+    public bool CheckAhead(int offset, ALKScriptTokenType type)
+    {
+      int index = _current + offset;
+
+      if (index >= _tokens.Count)
       {
         return false;
       }
 
-      return _tokens[_current + 1].Type == type;
+      return _tokens[index].Type == type;
     }
 
     public ALKScriptToken Advance()

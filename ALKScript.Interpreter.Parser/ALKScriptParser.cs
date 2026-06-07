@@ -222,9 +222,10 @@ namespace ALKScript.Interpreter.Parser
       }
 
       OverrideModifier overrideModifier = ParseOptionalOverrideModifier();
+      bool isNative = _stream.Match(ALKScriptTokenType.Native);
       bool isAsync = _stream.Match(ALKScriptTokenType.Async);
 
-      if (overrideModifier != OverrideModifier.None || isAsync || _stream.Check(ALKScriptTokenType.Function))
+      if (overrideModifier != OverrideModifier.None || isNative || isAsync || _stream.Check(ALKScriptTokenType.Function))
       {
         _stream.Consume(ALKScriptTokenType.Function, "Expect 'function' in a method declaration.");
 
@@ -235,7 +236,11 @@ namespace ALKScript.Interpreter.Parser
 
         BlockStmt? body;
 
-        if (_stream.Match(ALKScriptTokenType.Semicolon))
+        if (isNative)
+        {
+          body = ParseFunctionOrMethodBody(isNative: true, declarationKind: "method");
+        }
+        else if (_stream.Match(ALKScriptTokenType.Semicolon))
         {
           body = null;
         }
@@ -244,7 +249,7 @@ namespace ALKScript.Interpreter.Parser
           body = ParseBlock();
         }
 
-        return new MethodDecl(accessModifier, overrideModifier, isAsync, typeParameters, returnType, methodName, parameters, body);
+        return new MethodDecl(accessModifier, overrideModifier, isNative, isAsync, typeParameters, returnType, methodName, parameters, body);
       }
 
       // Field: accessModifier? ("var" | type) IDENTIFIER ("=" expression)? ";"
@@ -306,16 +311,24 @@ namespace ALKScript.Interpreter.Parser
 
     private bool CheckFunctionDeclStart()
     {
-      if (_stream.Check(ALKScriptTokenType.Function))
+      int offset = 0;
+
+      if (_stream.CheckAhead(offset, ALKScriptTokenType.Native))
       {
-        return true;
+        offset++;
       }
 
-      return _stream.Check(ALKScriptTokenType.Async) && _stream.CheckNext(ALKScriptTokenType.Function);
+      if (_stream.CheckAhead(offset, ALKScriptTokenType.Async))
+      {
+        offset++;
+      }
+
+      return _stream.CheckAhead(offset, ALKScriptTokenType.Function);
     }
 
     private FunctionDecl ParseFunctionDecl()
     {
+      bool isNative = _stream.Match(ALKScriptTokenType.Native);
       bool isAsync = _stream.Match(ALKScriptTokenType.Async);
       _stream.Consume(ALKScriptTokenType.Function, "Expect 'function'.");
 
@@ -323,9 +336,26 @@ namespace ALKScript.Interpreter.Parser
       TypeNode returnType = ParseType();
       ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a function name.");
       List<Parameter> parameters = ParseParameterList();
-      BlockStmt body = ParseBlock();
+      BlockStmt? body = ParseFunctionOrMethodBody(isNative, "function");
 
-      return new FunctionDecl(isAsync, typeParameters, returnType, name, parameters, body);
+      return new FunctionDecl(isNative, isAsync, typeParameters, returnType, name, parameters, body);
+    }
+
+    /// <summary>
+    /// Parses the "( block | ';' )" tail shared by function and method
+    /// declarations. "native" declarations must end with ";" — their
+    /// implementation is supplied by the host runtime, not ALKScript source —
+    /// so a null body is returned without attempting to parse a block.
+    /// </summary>
+    private BlockStmt? ParseFunctionOrMethodBody(bool isNative, string declarationKind)
+    {
+      if (isNative)
+      {
+        _stream.Consume(ALKScriptTokenType.Semicolon, $"Expect ';' after native {declarationKind} declaration.");
+        return null;
+      }
+
+      return ParseBlock();
     }
 
     private List<string> ParseOptionalTypeParameters()

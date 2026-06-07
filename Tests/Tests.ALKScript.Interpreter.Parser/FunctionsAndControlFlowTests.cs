@@ -1,4 +1,5 @@
 using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Parser;
 
 namespace Tests.ALKScript.Interpreter.Parser;
 
@@ -17,7 +18,8 @@ public class FunctionsAndControlFlowTests : ParserTestBase
     Assert.Equal("a", function.Parameters[0].Name);
     Assert.Equal("int", function.Parameters[0].Type.Name);
 
-    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(function.Body.Statements));
+    Assert.NotNull(function.Body);
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(function.Body!.Statements));
     var returnStmt = Assert.IsType<ReturnStmt>(stmtDecl.Statement);
     Assert.NotNull(returnStmt.Value);
     Assert.IsType<BinaryExpr>(returnStmt.Value);
@@ -30,7 +32,8 @@ public class FunctionsAndControlFlowTests : ParserTestBase
 
     var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
     Assert.Equal("void", function.ReturnType.Name);
-    Assert.Equal(2, function.Body.Statements.Count);
+    Assert.NotNull(function.Body);
+    Assert.Equal(2, function.Body!.Statements.Count);
 
     var stmtDecl = Assert.IsType<StatementDecl>(function.Body.Statements[1]);
     var returnStmt = Assert.IsType<ReturnStmt>(stmtDecl.Statement);
@@ -46,6 +49,49 @@ public class FunctionsAndControlFlowTests : ParserTestBase
     var typeParameter = Assert.Single(function.TypeParameters);
     Assert.Equal("T", typeParameter);
     Assert.Equal("T", function.Parameters[0].Type.Name);
+  }
+
+  [Fact]
+  public void Parse_NativeFunctionDeclaration_HasNoBodyAndIsFlaggedNative()
+  {
+    var program = Parse("native function void print(string message);");
+
+    var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
+    Assert.True(function.IsNative);
+    Assert.False(function.IsAsync);
+    Assert.Equal("print", function.Name.Lexeme);
+    Assert.Null(function.Body);
+  }
+
+  [Fact]
+  public void Parse_NativeAsyncFunctionDeclaration_CapturesBothModifiers()
+  {
+    var program = Parse("native async function string fetch(string url);");
+
+    var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
+    Assert.True(function.IsNative);
+    Assert.True(function.IsAsync);
+    Assert.Null(function.Body);
+  }
+
+  [Fact]
+  public void Parse_NativeFunctionDeclarationWithBody_ThrowsParseException()
+  {
+    Assert.Throws<ParseException>(() => Parse("native function void print(string message) {}"));
+  }
+
+  [Fact]
+  public void Parse_NativeMethodDeclaration_HasNoBodyAndIsFlaggedNative()
+  {
+    var program = Parse("class Console {\n  public native function void log(string message);\n}");
+
+    var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
+    var method = Assert.IsType<MethodDecl>(Assert.Single(classDecl.Members));
+
+    Assert.True(method.IsNative);
+    Assert.Equal(AccessModifier.Public, method.AccessModifier);
+    Assert.Equal("log", method.Name.Lexeme);
+    Assert.Null(method.Body);
   }
 
   [Fact]

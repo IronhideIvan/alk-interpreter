@@ -13,6 +13,7 @@ namespace ALKScript.Interpreter.Lexer
       { "while", ALKScriptTokenType.While },
       { "for", ALKScriptTokenType.For },
       { "function", ALKScriptTokenType.Function },
+      { "native", ALKScriptTokenType.Native },
       { "return", ALKScriptTokenType.Return },
       { "var", ALKScriptTokenType.Var },
       { "true", ALKScriptTokenType.True },

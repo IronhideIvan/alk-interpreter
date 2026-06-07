@@ -13,6 +13,7 @@ namespace ALKScript.Interpreter.Common.Token
     While,
     For,
     Function,
+    Native,
     Return,
     Var,
     True,
