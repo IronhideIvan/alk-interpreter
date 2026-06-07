@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Tests.ALK.Interpreter.Lexer</RootNamespace>
+    <RootNamespace>Tests.ALKScript.Interpreter.Lexer</RootNamespace>
     <TargetFramework>net8.0</TargetFramework>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\ALK.Interpreter.Lexer\ALK.Interpreter.Lexer.csproj" />
+    <ProjectReference Include="..\..\ALKScript.Interpreter.Lexer\ALKScript.Interpreter.Lexer.csproj" />
   </ItemGroup>
 
 </Project>

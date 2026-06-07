@@ -1,6 +1,6 @@
-using ALK.Interpreter.Lexer;
+using ALKScript.Interpreter.Lexer;
 
-namespace Tests.ALK.Interpreter.Lexer;
+namespace Tests.ALKScript.Interpreter.Lexer;
 
 public class FileLexerTests
 {

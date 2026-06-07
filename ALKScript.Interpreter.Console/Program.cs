@@ -1,4 +1,4 @@
-﻿using ALK.Interpreter.Console;
+﻿using ALKScript.Interpreter.Console;
 
 public class Program
 {

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ALK.Interpreter.Lexer
+namespace ALKScript.Interpreter.Lexer
 {
   public class FileLexer
   {

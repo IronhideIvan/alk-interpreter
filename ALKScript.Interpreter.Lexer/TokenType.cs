@@ -1,4 +1,4 @@
-namespace ALK.Interpreter.Lexer
+namespace ALKScript.Interpreter.Lexer
 {
   public enum TokenType
   {

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\ALK.Interpreter.Lexer\ALK.Interpreter.Lexer.csproj" />
+    <ProjectReference Include="..\ALKScript.Interpreter.Lexer\ALKScript.Interpreter.Lexer.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

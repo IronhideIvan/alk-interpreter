@@ -1,6 +1,6 @@
-using ALK.Interpreter.Lexer;
+using ALKScript.Interpreter.Lexer;
 
-namespace ALK.Interpreter.Console;
+namespace ALKScript.Interpreter.Console;
 
 public class Executor
 {
