@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Parse
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.ALKScript.Interpreter.Parser", "Tests\Tests.ALKScript.Interpreter.Parser\Tests.ALKScript.Interpreter.Parser.csproj", "{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Evaluator", "ALKScript.Interpreter.Evaluator\ALKScript.Interpreter.Evaluator.csproj", "{86B75110-16AC-4A46-8B99-5CA042A18D83}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -99,6 +101,18 @@ Global
 		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|x64.Build.0 = Release|Any CPU
 		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|x86.ActiveCfg = Release|Any CPU
 		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|x86.Build.0 = Release|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Debug|x64.Build.0 = Debug|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Debug|x86.Build.0 = Debug|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|Any CPU.Build.0 = Release|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|x64.ActiveCfg = Release|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|x64.Build.0 = Release|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|x86.ActiveCfg = Release|Any CPU
+		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
