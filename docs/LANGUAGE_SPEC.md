@@ -29,6 +29,7 @@ int  long  float  string  bool  void
 async  await
 try  catch  finally  throw
 class  new  this  base  extends  public  protected  private  virtual  abstract  override
+native
 import  export  from  as
 ```
 
@@ -188,15 +189,18 @@ constructorDecl = accessModifier? "new" "(" parameters? ")" block ;
 
 fieldDecl      = accessModifier? ( "var" | type ) IDENTIFIER ( "=" expression )? ";" ;
 
-methodDecl     = accessModifier? overrideModifier? "async"? "function" typeParameters?
+methodDecl     = accessModifier? overrideModifier? "native"? "async"? "function" typeParameters?
                  type IDENTIFIER "(" parameters? ")" ( block | ";" ) ;
-                 (* the body is replaced by ";" only for "abstract" methods *)
+                 (* the body is replaced by ";" for "abstract" and "native"
+                    methods; a "native" method may not have a body *)
 
 overrideModifier = "virtual" | "abstract" | "override" ;
 
-functionDecl   = "async"? "function" typeParameters? type IDENTIFIER
-                 "(" parameters? ")" block ;
-                 (* an "async" function's declared return type must be "Task"
+functionDecl   = "native"? "async"? "function" typeParameters? type IDENTIFIER
+                 "(" parameters? ")" ( block | ";" ) ;
+                 (* the body is replaced by ";" only for "native" functions,
+                    whose implementation is supplied by the host runtime;
+                    an "async" function's declared return type must be "Task"
                     or "Task<T>" *)
 parameters     = parameter ( "," parameter )* ;
 parameter      = type IDENTIFIER ;
@@ -341,6 +345,34 @@ were that concrete type. `process(5)` instantiates `T` as `int`; `process("hi")`
 instantiates it as `string`. Supplying incompatible types for the same type
 parameter across a single call (e.g. mismatched array element types) is a
 compile-time error.
+
+#### Native functions
+
+Prefixing a function declaration with `native` declares its **signature** in
+ALKScript while leaving its implementation to the host runtime. A `native`
+function has **no body** — its declaration ends with `;` instead of a `block`,
+the same way an `abstract` method does:
+
+```
+native function void print(string message);
+native function int random(int min, int max);
+```
+
+- `native` may be combined with `async` (`native async function ...`); the
+  combined declaration is still bodyless and follows the same `Task`/`Task<T>`
+  return-type rule as any other async function.
+- Declaring a `native` function with a body — e.g. `native function void f() {}`
+  — is a compile-time error.
+- Calling a `native` function behaves exactly like calling an ordinary one;
+  the only difference is *where* its behavior comes from. This is the
+  mechanism the standard library uses to expose runtime-provided
+  functionality as ordinary ALKScript declarations (see
+  [§10.3](#103-relationship-to-user-code)) — it is not restricted to the
+  standard library, and user programs may declare their own `native` functions
+  when embedding ALKScript in a host that supplies matching implementations.
+- A program that declares a `native` function the host has no implementation
+  for fails to load with a clear error rather than failing unpredictably the
+  first time the function is called.
 
 ### 5.3 Control flow
 
@@ -634,6 +666,20 @@ class Contractor extends Person {
 - An `override` method is itself overridable by further-derived classes, using
   the same `override` keyword (there is no need to repeat `virtual`).
 
+A method may also be marked `native`, in which case — like an `abstract`
+method — it has **no body** and its declaration ends with `;`. Where an
+`abstract` method's implementation must come from a derived class, a `native`
+method's implementation is supplied directly by the host runtime; see
+[Native functions](#native-functions) for the full set of rules, which apply
+identically to methods (`native` may combine with `async`, may not have a
+body, and is resolved against the host at load time).
+
+```
+class Console {
+  public native function void log(string message);
+}
+```
+
 ### 8.7 Abstract classes
 
 A class must be declared `abstract` if it declares any `abstract` methods, or if
@@ -892,6 +938,15 @@ A program may shadow a global function or type with its own module-level
 declaration of the same name; within that module, the local declaration takes
 precedence, and the global remains accessible only by importing it from its
 core module under another name, e.g. `import { HttpClient as CoreHttpClient } from "http"`.
+
+Concretely, the standard library's runtime-provided members are themselves
+ordinary `native` declarations (see [Native functions](#native-functions) and
+[§8.6](#86-virtual-and-abstract-methods)) — `print`, the members of `string`
+and `T[]`, `HttpClient.send`, and so on are written as bodyless `native`
+function and method signatures whose implementations the host runtime
+supplies. `native` is simply how *any* ALKScript declaration — standard
+library or user code — describes a signature backed by the host rather than
+by ALKScript source.
 
 ## 11. Sample Program
 
