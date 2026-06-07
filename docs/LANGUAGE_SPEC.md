@@ -27,6 +27,7 @@ Reserved words that cannot be used as identifiers:
 if  else  while  for  function  return  var  true  false  null
 int  long  float  string  bool  void
 async  await
+class  new  this  base  extends  public  protected  private  virtual  abstract  override
 ```
 
 The last group (`int`, `long`, `float`, `string`, `bool`, `void`) are the built-in
@@ -81,6 +82,7 @@ and no dynamic re-typing of variables.
 | Array     | `T[]`             | An ordered, indexable collection of values of type `T` |
 | Function  | `(T1, T2) -> R`   | A callable value taking parameters of types `T1, T2` and returning `R` |
 | Task      | `Task` / `Task<T>` | Represents an asynchronous operation; `Task<T>` represents one that produces a value of type `T` when it completes |
+| Class     | `IDENTIFIER`      | A user-defined reference type declared with `class` (see [§8](#8-classes)) |
 
 ### 2.3 Variable declarations and type inference
 
@@ -147,9 +149,29 @@ optional, `*` means zero-or-more, `+` means one-or-more, `|` means alternation.
 ```ebnf
 program        = declaration* EOF ;
 
-declaration    = functionDecl
+declaration    = classDecl
+               | functionDecl
                | variableDecl
                | statement ;
+
+classDecl      = "abstract"? "class" IDENTIFIER ( "extends" IDENTIFIER )? "{" member* "}" ;
+
+member         = constructorDecl
+               | fieldDecl
+               | methodDecl ;
+
+accessModifier = "public" | "protected" | "private" ;
+                 (* defaults to "private" when omitted *)
+
+constructorDecl = accessModifier? "new" "(" parameters? ")" block ;
+
+fieldDecl      = accessModifier? ( "var" | type ) IDENTIFIER ( "=" expression )? ";" ;
+
+methodDecl     = accessModifier? overrideModifier? "async"? "function" type IDENTIFIER
+                 "(" parameters? ")" ( block | ";" ) ;
+                 (* the body is replaced by ";" only for "abstract" methods *)
+
+overrideModifier = "virtual" | "abstract" | "override" ;
 
 functionDecl   = "async"? "function" type IDENTIFIER "(" parameters? ")" block ;
                  (* an "async" function's declared return type must be "Task"
@@ -205,6 +227,8 @@ call           = primary ( "(" arguments? ")" | "." IDENTIFIER | "[" expression 
 arguments      = expression ( "," expression )* ;
 
 primary        = NUMBER | STRING | "true" | "false" | "null"
+               | "this" | "base"
+               | "new" IDENTIFIER "(" arguments? ")"
                | IDENTIFIER
                | "(" expression ")"
                | "[" arguments? "]" ;
@@ -358,7 +382,181 @@ async function Task<int> run() {
 }
 ```
 
-## 8. Sample Program
+## 8. Classes
+
+ALKScript supports simple, single-inheritance classes, similar to C#. A class is
+a user-defined reference type that groups fields, a constructor, and methods.
+
+### 8.1 Declaring a class
+
+```
+class Person {
+  protected string name;
+  private int age;
+
+  public new(string name, int age) {
+    this.name = name;
+    this.age = age;
+  }
+
+  public virtual function string greet() {
+    return "Hello, my name is " + this.name;
+  }
+}
+```
+
+- **Fields** are declared the same way as variables (`type IDENTIFIER` or `var`
+  with an initializer), optionally preceded by an access modifier.
+- The **constructor** is declared with the `new` keyword in place of a name and
+  has no return type; it initializes the instance's fields.
+- **Methods** are declared the same way as top-level functions (including the
+  `async` modifier), optionally preceded by an access modifier and an
+  overridability modifier (`virtual`/`abstract`, see [§8.6](#86-virtual-and-abstract-methods)).
+  The `function` keyword is required for every member function — only the
+  constructor uses `new` in its place.
+
+### 8.2 Access modifiers
+
+Members may be marked `public`, `protected`, or `private`:
+
+- `public` members are visible to any code that has a reference to the class or
+  an instance of it.
+- `protected` members are visible from within the class's own members and from
+  within the members of any class that (directly or indirectly) `extends` it,
+  but not from outside the class hierarchy.
+- `private` members are visible only from within the class's own members — not
+  even from a derived class.
+- A member with no access modifier is `private` by default.
+
+### 8.3 `this` and member access
+
+Within a constructor or method body, `this` refers to the current instance.
+Members are accessed with `.`, the same operator used for member access on any
+reference type:
+
+```
+var p = new Person("Ada", 36);
+print(p.greet());
+```
+
+`this` is required to disambiguate a field from a parameter or local variable of
+the same name (as in the constructor above), and may be omitted otherwise.
+
+### 8.4 Instantiation
+
+Instances are created with `new ClassName(arguments)`, which allocates the
+instance and runs its constructor:
+
+```
+var p = new Person("Ada", 36);
+Person? maybeNobody = null;
+```
+
+A class is always a reference type: variables of a class type hold a reference to
+an instance (or `null`, if the type is the nullable form `ClassName?`), not the
+instance's data directly.
+
+### 8.5 Inheritance
+
+A class may extend exactly one other class with `extends`, inheriting its
+`public` and `protected` members. Its `private` members exist on every instance
+but cannot be referenced from the derived class — note that `Person.name`
+(§8.1) is declared `protected` specifically so that `Employee` can use it
+directly, as shown below:
+
+```
+class Employee extends Person {
+  private string title;
+
+  public new(string name, int age, string title) {
+    base(name, age);
+    this.title = title;
+  }
+
+  public override function string greet() {
+    return base.greet() + ", I work as a " + this.title;
+  }
+}
+```
+
+- `base(arguments)` calls the parent class's constructor and must be the first
+  statement in a derived class's constructor (if the parent has no
+  zero-argument constructor).
+- `base.member` accesses a member of the parent class, most commonly to call an
+  overridden method's parent implementation.
+- A method in a derived class may **override** a method in its parent only if
+  the parent's method is declared `virtual` or `abstract` — see [§8.6](#86-virtual-and-abstract-methods).
+
+### 8.6 Virtual and abstract methods
+
+By default, methods cannot be overridden. A method must be explicitly marked
+`virtual` or `abstract` in its declaring class to allow a derived class to
+provide its own implementation — and the derived class, in turn, must mark its
+replacement `override`:
+
+```
+class Person {
+  // ...
+
+  public virtual function string greet() {
+    return "Hello, my name is " + this.name;
+  }
+}
+
+class Contractor extends Person {
+  // ...
+
+  public override function string greet() {
+    return base.greet() + ", working as a contractor";
+  }
+}
+```
+
+- A `virtual` method has a body and provides a default implementation that
+  derived classes may override.
+- An `abstract` method has **no body** — its declaration ends with `;` instead of
+  a `block` — and must be overridden by every concrete (non-abstract) derived
+  class:
+
+  ```
+  public abstract function string greet();
+  ```
+
+- A derived-class method that replaces a `virtual` or `abstract` parent method
+  (same name and parameter types) **must** be marked `override`. Declaring a
+  method with the same signature as a `virtual`/`abstract` parent method without
+  `override` — or marking a method `override` when the parent has no matching
+  `virtual`/`abstract` method — is a compile-time error. Likewise, overriding a
+  method that is neither `virtual` nor `abstract` in its parent is an error.
+- An `override` method is itself overridable by further-derived classes, using
+  the same `override` keyword (there is no need to repeat `virtual`).
+
+### 8.7 Abstract classes
+
+A class must be declared `abstract` if it declares any `abstract` methods, or if
+it inherits one or more `abstract` methods without providing concrete `override`
+implementations for all of them:
+
+```
+abstract class Person {
+  protected string name;
+
+  public new(string name) {
+    this.name = name;
+  }
+
+  public abstract function string greet();
+}
+```
+
+- `abstract` is written immediately before `class`, as in `abstract class Person`.
+- An abstract class cannot be instantiated with `new` — only a *concrete* class
+  (one with no unimplemented `abstract` methods) can be.
+- A concrete class extending an abstract class must override every `abstract`
+  method it inherits that isn't already overridden by an intermediate class; if
+  it does not, it must itself be declared `abstract`.
+
+## 9. Sample Program
 
 ```
 function int fibonacci(int n) {
