@@ -1,8 +1,9 @@
 using System.Collections.Generic;
+using ALKScript.Interpreter.Common;
 
 namespace ALKScript.Interpreter.Lexer
 {
-  public class ALKScriptLexer
+  public class ALKScriptLexer : IScriptLexer
   {
     private static readonly Dictionary<string, ALKScriptTokenType> Keywords = new Dictionary<string, ALKScriptTokenType>
     {
@@ -58,7 +59,7 @@ namespace ALKScript.Interpreter.Lexer
     private int _column;
     private int _startColumn;
 
-    public List<ALKScriptToken> Tokenize(string contents)
+    public IEnumerable<ALKScriptToken> Tokenize(string contents)
     {
       _source = contents;
       _tokens = new List<ALKScriptToken>();

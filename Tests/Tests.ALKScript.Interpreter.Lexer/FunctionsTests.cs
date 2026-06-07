@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -18,7 +19,7 @@ public class FunctionsTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(source);
+    var tokens = lexer.Tokenize(source).ToList();
 
     Assert.Equal(expectedType, tokens[0].Type);
     Assert.Equal(source, tokens[0].Lexeme);
@@ -29,7 +30,7 @@ public class FunctionsTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("function int add(int a, int b) {\n  return a + b;\n}");
+    var tokens = lexer.Tokenize("function int add(int a, int b) {\n  return a + b;\n}").ToList();
 
     Assert.Equal(
       new[]
@@ -61,7 +62,7 @@ public class FunctionsTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("function void log(string message) {\n  print(message);\n}");
+    var tokens = lexer.Tokenize("function void log(string message) {\n  print(message);\n}").ToList();
 
     Assert.Equal(
       new[]
@@ -90,7 +91,7 @@ public class FunctionsTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("if (a < b) { return a; } else { return b; }");
+    var tokens = lexer.Tokenize("if (a < b) { return a; } else { return b; }").ToList();
 
     Assert.Equal(ALKScriptTokenType.If, tokens[0].Type);
     Assert.Equal(ALKScriptTokenType.Else, tokens[11].Type);

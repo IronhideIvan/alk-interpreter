@@ -4,8 +4,4 @@
     <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\ALKScript.Interpreter.Common\ALKScript.Interpreter.Common.csproj" />
-  </ItemGroup>
-
 </Project>

@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -13,7 +14,7 @@ public class ModulesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(source);
+    var tokens = lexer.Tokenize(source).ToList();
 
     Assert.Equal(expectedType, tokens[0].Type);
     Assert.Equal(source, tokens[0].Lexeme);
@@ -24,7 +25,7 @@ public class ModulesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("import { Person } from \"./person\";");
+    var tokens = lexer.Tokenize("import { Person } from \"./person\";").ToList();
 
     Assert.Equal(
       new[]
@@ -46,7 +47,7 @@ public class ModulesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("import { Date as SystemDate } from \"datetime\";");
+    var tokens = lexer.Tokenize("import { Date as SystemDate } from \"datetime\";").ToList();
 
     Assert.Equal(
       new[]
@@ -70,7 +71,7 @@ public class ModulesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("export class Person {\n}");
+    var tokens = lexer.Tokenize("export class Person {\n}").ToList();
 
     Assert.Equal(
       new[]

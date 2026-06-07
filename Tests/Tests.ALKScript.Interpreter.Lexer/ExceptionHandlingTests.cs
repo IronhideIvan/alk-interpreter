@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -13,7 +14,7 @@ public class ExceptionHandlingTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(source);
+    var tokens = lexer.Tokenize(source).ToList();
 
     Assert.Equal(expectedType, tokens[0].Type);
     Assert.Equal(source, tokens[0].Lexeme);
@@ -24,7 +25,7 @@ public class ExceptionHandlingTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("throw new InvalidAgeError(\"age cannot be negative\");");
+    var tokens = lexer.Tokenize("throw new InvalidAgeError(\"age cannot be negative\");").ToList();
 
     Assert.Equal(
       new[]
@@ -51,7 +52,7 @@ public class ExceptionHandlingTests
       "  public new(string message) {\n" +
       "    base(message);\n" +
       "  }\n" +
-      "}");
+      "}").ToList();
 
     Assert.Equal(
       new[]
@@ -96,7 +97,7 @@ public class ExceptionHandlingTests
       "  print(\"failed\");\n" +
       "} finally {\n" +
       "  cleanup();\n" +
-      "}");
+      "}").ToList();
 
     Assert.Equal(
       new[]

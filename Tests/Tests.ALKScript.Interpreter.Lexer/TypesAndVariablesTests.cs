@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -16,7 +17,7 @@ public class TypesAndVariablesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(source);
+    var tokens = lexer.Tokenize(source).ToList();
 
     Assert.Equal(expectedType, tokens[0].Type);
     Assert.Equal(source, tokens[0].Lexeme);
@@ -27,7 +28,7 @@ public class TypesAndVariablesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("int num = 1;");
+    var tokens = lexer.Tokenize("int num = 1;").ToList();
 
     Assert.Equal(
       new[]
@@ -47,7 +48,7 @@ public class TypesAndVariablesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("var num = 1;");
+    var tokens = lexer.Tokenize("var num = 1;").ToList();
 
     Assert.Equal(
       new[]
@@ -67,7 +68,7 @@ public class TypesAndVariablesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("long big = 42L;");
+    var tokens = lexer.Tokenize("long big = 42L;").ToList();
 
     Assert.Equal(ALKScriptTokenType.LongKeyword, tokens[0].Type);
     Assert.Equal(ALKScriptTokenType.Number, tokens[3].Type);
@@ -79,7 +80,7 @@ public class TypesAndVariablesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("int[] numArr = [1, 2, 3, 4];");
+    var tokens = lexer.Tokenize("int[] numArr = [1, 2, 3, 4];").ToList();
 
     Assert.Equal(
       new[]

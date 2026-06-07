@@ -1,4 +1,4 @@
-namespace ALKScript.Interpreter.Lexer
+namespace ALKScript.Interpreter.Common
 {
   public class ALKScriptToken
   {

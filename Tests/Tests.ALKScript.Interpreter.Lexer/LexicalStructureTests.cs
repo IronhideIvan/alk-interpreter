@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -9,7 +10,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(string.Empty);
+    var tokens = lexer.Tokenize(string.Empty).ToList();
 
     var token = Assert.Single(tokens);
     Assert.Equal(ALKScriptTokenType.EndOfFile, token.Type);
@@ -20,7 +21,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("myVariable");
+    var tokens = lexer.Tokenize("myVariable").ToList();
 
     Assert.Equal(ALKScriptTokenType.Identifier, tokens[0].Type);
     Assert.Equal("myVariable", tokens[0].Lexeme);
@@ -35,7 +36,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(source);
+    var tokens = lexer.Tokenize(source).ToList();
 
     Assert.Equal(ALKScriptTokenType.Number, tokens[0].Type);
     Assert.Equal(expectedLexeme, tokens[0].Lexeme);
@@ -46,7 +47,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("\"hello world\"");
+    var tokens = lexer.Tokenize("\"hello world\"").ToList();
 
     Assert.Equal(ALKScriptTokenType.String, tokens[0].Type);
     Assert.Equal("hello world", tokens[0].Lexeme);
@@ -57,7 +58,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("\"line\\n\\ttabbed \\\"quoted\\\"\"");
+    var tokens = lexer.Tokenize("\"line\\n\\ttabbed \\\"quoted\\\"\"").ToList();
 
     Assert.Equal(ALKScriptTokenType.String, tokens[0].Type);
     Assert.Equal("line\n\ttabbed \"quoted\"", tokens[0].Lexeme);
@@ -68,7 +69,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("var x = 1; // this is a comment\nvar y = 2;");
+    var tokens = lexer.Tokenize("var x = 1; // this is a comment\nvar y = 2;").ToList();
 
     Assert.DoesNotContain(tokens, t => t.Lexeme.Contains("comment"));
   }
@@ -78,7 +79,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("var x /* block comment */ = 1;");
+    var tokens = lexer.Tokenize("var x /* block comment */ = 1;").ToList();
 
     Assert.DoesNotContain(tokens, t => t.Lexeme.Contains("block"));
   }
@@ -88,7 +89,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("var x = 1 + 2;");
+    var tokens = lexer.Tokenize("var x = 1 + 2;").ToList();
 
     Assert.Equal(
       new[]
@@ -110,7 +111,7 @@ public class LexicalStructureTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("var x = 1;\nvar y = 2;");
+    var tokens = lexer.Tokenize("var x = 1;\nvar y = 2;").ToList();
 
     Assert.Equal(1, tokens[0].Line);
     Assert.Equal(2, tokens[5].Line);

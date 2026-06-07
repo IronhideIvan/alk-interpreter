@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -20,7 +21,7 @@ public class ClassesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(source);
+    var tokens = lexer.Tokenize(source).ToList();
 
     Assert.Equal(expectedType, tokens[0].Type);
     Assert.Equal(source, tokens[0].Lexeme);
@@ -31,7 +32,7 @@ public class ClassesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("class Student extends Person {\n}");
+    var tokens = lexer.Tokenize("class Student extends Person {\n}").ToList();
 
     Assert.Equal(
       new[]
@@ -52,7 +53,7 @@ public class ClassesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("abstract class Person {\n}");
+    var tokens = lexer.Tokenize("abstract class Person {\n}").ToList();
 
     Assert.Equal(
       new[]
@@ -72,7 +73,7 @@ public class ClassesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("public virtual function string greet() {\n  return \"Hello\";\n}");
+    var tokens = lexer.Tokenize("public virtual function string greet() {\n  return \"Hello\";\n}").ToList();
 
     Assert.Equal(
       new[]
@@ -99,7 +100,7 @@ public class ClassesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("public override function string greet() {\n  return base.greet();\n}");
+    var tokens = lexer.Tokenize("public override function string greet() {\n  return base.greet();\n}").ToList();
 
     Assert.Equal(ALKScriptTokenType.Override, tokens[1].Type);
     Assert.Equal(ALKScriptTokenType.Base, tokens[9].Type);
@@ -111,7 +112,7 @@ public class ClassesTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("var person = new Person();");
+    var tokens = lexer.Tokenize("var person = new Person();").ToList();
 
     Assert.Equal(
       new[]

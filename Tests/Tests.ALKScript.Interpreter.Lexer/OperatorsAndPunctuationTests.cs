@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -35,7 +36,7 @@ public class OperatorsAndPunctuationTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize(source);
+    var tokens = lexer.Tokenize(source).ToList();
 
     Assert.Equal(expectedType, tokens[0].Type);
     Assert.Equal(source, tokens[0].Lexeme);
@@ -46,7 +47,7 @@ public class OperatorsAndPunctuationTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("string? name = null;");
+    var tokens = lexer.Tokenize("string? name = null;").ToList();
 
     Assert.Equal(
       new[]

@@ -1,3 +1,4 @@
+﻿using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;
@@ -9,7 +10,7 @@ public class GenericsTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("function<T> void process(T n) {\n}");
+    var tokens = lexer.Tokenize("function<T> void process(T n) {\n}").ToList();
 
     Assert.Equal(
       new[]
@@ -36,7 +37,7 @@ public class GenericsTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("class Array<T> {\n  private T[] items = [];\n}");
+    var tokens = lexer.Tokenize("class Array<T> {\n  private T[] items = [];\n}").ToList();
 
     Assert.Equal(
       new[]
@@ -67,7 +68,7 @@ public class GenericsTests
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("var list = new Array<int>();");
+    var tokens = lexer.Tokenize("var list = new Array<int>();").ToList();
 
     Assert.Equal(
       new[]
