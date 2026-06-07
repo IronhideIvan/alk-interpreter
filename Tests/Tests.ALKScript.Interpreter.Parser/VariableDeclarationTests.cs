@@ -1,4 +1,4 @@
-using ALKScript.Interpreter.Parser.Ast;
+using ALKScript.Interpreter.Common.Ast;
 
 namespace Tests.ALKScript.Interpreter.Parser;
 

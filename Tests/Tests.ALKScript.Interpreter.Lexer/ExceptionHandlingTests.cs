@@ -1,4 +1,5 @@
 ﻿using ALKScript.Interpreter.Common;
+using ALKScript.Interpreter.Common.Token;
 using ALKScript.Interpreter.Lexer;
 
 namespace Tests.ALKScript.Interpreter.Lexer;

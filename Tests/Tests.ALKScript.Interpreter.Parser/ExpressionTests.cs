@@ -1,5 +1,5 @@
-using ALKScript.Interpreter.Common;
-using ALKScript.Interpreter.Parser.Ast;
+using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Common.Token;
 
 namespace Tests.ALKScript.Interpreter.Parser;
 

@@ -1,6 +1,6 @@
 using ALKScript.Interpreter.Lexer;
 using ALKScript.Interpreter.Parser;
-using ALKScript.Interpreter.Parser.Ast;
+using ALKScript.Interpreter.Common.Ast;
 
 namespace Tests.ALKScript.Interpreter.Parser;
 

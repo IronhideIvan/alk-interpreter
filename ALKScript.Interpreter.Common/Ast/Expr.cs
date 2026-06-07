@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using ALKScript.Interpreter.Common;
+using ALKScript.Interpreter.Common.Token;
 
-namespace ALKScript.Interpreter.Parser.Ast
+namespace ALKScript.Interpreter.Common.Ast
 {
   /// <summary>
   /// Base type for all expression AST nodes. Corresponds to the "expression"

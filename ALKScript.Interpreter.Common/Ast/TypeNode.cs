@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ALKScript.Interpreter.Parser.Ast
+namespace ALKScript.Interpreter.Common.Ast
 {
   /// <summary>
   /// Represents a type annotation, e.g. "int", "string[]", "Array&lt;int&gt;?".

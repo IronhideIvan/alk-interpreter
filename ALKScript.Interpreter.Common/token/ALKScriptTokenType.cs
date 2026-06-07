@@ -1,4 +1,4 @@
-namespace ALKScript.Interpreter.Common
+namespace ALKScript.Interpreter.Common.Token
 {
   public enum ALKScriptTokenType
   {

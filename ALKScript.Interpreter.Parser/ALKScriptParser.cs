@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using ALKScript.Interpreter.Common;
-using ALKScript.Interpreter.Parser.Ast;
+using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Common.Token;
 
 namespace ALKScript.Interpreter.Parser
 {
@@ -13,7 +14,7 @@ namespace ALKScript.Interpreter.Parser
   /// grammar described in §3 of the ALKScript language specification
   /// (docs/LANGUAGE_SPEC.md).
   /// </summary>
-  public class ALKScriptParser
+  public class ALKScriptParser : IScriptParser
   {
     private static readonly IReadOnlyDictionary<ALKScriptTokenType, string> PrimitiveTypeNames =
       new Dictionary<ALKScriptTokenType, string>

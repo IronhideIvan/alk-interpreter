@@ -1,5 +1,5 @@
 using System;
-using ALKScript.Interpreter.Common;
+using ALKScript.Interpreter.Common.Token;
 
 namespace ALKScript.Interpreter.Parser
 {

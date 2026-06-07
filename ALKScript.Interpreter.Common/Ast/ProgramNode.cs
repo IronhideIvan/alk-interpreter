@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ALKScript.Interpreter.Parser.Ast
+namespace ALKScript.Interpreter.Common.Ast
 {
   /// <summary>
   /// The root AST node for a parsed module/file:

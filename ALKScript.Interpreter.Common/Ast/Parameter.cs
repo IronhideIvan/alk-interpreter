@@ -1,4 +1,4 @@
-namespace ALKScript.Interpreter.Parser.Ast
+namespace ALKScript.Interpreter.Common.Ast
 {
   /// <summary>
   /// A single function/method/constructor parameter: "type IDENTIFIER".
