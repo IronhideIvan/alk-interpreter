@@ -706,7 +706,90 @@ import { Person } from "./models";
 var p = new Person("Ada");
 ```
 
-## 10. Sample Program
+## 10. Built-in Globals and Standard Library
+
+ALKScript programs can use a small set of globally available functions and
+types without an explicit `import`. Conceptually, these behave as though they
+are declared in a "core" module that every module implicitly imports — some may
+in fact be implemented in ALKScript itself and re-exported this way, while
+others (e.g. `Array<T>`, `Task<T>`) are provided directly by the runtime because
+the language depends on them structurally.
+
+This section is not an exhaustive API reference; it documents the *shape* of
+the standard library — the global functions and built-in types a program can
+rely on — using a few representative members as examples. A full reference of
+every member belongs in separate library documentation, not in the language
+specification.
+
+### 10.1 Global functions
+
+| Function                     | Description                                          |
+|------------------------------|------------------------------------------------------|
+| `void print(string message)` | Writes `message` followed by a newline to standard output |
+| `int parseInt(string s)`     | Parses `s` as an `int`; throws if `s` is not a valid integer |
+| `float parseFloat(string s)` | Parses `s` as a `float`; throws if `s` is not a valid number |
+
+### 10.2 Built-in types
+
+Built-in types are ordinary types from the language's point of view — they can
+appear in type annotations, be made nullable (`Array<int>?`), etc. — but their
+members are provided by the runtime rather than written in ALKScript source.
+
+#### `string`
+
+| Member                                  | Description                              |
+|-----------------------------------------|------------------------------------------|
+| `int length`                             | The number of characters                 |
+| `string substring(int start, int length)`| Returns a substring                      |
+| `int indexOf(string value)`              | The index of the first occurrence of `value`, or `-1` |
+
+#### `T[]` (array)
+
+| Member                       | Description                                       |
+|------------------------------|---------------------------------------------------|
+| `int length`                 | The number of elements                            |
+| `void push(T item)`          | Appends `item` to the end of the array            |
+| `T pop()`                    | Removes and returns the last element              |
+| `[index]`                    | Indexing (`items[i]`) reads or writes an element, via the `call` grammar's `"[" expression "]"` suffix |
+
+```
+var names: string[] = [];
+names.push("Ada");
+names.push("Grace");
+print(names[0]);       // "Ada"
+print(names.length);   // 2
+```
+
+#### `Task` / `Task<T>`
+
+See [§7](#7-asynchronous-functions-asyncawait) — `Task`/`Task<T>` are built-in
+types representing asynchronous operations, consumed with `await`.
+
+#### `Date`
+
+| Member                          | Description                                  |
+|---------------------------------|----------------------------------------------|
+| `static Date now()`             | Returns a `Date` representing the current moment |
+| `long toUnixMillis()`           | The date as milliseconds since the Unix epoch |
+| `string toIsoString()`          | The date formatted as an ISO-8601 string     |
+
+```
+var start = Date.now();
+// ...
+print(start.toIsoString());
+```
+
+### 10.3 Relationship to user code
+
+Built-in types and functions are referenced exactly like user-defined ones — the
+type checker treats them no differently once their declarations are known. A
+program may shadow a global function or type with its own module-level
+declaration of the same name; within that module, the local declaration takes
+precedence, and the global remains accessible only through an explicit
+qualified reference if the standard library exposes one (e.g. via a `core`
+namespace import).
+
+## 11. Sample Program
 
 ```
 function int fibonacci(int n) {
