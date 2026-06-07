@@ -2,66 +2,66 @@ using System.Collections.Generic;
 
 namespace ALKScript.Interpreter.Lexer
 {
-  public class FileLexer
+  public class ALKScriptLexer
   {
-    private static readonly Dictionary<string, TokenType> Keywords = new Dictionary<string, TokenType>
+    private static readonly Dictionary<string, ALKScriptTokenType> Keywords = new Dictionary<string, ALKScriptTokenType>
     {
-      { "if", TokenType.If },
-      { "else", TokenType.Else },
-      { "while", TokenType.While },
-      { "for", TokenType.For },
-      { "function", TokenType.Function },
-      { "return", TokenType.Return },
-      { "var", TokenType.Var },
-      { "true", TokenType.True },
-      { "false", TokenType.False },
-      { "null", TokenType.Null },
+      { "if", ALKScriptTokenType.If },
+      { "else", ALKScriptTokenType.Else },
+      { "while", ALKScriptTokenType.While },
+      { "for", ALKScriptTokenType.For },
+      { "function", ALKScriptTokenType.Function },
+      { "return", ALKScriptTokenType.Return },
+      { "var", ALKScriptTokenType.Var },
+      { "true", ALKScriptTokenType.True },
+      { "false", ALKScriptTokenType.False },
+      { "null", ALKScriptTokenType.Null },
 
-      { "async", TokenType.Async },
-      { "await", TokenType.Await },
+      { "async", ALKScriptTokenType.Async },
+      { "await", ALKScriptTokenType.Await },
 
-      { "try", TokenType.Try },
-      { "catch", TokenType.Catch },
-      { "finally", TokenType.Finally },
-      { "throw", TokenType.Throw },
+      { "try", ALKScriptTokenType.Try },
+      { "catch", ALKScriptTokenType.Catch },
+      { "finally", ALKScriptTokenType.Finally },
+      { "throw", ALKScriptTokenType.Throw },
 
-      { "int", TokenType.IntKeyword },
-      { "long", TokenType.LongKeyword },
-      { "float", TokenType.FloatKeyword },
-      { "string", TokenType.StringKeyword },
-      { "bool", TokenType.BoolKeyword },
-      { "void", TokenType.VoidKeyword },
+      { "int", ALKScriptTokenType.IntKeyword },
+      { "long", ALKScriptTokenType.LongKeyword },
+      { "float", ALKScriptTokenType.FloatKeyword },
+      { "string", ALKScriptTokenType.StringKeyword },
+      { "bool", ALKScriptTokenType.BoolKeyword },
+      { "void", ALKScriptTokenType.VoidKeyword },
 
-      { "class", TokenType.Class },
-      { "new", TokenType.New },
-      { "this", TokenType.This },
-      { "base", TokenType.Base },
-      { "extends", TokenType.Extends },
-      { "public", TokenType.Public },
-      { "protected", TokenType.Protected },
-      { "private", TokenType.Private },
-      { "virtual", TokenType.Virtual },
-      { "abstract", TokenType.Abstract },
-      { "override", TokenType.Override },
+      { "class", ALKScriptTokenType.Class },
+      { "new", ALKScriptTokenType.New },
+      { "this", ALKScriptTokenType.This },
+      { "base", ALKScriptTokenType.Base },
+      { "extends", ALKScriptTokenType.Extends },
+      { "public", ALKScriptTokenType.Public },
+      { "protected", ALKScriptTokenType.Protected },
+      { "private", ALKScriptTokenType.Private },
+      { "virtual", ALKScriptTokenType.Virtual },
+      { "abstract", ALKScriptTokenType.Abstract },
+      { "override", ALKScriptTokenType.Override },
 
-      { "import", TokenType.Import },
-      { "export", TokenType.Export },
-      { "from", TokenType.From },
-      { "as", TokenType.As },
+      { "import", ALKScriptTokenType.Import },
+      { "export", ALKScriptTokenType.Export },
+      { "from", ALKScriptTokenType.From },
+      { "as", ALKScriptTokenType.As },
     };
 
     private string _source = string.Empty;
-    private List<Token> _tokens = new List<Token>();
+    private List<ALKScriptToken> _tokens = new List<ALKScriptToken>();
     private int _start;
     private int _current;
     private int _line;
     private int _column;
     private int _startColumn;
 
-    public List<Token> Tokenize(string contents)
+    public List<ALKScriptToken> Tokenize(string contents)
     {
       _source = contents;
-      _tokens = new List<Token>();
+      _tokens = new List<ALKScriptToken>();
       _start = 0;
       _current = 0;
       _line = 1;
@@ -75,7 +75,7 @@ namespace ALKScript.Interpreter.Lexer
         ScanToken();
       }
 
-      _tokens.Add(new Token(TokenType.EndOfFile, string.Empty, _line, _column));
+      _tokens.Add(new ALKScriptToken(ALKScriptTokenType.EndOfFile, string.Empty, _line, _column));
       return _tokens;
     }
 
@@ -85,21 +85,21 @@ namespace ALKScript.Interpreter.Lexer
 
       switch (c)
       {
-        case '(': AddToken(TokenType.LeftParen); break;
-        case ')': AddToken(TokenType.RightParen); break;
-        case '{': AddToken(TokenType.LeftBrace); break;
-        case '}': AddToken(TokenType.RightBrace); break;
-        case '[': AddToken(TokenType.LeftBracket); break;
-        case ']': AddToken(TokenType.RightBracket); break;
-        case ',': AddToken(TokenType.Comma); break;
-        case ';': AddToken(TokenType.Semicolon); break;
-        case ':': AddToken(TokenType.Colon); break;
-        case '.': AddToken(TokenType.Dot); break;
-        case '?': AddToken(TokenType.Question); break;
-        case '+': AddToken(TokenType.Plus); break;
-        case '-': AddToken(TokenType.Minus); break;
-        case '*': AddToken(TokenType.Star); break;
-        case '%': AddToken(TokenType.Percent); break;
+        case '(': AddToken(ALKScriptTokenType.LeftParen); break;
+        case ')': AddToken(ALKScriptTokenType.RightParen); break;
+        case '{': AddToken(ALKScriptTokenType.LeftBrace); break;
+        case '}': AddToken(ALKScriptTokenType.RightBrace); break;
+        case '[': AddToken(ALKScriptTokenType.LeftBracket); break;
+        case ']': AddToken(ALKScriptTokenType.RightBracket); break;
+        case ',': AddToken(ALKScriptTokenType.Comma); break;
+        case ';': AddToken(ALKScriptTokenType.Semicolon); break;
+        case ':': AddToken(ALKScriptTokenType.Colon); break;
+        case '.': AddToken(ALKScriptTokenType.Dot); break;
+        case '?': AddToken(ALKScriptTokenType.Question); break;
+        case '+': AddToken(ALKScriptTokenType.Plus); break;
+        case '-': AddToken(ALKScriptTokenType.Minus); break;
+        case '*': AddToken(ALKScriptTokenType.Star); break;
+        case '%': AddToken(ALKScriptTokenType.Percent); break;
 
         case '/':
           if (Match('/'))
@@ -115,32 +115,32 @@ namespace ALKScript.Interpreter.Lexer
           }
           else
           {
-            AddToken(TokenType.Slash);
+            AddToken(ALKScriptTokenType.Slash);
           }
           break;
 
         case '=':
-          AddToken(Match('=') ? TokenType.EqualEqual : TokenType.Equal);
+          AddToken(Match('=') ? ALKScriptTokenType.EqualEqual : ALKScriptTokenType.Equal);
           break;
         case '!':
-          AddToken(Match('=') ? TokenType.BangEqual : TokenType.Bang);
+          AddToken(Match('=') ? ALKScriptTokenType.BangEqual : ALKScriptTokenType.Bang);
           break;
         case '<':
-          AddToken(Match('=') ? TokenType.LessEqual : TokenType.Less);
+          AddToken(Match('=') ? ALKScriptTokenType.LessEqual : ALKScriptTokenType.Less);
           break;
         case '>':
-          AddToken(Match('=') ? TokenType.GreaterEqual : TokenType.Greater);
+          AddToken(Match('=') ? ALKScriptTokenType.GreaterEqual : ALKScriptTokenType.Greater);
           break;
         case '&':
           if (Match('&'))
           {
-            AddToken(TokenType.AmpAmp);
+            AddToken(ALKScriptTokenType.AmpAmp);
           }
           break;
         case '|':
           if (Match('|'))
           {
-            AddToken(TokenType.PipePipe);
+            AddToken(ALKScriptTokenType.PipePipe);
           }
           break;
 
@@ -241,7 +241,7 @@ namespace ALKScript.Interpreter.Lexer
 
       Advance();
 
-      AddToken(TokenType.String, value.ToString());
+      AddToken(ALKScriptTokenType.String, value.ToString());
     }
 
     private void ScanNumber()
@@ -266,7 +266,7 @@ namespace ALKScript.Interpreter.Lexer
         Advance();
       }
 
-      AddToken(TokenType.Number);
+      AddToken(ALKScriptTokenType.Number);
     }
 
     private void ScanIdentifier()
@@ -277,7 +277,7 @@ namespace ALKScript.Interpreter.Lexer
       }
 
       string text = _source.Substring(_start, _current - _start);
-      TokenType type = Keywords.TryGetValue(text, out var keywordType) ? keywordType : TokenType.Identifier;
+      ALKScriptTokenType type = Keywords.TryGetValue(text, out var keywordType) ? keywordType : ALKScriptTokenType.Identifier;
       AddToken(type);
     }
 
@@ -331,15 +331,15 @@ namespace ALKScript.Interpreter.Lexer
       return IsAlpha(c) || IsDigit(c);
     }
 
-    private void AddToken(TokenType type)
+    private void AddToken(ALKScriptTokenType type)
     {
       string lexeme = _source.Substring(_start, _current - _start);
-      _tokens.Add(new Token(type, lexeme, _line, _startColumn));
+      _tokens.Add(new ALKScriptToken(type, lexeme, _line, _startColumn));
     }
 
-    private void AddToken(TokenType type, string lexeme)
+    private void AddToken(ALKScriptTokenType type, string lexeme)
     {
-      _tokens.Add(new Token(type, lexeme, _line, _startColumn));
+      _tokens.Add(new ALKScriptToken(type, lexeme, _line, _startColumn));
     }
   }
 }

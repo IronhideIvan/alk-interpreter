@@ -5,13 +5,13 @@ namespace Tests.ALKScript.Interpreter.Lexer;
 public class ModulesTests
 {
   [Theory]
-  [InlineData("import", TokenType.Import)]
-  [InlineData("export", TokenType.Export)]
-  [InlineData("from", TokenType.From)]
-  [InlineData("as", TokenType.As)]
-  public void Tokenize_ModuleKeyword_ReturnsExpectedToken(string source, TokenType expectedType)
+  [InlineData("import", ALKScriptTokenType.Import)]
+  [InlineData("export", ALKScriptTokenType.Export)]
+  [InlineData("from", ALKScriptTokenType.From)]
+  [InlineData("as", ALKScriptTokenType.As)]
+  public void Tokenize_ModuleKeyword_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(source);
 
@@ -22,21 +22,21 @@ public class ModulesTests
   [Fact]
   public void Tokenize_ImportFromRelativePath_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("import { Person } from \"./person\";");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Import,
-        TokenType.LeftBrace,
-        TokenType.Identifier,
-        TokenType.RightBrace,
-        TokenType.From,
-        TokenType.String,
-        TokenType.Semicolon,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Import,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightBrace,
+        ALKScriptTokenType.From,
+        ALKScriptTokenType.String,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }
@@ -44,23 +44,23 @@ public class ModulesTests
   [Fact]
   public void Tokenize_ImportCoreModuleWithAlias_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("import { Date as SystemDate } from \"datetime\";");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Import,
-        TokenType.LeftBrace,
-        TokenType.Identifier,
-        TokenType.As,
-        TokenType.Identifier,
-        TokenType.RightBrace,
-        TokenType.From,
-        TokenType.String,
-        TokenType.Semicolon,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Import,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.As,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightBrace,
+        ALKScriptTokenType.From,
+        ALKScriptTokenType.String,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }
@@ -68,19 +68,19 @@ public class ModulesTests
   [Fact]
   public void Tokenize_ExportDeclaration_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("export class Person {\n}");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Export,
-        TokenType.Class,
-        TokenType.Identifier,
-        TokenType.LeftBrace,
-        TokenType.RightBrace,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Export,
+        ALKScriptTokenType.Class,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.RightBrace,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }

@@ -5,18 +5,18 @@ namespace Tests.ALKScript.Interpreter.Lexer;
 public class FunctionsTests
 {
   [Theory]
-  [InlineData("if", TokenType.If)]
-  [InlineData("else", TokenType.Else)]
-  [InlineData("while", TokenType.While)]
-  [InlineData("for", TokenType.For)]
-  [InlineData("function", TokenType.Function)]
-  [InlineData("return", TokenType.Return)]
-  [InlineData("true", TokenType.True)]
-  [InlineData("false", TokenType.False)]
-  [InlineData("null", TokenType.Null)]
-  public void Tokenize_Keyword_ReturnsKeywordToken(string source, TokenType expectedType)
+  [InlineData("if", ALKScriptTokenType.If)]
+  [InlineData("else", ALKScriptTokenType.Else)]
+  [InlineData("while", ALKScriptTokenType.While)]
+  [InlineData("for", ALKScriptTokenType.For)]
+  [InlineData("function", ALKScriptTokenType.Function)]
+  [InlineData("return", ALKScriptTokenType.Return)]
+  [InlineData("true", ALKScriptTokenType.True)]
+  [InlineData("false", ALKScriptTokenType.False)]
+  [InlineData("null", ALKScriptTokenType.Null)]
+  public void Tokenize_Keyword_ReturnsKeywordToken(string source, ALKScriptTokenType expectedType)
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(source);
 
@@ -27,31 +27,31 @@ public class FunctionsTests
   [Fact]
   public void Tokenize_FunctionDeclarationWithReturnType_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("function int add(int a, int b) {\n  return a + b;\n}");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Function,
-        TokenType.IntKeyword,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.IntKeyword,
-        TokenType.Identifier,
-        TokenType.Comma,
-        TokenType.IntKeyword,
-        TokenType.Identifier,
-        TokenType.RightParen,
-        TokenType.LeftBrace,
-        TokenType.Return,
-        TokenType.Identifier,
-        TokenType.Plus,
-        TokenType.Identifier,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Function,
+        ALKScriptTokenType.IntKeyword,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.IntKeyword,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.Comma,
+        ALKScriptTokenType.IntKeyword,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Return,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.Plus,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }
@@ -59,28 +59,28 @@ public class FunctionsTests
   [Fact]
   public void Tokenize_VoidFunctionDeclaration_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("function void log(string message) {\n  print(message);\n}");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Function,
-        TokenType.VoidKeyword,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.StringKeyword,
-        TokenType.Identifier,
-        TokenType.RightParen,
-        TokenType.LeftBrace,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.Identifier,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Function,
+        ALKScriptTokenType.VoidKeyword,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.StringKeyword,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }
@@ -88,11 +88,11 @@ public class FunctionsTests
   [Fact]
   public void Tokenize_IfElseStatement_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("if (a < b) { return a; } else { return b; }");
 
-    Assert.Equal(TokenType.If, tokens[0].Type);
-    Assert.Equal(TokenType.Else, tokens[11].Type);
+    Assert.Equal(ALKScriptTokenType.If, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.Else, tokens[11].Type);
   }
 }

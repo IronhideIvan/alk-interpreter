@@ -1,6 +1,6 @@
 namespace ALKScript.Interpreter.Lexer
 {
-  public enum TokenType
+  public enum ALKScriptTokenType
   {
     // Literals
     Identifier,

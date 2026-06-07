@@ -5,13 +5,13 @@ namespace Tests.ALKScript.Interpreter.Lexer;
 public class ExceptionHandlingTests
 {
   [Theory]
-  [InlineData("try", TokenType.Try)]
-  [InlineData("catch", TokenType.Catch)]
-  [InlineData("finally", TokenType.Finally)]
-  [InlineData("throw", TokenType.Throw)]
-  public void Tokenize_ExceptionHandlingKeyword_ReturnsExpectedToken(string source, TokenType expectedType)
+  [InlineData("try", ALKScriptTokenType.Try)]
+  [InlineData("catch", ALKScriptTokenType.Catch)]
+  [InlineData("finally", ALKScriptTokenType.Finally)]
+  [InlineData("throw", ALKScriptTokenType.Throw)]
+  public void Tokenize_ExceptionHandlingKeyword_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(source);
 
@@ -22,21 +22,21 @@ public class ExceptionHandlingTests
   [Fact]
   public void Tokenize_ThrowStatement_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("throw new InvalidAgeError(\"age cannot be negative\");");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Throw,
-        TokenType.New,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.String,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Throw,
+        ALKScriptTokenType.New,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.String,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }
@@ -44,7 +44,7 @@ public class ExceptionHandlingTests
   [Fact]
   public void Tokenize_ErrorSubclassDeclaration_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(
       "class InvalidAgeError extends Error {\n" +
@@ -56,28 +56,28 @@ public class ExceptionHandlingTests
     Assert.Equal(
       new[]
       {
-        TokenType.Class,
-        TokenType.Identifier,
-        TokenType.Extends,
-        TokenType.Identifier,
-        TokenType.LeftBrace,
+        ALKScriptTokenType.Class,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.Extends,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftBrace,
 
-        TokenType.Public,
-        TokenType.New,
-        TokenType.LeftParen,
-        TokenType.StringKeyword,
-        TokenType.Identifier,
-        TokenType.RightParen,
-        TokenType.LeftBrace,
-        TokenType.Base,
-        TokenType.LeftParen,
-        TokenType.Identifier,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
+        ALKScriptTokenType.Public,
+        ALKScriptTokenType.New,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.StringKeyword,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Base,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
 
-        TokenType.RightBrace,
-        TokenType.EndOfFile
+        ALKScriptTokenType.RightBrace,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }
@@ -85,7 +85,7 @@ public class ExceptionHandlingTests
   [Fact]
   public void Tokenize_TryCatchFinally_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(
       "try {\n" +
@@ -101,47 +101,47 @@ public class ExceptionHandlingTests
     Assert.Equal(
       new[]
       {
-        TokenType.Try,
-        TokenType.LeftBrace,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
+        ALKScriptTokenType.Try,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
 
-        TokenType.Catch,
-        TokenType.LeftParen,
-        TokenType.Identifier,
-        TokenType.Identifier,
-        TokenType.RightParen,
-        TokenType.LeftBrace,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.Identifier,
-        TokenType.Dot,
-        TokenType.Identifier,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
+        ALKScriptTokenType.Catch,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.Dot,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
 
-        TokenType.Catch,
-        TokenType.LeftBrace,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.String,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
+        ALKScriptTokenType.Catch,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.String,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
 
-        TokenType.Finally,
-        TokenType.LeftBrace,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
+        ALKScriptTokenType.Finally,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
 
-        TokenType.EndOfFile
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }

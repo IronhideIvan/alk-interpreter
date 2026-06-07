@@ -7,22 +7,22 @@ public class LexicalStructureTests
   [Fact]
   public void Tokenize_EmptySource_ReturnsOnlyEndOfFile()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(string.Empty);
 
     var token = Assert.Single(tokens);
-    Assert.Equal(TokenType.EndOfFile, token.Type);
+    Assert.Equal(ALKScriptTokenType.EndOfFile, token.Type);
   }
 
   [Fact]
   public void Tokenize_Identifier_ReturnsIdentifierToken()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("myVariable");
 
-    Assert.Equal(TokenType.Identifier, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[0].Type);
     Assert.Equal("myVariable", tokens[0].Lexeme);
   }
 
@@ -33,40 +33,40 @@ public class LexicalStructureTests
   [InlineData("42l", "42l")]
   public void Tokenize_Number_ReturnsNumberToken(string source, string expectedLexeme)
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(source);
 
-    Assert.Equal(TokenType.Number, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.Number, tokens[0].Type);
     Assert.Equal(expectedLexeme, tokens[0].Lexeme);
   }
 
   [Fact]
   public void Tokenize_String_ReturnsStringTokenWithoutQuotes()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("\"hello world\"");
 
-    Assert.Equal(TokenType.String, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.String, tokens[0].Type);
     Assert.Equal("hello world", tokens[0].Lexeme);
   }
 
   [Fact]
   public void Tokenize_StringWithEscapeSequences_ProcessesEscapes()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("\"line\\n\\ttabbed \\\"quoted\\\"\"");
 
-    Assert.Equal(TokenType.String, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.String, tokens[0].Type);
     Assert.Equal("line\n\ttabbed \"quoted\"", tokens[0].Lexeme);
   }
 
   [Fact]
   public void Tokenize_LineComment_IsIgnored()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("var x = 1; // this is a comment\nvar y = 2;");
 
@@ -76,7 +76,7 @@ public class LexicalStructureTests
   [Fact]
   public void Tokenize_BlockComment_IsIgnored()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("var x /* block comment */ = 1;");
 
@@ -86,21 +86,21 @@ public class LexicalStructureTests
   [Fact]
   public void Tokenize_Statement_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("var x = 1 + 2;");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Var,
-        TokenType.Identifier,
-        TokenType.Equal,
-        TokenType.Number,
-        TokenType.Plus,
-        TokenType.Number,
-        TokenType.Semicolon,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Var,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.Equal,
+        ALKScriptTokenType.Number,
+        ALKScriptTokenType.Plus,
+        ALKScriptTokenType.Number,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }
@@ -108,7 +108,7 @@ public class LexicalStructureTests
   [Fact]
   public void Tokenize_MultilineSource_TracksLineNumbers()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("var x = 1;\nvar y = 2;");
 

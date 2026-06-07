@@ -5,11 +5,11 @@ namespace Tests.ALKScript.Interpreter.Lexer;
 public class AsyncAwaitTests
 {
   [Theory]
-  [InlineData("async", TokenType.Async)]
-  [InlineData("await", TokenType.Await)]
-  public void Tokenize_AsyncAwaitKeyword_ReturnsExpectedToken(string source, TokenType expectedType)
+  [InlineData("async", ALKScriptTokenType.Async)]
+  [InlineData("await", ALKScriptTokenType.Await)]
+  public void Tokenize_AsyncAwaitKeyword_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize(source);
 
@@ -20,28 +20,28 @@ public class AsyncAwaitTests
   [Fact]
   public void Tokenize_AsyncFunctionDeclaration_ReturnsExpectedTokenSequence()
   {
-    var lexer = new FileLexer();
+    var lexer = new ALKScriptLexer();
 
     var tokens = lexer.Tokenize("async function int fetchValue() {\n  return await getValue();\n}");
 
     Assert.Equal(
       new[]
       {
-        TokenType.Async,
-        TokenType.Function,
-        TokenType.IntKeyword,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.RightParen,
-        TokenType.LeftBrace,
-        TokenType.Return,
-        TokenType.Await,
-        TokenType.Identifier,
-        TokenType.LeftParen,
-        TokenType.RightParen,
-        TokenType.Semicolon,
-        TokenType.RightBrace,
-        TokenType.EndOfFile
+        ALKScriptTokenType.Async,
+        ALKScriptTokenType.Function,
+        ALKScriptTokenType.IntKeyword,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.LeftBrace,
+        ALKScriptTokenType.Return,
+        ALKScriptTokenType.Await,
+        ALKScriptTokenType.Identifier,
+        ALKScriptTokenType.LeftParen,
+        ALKScriptTokenType.RightParen,
+        ALKScriptTokenType.Semicolon,
+        ALKScriptTokenType.RightBrace,
+        ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
   }

@@ -1,13 +1,13 @@
 namespace ALKScript.Interpreter.Lexer
 {
-  public class Token
+  public class ALKScriptToken
   {
-    public TokenType Type { get; }
+    public ALKScriptTokenType Type { get; }
     public string Lexeme { get; }
     public int Line { get; }
     public int Column { get; }
 
-    public Token(TokenType type, string lexeme, int line, int column)
+    public ALKScriptToken(ALKScriptTokenType type, string lexeme, int line, int column)
     {
       Type = type;
       Lexeme = lexeme;
