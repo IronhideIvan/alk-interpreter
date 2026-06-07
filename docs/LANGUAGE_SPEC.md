@@ -28,6 +28,7 @@ if  else  while  for  function  return  var  true  false  null
 int  long  float  string  bool  void
 async  await
 class  new  this  base  extends  public  protected  private  virtual  abstract  override
+import  export  from  as
 ```
 
 The last group (`int`, `long`, `float`, `string`, `bool`, `void`) are the built-in
@@ -147,12 +148,27 @@ The grammar below is given in EBNF-like notation. Terminals are quoted; `?` mean
 optional, `*` means zero-or-more, `+` means one-or-more, `|` means alternation.
 
 ```ebnf
-program        = declaration* EOF ;
+program        = importDecl* declaration* EOF ;
 
-declaration    = classDecl
+importDecl     = "import" importClause "from" STRING ";" ;
+                 (* importDecl statements must precede all other declarations *)
+
+importClause   = namedImports
+               | namespaceImport ;
+
+namedImports   = "{" importSpecifier ( "," importSpecifier )* "}" ;
+importSpecifier = IDENTIFIER ( "as" IDENTIFIER )? ;
+
+namespaceImport = "*" "as" IDENTIFIER ;
+
+declaration    = exportDecl
+               | classDecl
                | functionDecl
                | variableDecl
                | statement ;
+
+exportDecl     = "export" ( classDecl | functionDecl | variableDecl ) ;
+                 (* "export" is only valid on top-level declarations *)
 
 classDecl      = "abstract"? "class" IDENTIFIER typeParameters?
                  ( "extends" IDENTIFIER ( "<" type ( "," type )* ">" )? )?
@@ -620,7 +636,77 @@ supplying concrete types or its own type parameters for the base's type
 parameters, e.g. `class StringArray extends Array<string> { ... }` or
 `class Pair<T> extends Container<T> { ... }`.
 
-## 9. Sample Program
+## 9. Modules and Imports
+
+Each ALKScript source file forms a **module**. A module makes selected
+top-level declarations available to other modules with `export`, and brings
+declarations from other modules into scope with `import` — both modeled on
+TypeScript.
+
+### 9.1 Exporting declarations
+
+Prefixing a top-level `class`, `function`, or variable declaration with
+`export` makes it visible to modules that import it:
+
+```
+export class Person {
+  public new(string name) {
+    this.name = name;
+  }
+}
+
+export function int add(int a, int b) {
+  return a + b;
+}
+```
+
+A declaration without `export` is private to its module — other modules cannot
+import it. `export` is only valid on top-level declarations; it cannot be
+applied to class members, parameters, locals, or any other nested declaration.
+
+### 9.2 Importing declarations
+
+`import` brings a target module's exported declarations into the current
+module's scope. The target module is identified by a string-literal path;
+relative paths (`./`, `../`) refer to other ALKScript source files, resolved the
+same way as on the host file system.
+
+```
+import { Person, Employee } from "./models";
+import { Array as Arr } from "./collections/array";
+import * as Models from "./models";
+```
+
+Two import forms are supported:
+
+- **Named imports** — `import { A, B, C as D } from "path"` brings the named
+  exported declarations `A`, `B`, and `C` into scope, with `C` available locally
+  as `D`.
+- **Namespace imports** — `import * as N from "path"` brings every exported
+  declaration from the module into scope as members of a single namespace value
+  `N`, accessed with `.` (e.g. `N.A`, `N.B`).
+
+`import` declarations must appear at the top of a module, before any other
+declaration. Importing a name the target module does not `export`, or a path
+that cannot be resolved, is a compile-time error.
+
+### 9.3 Example
+
+```
+// models.alk
+export class Person {
+  public new(string name) {
+    this.name = name;
+  }
+}
+
+// main.alk
+import { Person } from "./models";
+
+var p = new Person("Ada");
+```
+
+## 10. Sample Program
 
 ```
 function int fibonacci(int n) {
