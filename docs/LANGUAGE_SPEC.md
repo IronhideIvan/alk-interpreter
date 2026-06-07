@@ -154,7 +154,11 @@ declaration    = classDecl
                | variableDecl
                | statement ;
 
-classDecl      = "abstract"? "class" IDENTIFIER ( "extends" IDENTIFIER )? "{" member* "}" ;
+classDecl      = "abstract"? "class" IDENTIFIER typeParameters?
+                 ( "extends" IDENTIFIER ( "<" type ( "," type )* ">" )? )?
+                 "{" member* "}" ;
+
+typeParameters = "<" IDENTIFIER ( "," IDENTIFIER )* ">" ;
 
 member         = constructorDecl
                | fieldDecl
@@ -167,13 +171,14 @@ constructorDecl = accessModifier? "new" "(" parameters? ")" block ;
 
 fieldDecl      = accessModifier? ( "var" | type ) IDENTIFIER ( "=" expression )? ";" ;
 
-methodDecl     = accessModifier? overrideModifier? "async"? "function" type IDENTIFIER
-                 "(" parameters? ")" ( block | ";" ) ;
+methodDecl     = accessModifier? overrideModifier? "async"? "function" typeParameters?
+                 type IDENTIFIER "(" parameters? ")" ( block | ";" ) ;
                  (* the body is replaced by ";" only for "abstract" methods *)
 
 overrideModifier = "virtual" | "abstract" | "override" ;
 
-functionDecl   = "async"? "function" type IDENTIFIER "(" parameters? ")" block ;
+functionDecl   = "async"? "function" typeParameters? type IDENTIFIER
+                 "(" parameters? ")" block ;
                  (* an "async" function's declared return type must be "Task"
                     or "Task<T>" *)
 parameters     = parameter ( "," parameter )* ;
@@ -281,6 +286,29 @@ function void log(string message) {
   print(message);
 }
 ```
+
+#### Generic functions
+
+A function may declare one or more **type parameters** in angle brackets between
+the `function` keyword and its return type. The type parameters can then be used
+as types anywhere within the parameter list, return type, and body:
+
+```
+function<T> void process(T n) {
+  // Do something with a value of type T
+}
+
+function<T> T first(T[] items) {
+  return items[0];
+}
+```
+
+Each call site supplies (or lets the compiler infer from the arguments) a
+concrete type for every type parameter; the function is type-checked as if `T`
+were that concrete type. `process(5)` instantiates `T` as `int`; `process("hi")`
+instantiates it as `string`. Supplying incompatible types for the same type
+parameter across a single call (e.g. mismatched array element types) is a
+compile-time error.
 
 ### 5.3 Control flow
 
@@ -555,6 +583,42 @@ abstract class Person {
 - A concrete class extending an abstract class must override every `abstract`
   method it inherits that isn't already overridden by an intermediate class; if
   it does not, it must itself be declared `abstract`.
+
+### 8.8 Generic classes
+
+A class may declare one or more type parameters in angle brackets after its
+name. The type parameters can be used as types anywhere within the class —
+field types, parameter types, return types, and the bodies of its members:
+
+```
+class Array<T> {
+  private T[] items = [];
+
+  public void add(T item) {
+    // Do something
+  }
+
+  public T get(int index) {
+    return this.items[index];
+  }
+}
+```
+
+A concrete type is supplied for each type parameter where the class is used —
+either explicitly, as in a variable's type or a `new` expression, or (for
+top-level usages) inferred from context:
+
+```
+var numbers = new Array<int>();
+numbers.add(5);
+
+Array<string>? names = null;
+```
+
+A generic class may also extend another generic class or interface-like base,
+supplying concrete types or its own type parameters for the base's type
+parameters, e.g. `class StringArray extends Array<string> { ... }` or
+`class Pair<T> extends Container<T> { ... }`.
 
 ## 9. Sample Program
 
