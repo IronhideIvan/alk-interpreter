@@ -7,6 +7,11 @@ public class Executor
   public void Run()
   {
     var lexer = new FileLexer();
-    System.Console.WriteLine("Hello, World!");
+    var tokens = lexer.Tokenize("let x = 1 + 2;");
+
+    foreach (var token in tokens)
+    {
+      System.Console.WriteLine(token);
+    }
   }
 }
