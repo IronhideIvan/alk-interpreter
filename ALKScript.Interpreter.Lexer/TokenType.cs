@@ -7,17 +7,48 @@ namespace ALKScript.Interpreter.Lexer
     Number,
     String,
 
-    // Keywords
+    // Keywords - control flow / general
     If,
     Else,
     While,
     For,
     Function,
     Return,
-    Let,
+    Var,
     True,
     False,
     Null,
+
+    // Keywords - async/await
+    Async,
+    Await,
+
+    // Keywords - type names
+    IntKeyword,
+    LongKeyword,
+    FloatKeyword,
+    StringKeyword,
+    BoolKeyword,
+    VoidKeyword,
+
+    // Keywords - classes
+    Class,
+    New,
+    This,
+    Base,
+    Extends,
+    Public,
+    Protected,
+    Private,
+    Virtual,
+    Abstract,
+    Override,
+
+    // Keywords - modules
+    Import,
+    Export,
+    From,
+    As,
 
     // Operators
     Plus,
@@ -47,6 +78,7 @@ namespace ALKScript.Interpreter.Lexer
     Semicolon,
     Colon,
     Dot,
+    Question,
 
     EndOfFile
   }

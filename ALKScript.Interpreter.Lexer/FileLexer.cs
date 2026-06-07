@@ -12,10 +12,37 @@ namespace ALKScript.Interpreter.Lexer
       { "for", TokenType.For },
       { "function", TokenType.Function },
       { "return", TokenType.Return },
-      { "let", TokenType.Let },
+      { "var", TokenType.Var },
       { "true", TokenType.True },
       { "false", TokenType.False },
       { "null", TokenType.Null },
+
+      { "async", TokenType.Async },
+      { "await", TokenType.Await },
+
+      { "int", TokenType.IntKeyword },
+      { "long", TokenType.LongKeyword },
+      { "float", TokenType.FloatKeyword },
+      { "string", TokenType.StringKeyword },
+      { "bool", TokenType.BoolKeyword },
+      { "void", TokenType.VoidKeyword },
+
+      { "class", TokenType.Class },
+      { "new", TokenType.New },
+      { "this", TokenType.This },
+      { "base", TokenType.Base },
+      { "extends", TokenType.Extends },
+      { "public", TokenType.Public },
+      { "protected", TokenType.Protected },
+      { "private", TokenType.Private },
+      { "virtual", TokenType.Virtual },
+      { "abstract", TokenType.Abstract },
+      { "override", TokenType.Override },
+
+      { "import", TokenType.Import },
+      { "export", TokenType.Export },
+      { "from", TokenType.From },
+      { "as", TokenType.As },
     };
 
     private string _source = string.Empty;
@@ -63,6 +90,7 @@ namespace ALKScript.Interpreter.Lexer
         case ';': AddToken(TokenType.Semicolon); break;
         case ':': AddToken(TokenType.Colon); break;
         case '.': AddToken(TokenType.Dot); break;
+        case '?': AddToken(TokenType.Question); break;
         case '+': AddToken(TokenType.Plus); break;
         case '-': AddToken(TokenType.Minus); break;
         case '*': AddToken(TokenType.Star); break;
@@ -160,15 +188,45 @@ namespace ALKScript.Interpreter.Lexer
 
     private void ScanString()
     {
+      var value = new System.Text.StringBuilder();
+
       while (Peek() != '"' && !IsAtEnd())
       {
-        if (Peek() == '\n')
+        char c = Peek();
+
+        if (c == '\n')
         {
           _line++;
           _column = 0;
+          value.Append(Advance());
+          continue;
         }
 
-        Advance();
+        if (c == '\\')
+        {
+          Advance();
+          char escaped = Peek();
+
+          switch (escaped)
+          {
+            case 'n': value.Append('\n'); break;
+            case 't': value.Append('\t'); break;
+            case 'r': value.Append('\r'); break;
+            case '"': value.Append('"'); break;
+            case '\\': value.Append('\\'); break;
+            case '0': value.Append('\0'); break;
+            default: value.Append(escaped); break;
+          }
+
+          if (!IsAtEnd())
+          {
+            Advance();
+          }
+
+          continue;
+        }
+
+        value.Append(Advance());
       }
 
       if (IsAtEnd())
@@ -178,8 +236,7 @@ namespace ALKScript.Interpreter.Lexer
 
       Advance();
 
-      string value = _source.Substring(_start + 1, _current - _start - 2);
-      AddToken(TokenType.String, value);
+      AddToken(TokenType.String, value.ToString());
     }
 
     private void ScanNumber()
@@ -197,6 +254,11 @@ namespace ALKScript.Interpreter.Lexer
         {
           Advance();
         }
+      }
+
+      if (Peek() == 'L' || Peek() == 'l')
+      {
+        Advance();
       }
 
       AddToken(TokenType.Number);
