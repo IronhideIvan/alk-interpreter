@@ -26,6 +26,7 @@ Reserved words that cannot be used as identifiers:
 ```
 if  else  while  for  function  return  var  true  false  null
 int  long  float  string  bool  void
+async  await
 ```
 
 The last group (`int`, `long`, `float`, `string`, `bool`, `void`) are the built-in
@@ -79,6 +80,7 @@ and no dynamic re-typing of variables.
 |-----------|-------------------|-----------------------------------------------------|
 | Array     | `T[]`             | An ordered, indexable collection of values of type `T` |
 | Function  | `(T1, T2) -> R`   | A callable value taking parameters of types `T1, T2` and returning `R` |
+| Task      | `Task` / `Task<T>` | Represents an asynchronous operation; `Task<T>` represents one that produces a value of type `T` when it completes |
 
 ### 2.3 Variable declarations and type inference
 
@@ -124,7 +126,9 @@ declaration    = functionDecl
                | variableDecl
                | statement ;
 
-functionDecl   = "function" type IDENTIFIER "(" parameters? ")" block ;
+functionDecl   = "async"? "function" type IDENTIFIER "(" parameters? ")" block ;
+                 (* an "async" function's declared return type must be "Task"
+                    or "Task<T>" *)
 parameters     = parameter ( "," parameter )* ;
 parameter      = type IDENTIFIER ;
 
@@ -133,6 +137,7 @@ variableDecl   = ( "var" | type ) IDENTIFIER ( "=" expression )? ";" ;
                     inferred; an explicit type makes the initializer optional *)
 
 type           = ( "int" | "long" | "float" | "string" | "bool" | "void" | IDENTIFIER )
+                 ( "<" type ( "," type )* ">" )?
                  ( "[" "]" )* ;
 
 statement      = exprStatement
@@ -167,7 +172,7 @@ equality       = comparison ( ( "==" | "!=" ) comparison )* ;
 comparison     = term ( ( "<" | "<=" | ">" | ">=" ) term )* ;
 term           = factor ( ( "+" | "-" ) factor )* ;
 factor         = unary ( ( "*" | "/" | "%" ) unary )* ;
-unary          = ( "!" | "-" ) unary
+unary          = ( "!" | "-" | "await" ) unary
                | call ;
 call           = primary ( "(" arguments? ")" | "." IDENTIFIER | "[" expression "]" )* ;
 arguments      = expression ( "," expression )* ;
@@ -189,7 +194,7 @@ From lowest to highest precedence:
 5. Comparison (`<`, `<=`, `>`, `>=`)
 6. Addition / subtraction (`+`, `-`)
 7. Multiplication / division / modulo (`*`, `/`, `%`)
-8. Unary (`!`, `-`)
+8. Unary (`!`, `-`, `await`)
 9. Call / index / member access (`()`, `[]`, `.`)
 
 All binary operators are left-associative. Assignment is right-associative.
@@ -266,7 +271,66 @@ declaration point to the end of the enclosing block.
 - Mixing incompatible types in any of the above is a compile-time type error —
   there is no implicit conversion between, for example, `string` and `int`.
 
-## 7. Sample Program
+## 7. Asynchronous Functions (`async`/`await`)
+
+ALKScript supports an `async`/`await` pattern for asynchronous operations,
+modeled on C#.
+
+### 7.1 Declaring an async function
+
+A function is marked asynchronous by prefixing its declaration with `async`.
+An `async` function's declared return type must be `Task` (for a function that
+produces no value) or `Task<T>` (for a function that produces a value of type `T`):
+
+```
+async function Task<string> fetchGreeting(string name) {
+  var message = await buildGreeting(name);
+  return message;
+}
+
+async function Task logMessage(string message) {
+  await writeToLog(message);
+}
+```
+
+Inside the body of an `async` function, `return expr;` where the declared return
+type is `Task<T>` returns a value of type `T` — the runtime wraps it in the
+`Task<T>` that the function as a whole produces. In a `Task`-returning `async`
+function, `return;` (or falling off the end of the body) completes the `Task`.
+
+### 7.2 The `await` expression
+
+`await` is a unary, prefix operator that suspends execution until the awaited
+operation completes:
+
+```
+await expression
+```
+
+- The operand must have type `Task` or `Task<T>`.
+- Awaiting a `Task<T>` yields a value of type `T`.
+- Awaiting a `Task` yields no value (its type is `void`); the result cannot be
+  used in a context that requires a value.
+- `await` is only valid inside the body of an `async` function. Using it
+  elsewhere is a compile-time error.
+
+### 7.3 Calling async functions
+
+Calling an `async` function does not block — it immediately returns a `Task` or
+`Task<T>` representing the in-progress operation. The caller can either `await`
+that result (suspending itself, and therefore must itself be `async`) or store
+and use it later:
+
+```
+async function Task<int> run() {
+  var greetingTask = fetchGreeting("ALKScript");  // starts running, doesn't block
+  var greeting = await greetingTask;              // suspend until it completes
+  print(greeting);
+  return greeting.length;
+}
+```
+
+## 8. Sample Program
 
 ```
 function int fibonacci(int n) {
