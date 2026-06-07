@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Commo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Parser", "ALKScript.Interpreter.Parser\ALKScript.Interpreter.Parser.csproj", "{F452736D-DD5E-4A71-A24C-170C8980E4EE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.ALKScript.Interpreter.Parser", "Tests\Tests.ALKScript.Interpreter.Parser\Tests.ALKScript.Interpreter.Parser.csproj", "{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -85,11 +87,24 @@ Global
 		{F452736D-DD5E-4A71-A24C-170C8980E4EE}.Release|x64.Build.0 = Release|Any CPU
 		{F452736D-DD5E-4A71-A24C-170C8980E4EE}.Release|x86.ActiveCfg = Release|Any CPU
 		{F452736D-DD5E-4A71-A24C-170C8980E4EE}.Release|x86.Build.0 = Release|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Debug|x64.Build.0 = Debug|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Debug|x86.Build.0 = Debug|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|x64.ActiveCfg = Release|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|x64.Build.0 = Release|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|x86.ActiveCfg = Release|Any CPU
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{E83CD3F9-497D-4D4C-AA7E-AB4F5AF4623B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
