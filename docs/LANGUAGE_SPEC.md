@@ -41,7 +41,7 @@ The last group (`int`, `long`, `float`, `string`, `bool`, `void`) are the built-
 | Float   | `3.14`, `0.5`             | `float`  | Contains a decimal point           |
 | String  | `"hello"`, `"line\n"`     | `string` | Double-quoted, escape sequences    |
 | Boolean | `true`, `false`           | `bool`   | Keyword literals                   |
-| Null    | `null`                    | any reference type | Absence of a value       |
+| Null    | `null`                    | any nullable type (`T?`) | Absence of a value |
 
 The lexer does not distinguish `int` from `float` literals (aside from the `L`/`l`
 suffix that marks a `long`) — these produce a `Number` token, and the type checker
@@ -105,14 +105,39 @@ Once a variable's type is fixed — whether explicitly declared or inferred via
 a compile-time error. `var` is purely a declaration-site convenience; it does not
 make the variable dynamically typed.
 
-### 2.4 Type compatibility and conversions
+### 2.4 Nullable types
+
+Every type `T` is **non-nullable** by default — `null` cannot be assigned to it.
+Appending `?` to a type produces its nullable counterpart `T?`, which additionally
+permits the value `null`. This applies uniformly to primitives, arrays, `Task`, and
+user-defined types:
+
+```
+string name = null;        // compile-time error: 'string' is not nullable
+string? name = null;       // ok: 'string?' is nullable
+int? maybeCount = null;    // ok
+int? maybeCount = 5;       // ok: T is assignable to T?
+
+int[]? items = null;       // ok: a nullable array reference
+Task<string>? pending = null;
+```
+
+A non-nullable `T` is implicitly assignable to `T?`. The reverse — using a `T?`
+where a `T` is required — is a compile-time error unless the value has been
+proven non-null (for example, by a prior equality check against `null` in an
+enclosing `if`/`while` condition); the type checker narrows `T?` to `T` within
+such a guarded branch.
+
+### 2.5 Type compatibility and conversions
 
 - `int` values are implicitly converted to `long`, and `int`/`long` values are
   implicitly converted to `float`, where the wider type is expected (widening
   conversions: `int` → `long` → `float`). The reverse requires an explicit conversion.
 - No other implicit conversions are performed; in particular, `string`, `bool`,
   and the numeric types (`int`, `long`, `float`) are not interchangeable.
-- `null` is assignable to any reference type but not to `int`, `long`, `float`, or `bool`.
+- `null` is assignable only to nullable types (`T?`); assigning it to a
+  non-nullable type, including `int`, `long`, `float`, and `bool`, is a
+  compile-time error.
 
 ## 3. Grammar
 
@@ -138,7 +163,9 @@ variableDecl   = ( "var" | type ) IDENTIFIER ( "=" expression )? ";" ;
 
 type           = ( "int" | "long" | "float" | "string" | "bool" | "void" | IDENTIFIER )
                  ( "<" type ( "," type )* ">" )?
-                 ( "[" "]" )* ;
+                 ( "[" "]" )*
+                 "?"? ;
+                 (* trailing "?" marks the type as nullable, e.g. "int?", "string[]?" *)
 
 statement      = exprStatement
                | ifStatement
@@ -262,8 +289,9 @@ declaration point to the end of the enclosing block.
   `+` also concatenates two `string` operands, producing a `string`.
 - Comparison operators (`< <= > >=`) require both operands to be numeric
   (`int`, `long`, or `float`) and produce a `bool`.
-- Equality operators (`== !=`) require both operands to have the same type (or one
-  to be `null` for a reference type) and produce a `bool`.
+- Equality operators (`== !=`) require both operands to have the same type, or
+  one operand to be `null` and the other a nullable type (`T?`); the result is a
+  `bool`. Comparing `null` against a non-nullable type is a compile-time error.
 - Logical operators (`&& ||`) require both operands to be `bool` and short-circuit,
   producing a `bool`.
 - The unary `!` requires a `bool` operand; unary `-` requires a numeric
