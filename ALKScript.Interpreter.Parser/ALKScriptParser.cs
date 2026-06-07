@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Token;
@@ -27,27 +26,23 @@ namespace ALKScript.Interpreter.Parser
         { ALKScriptTokenType.VoidKeyword, "void" },
       };
 
-    private readonly List<ALKScriptToken> _tokens;
-    private int _current;
+    private TokenStream _stream = null!;
 
-    public ALKScriptParser(IEnumerable<ALKScriptToken> tokens)
+    /// <summary>Parses the given token stream into a <see cref="ProgramNode"/>.</summary>
+    public ProgramNode ParseTokens(IEnumerable<ALKScriptToken> tokens)
     {
-      _tokens = tokens.ToList();
-    }
+      _stream = new TokenStream(tokens);
 
-    /// <summary>Parses the entire token stream into a <see cref="ProgramNode"/>.</summary>
-    public ProgramNode ParseProgram()
-    {
       var imports = new List<ImportDecl>();
 
-      while (Check(ALKScriptTokenType.Import))
+      while (_stream.Check(ALKScriptTokenType.Import))
       {
         imports.Add(ParseImportDecl());
       }
 
       var declarations = new List<Stmt>();
 
-      while (!IsAtEnd())
+      while (!_stream.IsAtEnd())
       {
         declarations.Add(ParseDeclaration());
       }
@@ -59,51 +54,51 @@ namespace ALKScript.Interpreter.Parser
 
     private ImportDecl ParseImportDecl()
     {
-      Consume(ALKScriptTokenType.Import, "Expect 'import'.");
+      _stream.Consume(ALKScriptTokenType.Import, "Expect 'import'.");
 
       ImportClause clause = ParseImportClause();
 
-      Consume(ALKScriptTokenType.From, "Expect 'from' after import clause.");
-      ALKScriptToken source = Consume(ALKScriptTokenType.String, "Expect a module path string after 'from'.");
-      Consume(ALKScriptTokenType.Semicolon, "Expect ';' after import declaration.");
+      _stream.Consume(ALKScriptTokenType.From, "Expect 'from' after import clause.");
+      ALKScriptToken source = _stream.Consume(ALKScriptTokenType.String, "Expect a module path string after 'from'.");
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after import declaration.");
 
       return new ImportDecl(clause, source);
     }
 
     private ImportClause ParseImportClause()
     {
-      if (Match(ALKScriptTokenType.Star))
+      if (_stream.Match(ALKScriptTokenType.Star))
       {
-        Consume(ALKScriptTokenType.As, "Expect 'as' after '*' in a namespace import.");
-        ALKScriptToken alias = Consume(ALKScriptTokenType.Identifier, "Expect a binding name after 'as'.");
+        _stream.Consume(ALKScriptTokenType.As, "Expect 'as' after '*' in a namespace import.");
+        ALKScriptToken alias = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a binding name after 'as'.");
         return new NamespaceImportClause(alias);
       }
 
-      Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin a named-imports clause.");
+      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin a named-imports clause.");
 
       var specifiers = new List<ImportSpecifier>();
 
-      if (!Check(ALKScriptTokenType.RightBrace))
+      if (!_stream.Check(ALKScriptTokenType.RightBrace))
       {
         do
         {
           specifiers.Add(ParseImportSpecifier());
-        } while (Match(ALKScriptTokenType.Comma));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
       }
 
-      Consume(ALKScriptTokenType.RightBrace, "Expect '}' after named imports.");
+      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after named imports.");
 
       return new NamedImportsClause(specifiers);
     }
 
     private ImportSpecifier ParseImportSpecifier()
     {
-      ALKScriptToken name = Consume(ALKScriptTokenType.Identifier, "Expect an import name.");
+      ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect an import name.");
       ALKScriptToken? alias = null;
 
-      if (Match(ALKScriptTokenType.As))
+      if (_stream.Match(ALKScriptTokenType.As))
       {
-        alias = Consume(ALKScriptTokenType.Identifier, "Expect a binding name after 'as'.");
+        alias = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a binding name after 'as'.");
       }
 
       return new ImportSpecifier(name, alias);
@@ -115,7 +110,7 @@ namespace ALKScript.Interpreter.Parser
 
     private Decl ParseDeclaration()
     {
-      if (Match(ALKScriptTokenType.Export))
+      if (_stream.Match(ALKScriptTokenType.Export))
       {
         return ParseExportDecl();
       }
@@ -160,55 +155,55 @@ namespace ALKScript.Interpreter.Parser
         return new ExportDecl(variableDecl!);
       }
 
-      throw Error(Peek(), "Expect a class, function, or variable declaration after 'export'.");
+      throw Error(_stream.Peek(), "Expect a class, function, or variable declaration after 'export'.");
     }
 
     private bool CheckClassDeclStart()
     {
-      if (Check(ALKScriptTokenType.Class))
+      if (_stream.Check(ALKScriptTokenType.Class))
       {
         return true;
       }
 
-      return Check(ALKScriptTokenType.Abstract) && CheckNext(ALKScriptTokenType.Class);
+      return _stream.Check(ALKScriptTokenType.Abstract) && _stream.CheckNext(ALKScriptTokenType.Class);
     }
 
     private ClassDecl ParseClassDecl()
     {
-      bool isAbstract = Match(ALKScriptTokenType.Abstract);
-      Consume(ALKScriptTokenType.Class, "Expect 'class'.");
+      bool isAbstract = _stream.Match(ALKScriptTokenType.Abstract);
+      _stream.Consume(ALKScriptTokenType.Class, "Expect 'class'.");
 
-      ALKScriptToken name = Consume(ALKScriptTokenType.Identifier, "Expect a class name.");
+      ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a class name.");
       List<string> typeParameters = ParseOptionalTypeParameters();
 
       ALKScriptToken? superclassName = null;
       List<TypeNode> superclassTypeArguments = new List<TypeNode>();
 
-      if (Match(ALKScriptTokenType.Extends))
+      if (_stream.Match(ALKScriptTokenType.Extends))
       {
-        superclassName = Consume(ALKScriptTokenType.Identifier, "Expect a superclass name after 'extends'.");
+        superclassName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a superclass name after 'extends'.");
 
-        if (Match(ALKScriptTokenType.Less))
+        if (_stream.Match(ALKScriptTokenType.Less))
         {
           do
           {
             superclassTypeArguments.Add(ParseType());
-          } while (Match(ALKScriptTokenType.Comma));
+          } while (_stream.Match(ALKScriptTokenType.Comma));
 
-          Consume(ALKScriptTokenType.Greater, "Expect '>' after superclass type arguments.");
+          _stream.Consume(ALKScriptTokenType.Greater, "Expect '>' after superclass type arguments.");
         }
       }
 
-      Consume(ALKScriptTokenType.LeftBrace, "Expect '{' before class body.");
+      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' before class body.");
 
       var members = new List<MemberDecl>();
 
-      while (!Check(ALKScriptTokenType.RightBrace) && !IsAtEnd())
+      while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
       {
         members.Add(ParseMember());
       }
 
-      Consume(ALKScriptTokenType.RightBrace, "Expect '}' after class body.");
+      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after class body.");
 
       return new ClassDecl(isAbstract, name, typeParameters, superclassName, superclassTypeArguments, members);
     }
@@ -218,29 +213,29 @@ namespace ALKScript.Interpreter.Parser
       AccessModifier accessModifier = ParseOptionalAccessModifier();
 
       // Constructor: accessModifier? "new" "(" parameters? ")" block
-      if (Check(ALKScriptTokenType.New))
+      if (_stream.Check(ALKScriptTokenType.New))
       {
-        Advance();
+        _stream.Advance();
         List<Parameter> ctorParameters = ParseParameterList();
         BlockStmt ctorBody = ParseBlock();
         return new ConstructorDecl(accessModifier, ctorParameters, ctorBody);
       }
 
       OverrideModifier overrideModifier = ParseOptionalOverrideModifier();
-      bool isAsync = Match(ALKScriptTokenType.Async);
+      bool isAsync = _stream.Match(ALKScriptTokenType.Async);
 
-      if (overrideModifier != OverrideModifier.None || isAsync || Check(ALKScriptTokenType.Function))
+      if (overrideModifier != OverrideModifier.None || isAsync || _stream.Check(ALKScriptTokenType.Function))
       {
-        Consume(ALKScriptTokenType.Function, "Expect 'function' in a method declaration.");
+        _stream.Consume(ALKScriptTokenType.Function, "Expect 'function' in a method declaration.");
 
         List<string> typeParameters = ParseOptionalTypeParameters();
         TypeNode returnType = ParseType();
-        ALKScriptToken methodName = Consume(ALKScriptTokenType.Identifier, "Expect a method name.");
+        ALKScriptToken methodName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a method name.");
         List<Parameter> parameters = ParseParameterList();
 
         BlockStmt? body;
 
-        if (Match(ALKScriptTokenType.Semicolon))
+        if (_stream.Match(ALKScriptTokenType.Semicolon))
         {
           body = null;
         }
@@ -253,34 +248,34 @@ namespace ALKScript.Interpreter.Parser
       }
 
       // Field: accessModifier? ("var" | type) IDENTIFIER ("=" expression)? ";"
-      TypeNode? fieldType = Match(ALKScriptTokenType.Var) ? null : ParseType();
-      ALKScriptToken fieldName = Consume(ALKScriptTokenType.Identifier, "Expect a field name.");
+      TypeNode? fieldType = _stream.Match(ALKScriptTokenType.Var) ? null : ParseType();
+      ALKScriptToken fieldName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a field name.");
 
       Expr? fieldInitializer = null;
 
-      if (Match(ALKScriptTokenType.Equal))
+      if (_stream.Match(ALKScriptTokenType.Equal))
       {
         fieldInitializer = ParseExpression();
       }
 
-      Consume(ALKScriptTokenType.Semicolon, "Expect ';' after field declaration.");
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after field declaration.");
 
       return new FieldDecl(accessModifier, fieldType, fieldName, fieldInitializer);
     }
 
     private AccessModifier ParseOptionalAccessModifier()
     {
-      if (Match(ALKScriptTokenType.Public))
+      if (_stream.Match(ALKScriptTokenType.Public))
       {
         return AccessModifier.Public;
       }
 
-      if (Match(ALKScriptTokenType.Protected))
+      if (_stream.Match(ALKScriptTokenType.Protected))
       {
         return AccessModifier.Protected;
       }
 
-      if (Match(ALKScriptTokenType.Private))
+      if (_stream.Match(ALKScriptTokenType.Private))
       {
         return AccessModifier.Private;
       }
@@ -291,17 +286,17 @@ namespace ALKScript.Interpreter.Parser
 
     private OverrideModifier ParseOptionalOverrideModifier()
     {
-      if (Match(ALKScriptTokenType.Virtual))
+      if (_stream.Match(ALKScriptTokenType.Virtual))
       {
         return OverrideModifier.Virtual;
       }
 
-      if (Match(ALKScriptTokenType.Abstract))
+      if (_stream.Match(ALKScriptTokenType.Abstract))
       {
         return OverrideModifier.Abstract;
       }
 
-      if (Match(ALKScriptTokenType.Override))
+      if (_stream.Match(ALKScriptTokenType.Override))
       {
         return OverrideModifier.Override;
       }
@@ -311,22 +306,22 @@ namespace ALKScript.Interpreter.Parser
 
     private bool CheckFunctionDeclStart()
     {
-      if (Check(ALKScriptTokenType.Function))
+      if (_stream.Check(ALKScriptTokenType.Function))
       {
         return true;
       }
 
-      return Check(ALKScriptTokenType.Async) && CheckNext(ALKScriptTokenType.Function);
+      return _stream.Check(ALKScriptTokenType.Async) && _stream.CheckNext(ALKScriptTokenType.Function);
     }
 
     private FunctionDecl ParseFunctionDecl()
     {
-      bool isAsync = Match(ALKScriptTokenType.Async);
-      Consume(ALKScriptTokenType.Function, "Expect 'function'.");
+      bool isAsync = _stream.Match(ALKScriptTokenType.Async);
+      _stream.Consume(ALKScriptTokenType.Function, "Expect 'function'.");
 
       List<string> typeParameters = ParseOptionalTypeParameters();
       TypeNode returnType = ParseType();
-      ALKScriptToken name = Consume(ALKScriptTokenType.Identifier, "Expect a function name.");
+      ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a function name.");
       List<Parameter> parameters = ParseParameterList();
       BlockStmt body = ParseBlock();
 
@@ -337,39 +332,39 @@ namespace ALKScript.Interpreter.Parser
     {
       var typeParameters = new List<string>();
 
-      if (!Match(ALKScriptTokenType.Less))
+      if (!_stream.Match(ALKScriptTokenType.Less))
       {
         return typeParameters;
       }
 
       do
       {
-        ALKScriptToken parameterName = Consume(ALKScriptTokenType.Identifier, "Expect a type parameter name.");
+        ALKScriptToken parameterName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a type parameter name.");
         typeParameters.Add(parameterName.Lexeme);
-      } while (Match(ALKScriptTokenType.Comma));
+      } while (_stream.Match(ALKScriptTokenType.Comma));
 
-      Consume(ALKScriptTokenType.Greater, "Expect '>' after type parameters.");
+      _stream.Consume(ALKScriptTokenType.Greater, "Expect '>' after type parameters.");
 
       return typeParameters;
     }
 
     private List<Parameter> ParseParameterList()
     {
-      Consume(ALKScriptTokenType.LeftParen, "Expect '(' to begin a parameter list.");
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' to begin a parameter list.");
 
       var parameters = new List<Parameter>();
 
-      if (!Check(ALKScriptTokenType.RightParen))
+      if (!_stream.Check(ALKScriptTokenType.RightParen))
       {
         do
         {
           TypeNode type = ParseType();
-          ALKScriptToken name = Consume(ALKScriptTokenType.Identifier, "Expect a parameter name.");
+          ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a parameter name.");
           parameters.Add(new Parameter(type, name.Lexeme));
-        } while (Match(ALKScriptTokenType.Comma));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
       }
 
-      Consume(ALKScriptTokenType.RightParen, "Expect ')' after parameter list.");
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after parameter list.");
 
       return parameters;
     }
@@ -383,9 +378,9 @@ namespace ALKScript.Interpreter.Parser
     /// </summary>
     private bool TryParseVariableDecl(out VariableDecl? declaration)
     {
-      int checkpoint = _current;
+      int checkpoint = _stream.Position;
 
-      bool isVar = Match(ALKScriptTokenType.Var);
+      bool isVar = _stream.Match(ALKScriptTokenType.Var);
       TypeNode? type = null;
 
       if (!isVar)
@@ -402,35 +397,35 @@ namespace ALKScript.Interpreter.Parser
         }
         catch (ParseException)
         {
-          _current = checkpoint;
+          _stream.Position = checkpoint;
           declaration = null;
           return false;
         }
       }
 
-      if (!Check(ALKScriptTokenType.Identifier))
+      if (!_stream.Check(ALKScriptTokenType.Identifier))
       {
-        _current = checkpoint;
+        _stream.Position = checkpoint;
         declaration = null;
         return false;
       }
 
-      ALKScriptToken name = Advance();
+      ALKScriptToken name = _stream.Advance();
       Expr? initializer = null;
 
-      if (Match(ALKScriptTokenType.Equal))
+      if (_stream.Match(ALKScriptTokenType.Equal))
       {
         initializer = ParseExpression();
       }
 
-      if (!Check(ALKScriptTokenType.Semicolon))
+      if (!_stream.Check(ALKScriptTokenType.Semicolon))
       {
-        _current = checkpoint;
+        _stream.Position = checkpoint;
         declaration = null;
         return false;
       }
 
-      Advance();
+      _stream.Advance();
 
       declaration = new VariableDecl(type, name, initializer);
       return true;
@@ -439,7 +434,7 @@ namespace ALKScript.Interpreter.Parser
     /// <summary>True when the current token can begin a type annotation.</summary>
     private bool CanStartType()
     {
-      return PrimitiveTypeNames.ContainsKey(Peek().Type) || Check(ALKScriptTokenType.Identifier);
+      return PrimitiveTypeNames.ContainsKey(_stream.Peek().Type) || _stream.Check(ALKScriptTokenType.Identifier);
     }
 
     #endregion
@@ -448,7 +443,7 @@ namespace ALKScript.Interpreter.Parser
 
     private TypeNode ParseType()
     {
-      ALKScriptToken token = Advance();
+      ALKScriptToken token = _stream.Advance();
       string name;
 
       if (PrimitiveTypeNames.TryGetValue(token.Type, out string? primitiveName))
@@ -466,26 +461,26 @@ namespace ALKScript.Interpreter.Parser
 
       var typeArguments = new List<TypeNode>();
 
-      if (Match(ALKScriptTokenType.Less))
+      if (_stream.Match(ALKScriptTokenType.Less))
       {
         do
         {
           typeArguments.Add(ParseType());
-        } while (Match(ALKScriptTokenType.Comma));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
 
-        Consume(ALKScriptTokenType.Greater, "Expect '>' after type arguments.");
+        _stream.Consume(ALKScriptTokenType.Greater, "Expect '>' after type arguments.");
       }
 
       int arrayRank = 0;
 
-      while (Check(ALKScriptTokenType.LeftBracket) && CheckNext(ALKScriptTokenType.RightBracket))
+      while (_stream.Check(ALKScriptTokenType.LeftBracket) && _stream.CheckNext(ALKScriptTokenType.RightBracket))
       {
-        Advance();
-        Advance();
+        _stream.Advance();
+        _stream.Advance();
         arrayRank++;
       }
 
-      bool isNullable = Match(ALKScriptTokenType.Question);
+      bool isNullable = _stream.Match(ALKScriptTokenType.Question);
 
       return new TypeNode(name, typeArguments, arrayRank, isNullable);
     }
@@ -496,37 +491,37 @@ namespace ALKScript.Interpreter.Parser
 
     private Stmt ParseStatement()
     {
-      if (Match(ALKScriptTokenType.If))
+      if (_stream.Match(ALKScriptTokenType.If))
       {
         return ParseIfStatement();
       }
 
-      if (Match(ALKScriptTokenType.While))
+      if (_stream.Match(ALKScriptTokenType.While))
       {
         return ParseWhileStatement();
       }
 
-      if (Match(ALKScriptTokenType.For))
+      if (_stream.Match(ALKScriptTokenType.For))
       {
         return ParseForStatement();
       }
 
-      if (Match(ALKScriptTokenType.Return))
+      if (_stream.Match(ALKScriptTokenType.Return))
       {
         return ParseReturnStatement();
       }
 
-      if (Match(ALKScriptTokenType.Try))
+      if (_stream.Match(ALKScriptTokenType.Try))
       {
         return ParseTryStatement();
       }
 
-      if (Match(ALKScriptTokenType.Throw))
+      if (_stream.Match(ALKScriptTokenType.Throw))
       {
         return ParseThrowStatement();
       }
 
-      if (Check(ALKScriptTokenType.LeftBrace))
+      if (_stream.Check(ALKScriptTokenType.LeftBrace))
       {
         return ParseBlock();
       }
@@ -536,14 +531,14 @@ namespace ALKScript.Interpreter.Parser
 
     private Stmt ParseIfStatement()
     {
-      Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'if'.");
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'if'.");
       Expr condition = ParseExpression();
-      Consume(ALKScriptTokenType.RightParen, "Expect ')' after if condition.");
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after if condition.");
 
       Stmt thenBranch = ParseStatement();
       Stmt? elseBranch = null;
 
-      if (Match(ALKScriptTokenType.Else))
+      if (_stream.Match(ALKScriptTokenType.Else))
       {
         elseBranch = ParseStatement();
       }
@@ -553,9 +548,9 @@ namespace ALKScript.Interpreter.Parser
 
     private Stmt ParseWhileStatement()
     {
-      Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'while'.");
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'while'.");
       Expr condition = ParseExpression();
-      Consume(ALKScriptTokenType.RightParen, "Expect ')' after while condition.");
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after while condition.");
 
       Stmt body = ParseStatement();
 
@@ -564,11 +559,11 @@ namespace ALKScript.Interpreter.Parser
 
     private Stmt ParseForStatement()
     {
-      Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'for'.");
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'for'.");
 
       Stmt? initializer;
 
-      if (Match(ALKScriptTokenType.Semicolon))
+      if (_stream.Match(ALKScriptTokenType.Semicolon))
       {
         initializer = null;
       }
@@ -583,21 +578,21 @@ namespace ALKScript.Interpreter.Parser
 
       Expr? condition = null;
 
-      if (!Check(ALKScriptTokenType.Semicolon))
+      if (!_stream.Check(ALKScriptTokenType.Semicolon))
       {
         condition = ParseExpression();
       }
 
-      Consume(ALKScriptTokenType.Semicolon, "Expect ';' after loop condition.");
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after loop condition.");
 
       Expr? increment = null;
 
-      if (!Check(ALKScriptTokenType.RightParen))
+      if (!_stream.Check(ALKScriptTokenType.RightParen))
       {
         increment = ParseExpression();
       }
 
-      Consume(ALKScriptTokenType.RightParen, "Expect ')' after for clauses.");
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after for clauses.");
 
       Stmt body = ParseStatement();
 
@@ -606,24 +601,24 @@ namespace ALKScript.Interpreter.Parser
 
     private Stmt ParseReturnStatement()
     {
-      ALKScriptToken keyword = Previous();
+      ALKScriptToken keyword = _stream.Previous();
       Expr? value = null;
 
-      if (!Check(ALKScriptTokenType.Semicolon))
+      if (!_stream.Check(ALKScriptTokenType.Semicolon))
       {
         value = ParseExpression();
       }
 
-      Consume(ALKScriptTokenType.Semicolon, "Expect ';' after return statement.");
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after return statement.");
 
       return new ReturnStmt(keyword, value);
     }
 
     private Stmt ParseThrowStatement()
     {
-      ALKScriptToken keyword = Previous();
+      ALKScriptToken keyword = _stream.Previous();
       Expr value = ParseExpression();
-      Consume(ALKScriptTokenType.Semicolon, "Expect ';' after throw statement.");
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after throw statement.");
 
       return new ThrowStmt(keyword, value);
     }
@@ -633,16 +628,16 @@ namespace ALKScript.Interpreter.Parser
       BlockStmt tryBlock = ParseBlock();
       var catchClauses = new List<CatchClause>();
 
-      while (Match(ALKScriptTokenType.Catch))
+      while (_stream.Match(ALKScriptTokenType.Catch))
       {
         TypeNode? exceptionType = null;
         ALKScriptToken? exceptionName = null;
 
-        if (Match(ALKScriptTokenType.LeftParen))
+        if (_stream.Match(ALKScriptTokenType.LeftParen))
         {
           exceptionType = ParseType();
-          exceptionName = Consume(ALKScriptTokenType.Identifier, "Expect a binding name in catch clause.");
-          Consume(ALKScriptTokenType.RightParen, "Expect ')' after catch clause binding.");
+          exceptionName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a binding name in catch clause.");
+          _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after catch clause binding.");
         }
 
         BlockStmt catchBody = ParseBlock();
@@ -651,14 +646,14 @@ namespace ALKScript.Interpreter.Parser
 
       BlockStmt? finallyBlock = null;
 
-      if (Match(ALKScriptTokenType.Finally))
+      if (_stream.Match(ALKScriptTokenType.Finally))
       {
         finallyBlock = ParseBlock();
       }
 
       if (catchClauses.Count == 0 && finallyBlock == null)
       {
-        throw Error(Peek(), "Expect 'catch' or 'finally' after 'try' block.");
+        throw Error(_stream.Peek(), "Expect 'catch' or 'finally' after 'try' block.");
       }
 
       return new TryStmt(tryBlock, catchClauses, finallyBlock);
@@ -666,16 +661,16 @@ namespace ALKScript.Interpreter.Parser
 
     private BlockStmt ParseBlock()
     {
-      Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin a block.");
+      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin a block.");
 
       var statements = new List<Stmt>();
 
-      while (!Check(ALKScriptTokenType.RightBrace) && !IsAtEnd())
+      while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
       {
         statements.Add(ParseDeclaration());
       }
 
-      Consume(ALKScriptTokenType.RightBrace, "Expect '}' after block.");
+      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after block.");
 
       return new BlockStmt(statements);
     }
@@ -683,7 +678,7 @@ namespace ALKScript.Interpreter.Parser
     private Stmt ParseExpressionStatement()
     {
       Expr expression = ParseExpression();
-      Consume(ALKScriptTokenType.Semicolon, "Expect ';' after expression.");
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after expression.");
 
       return new ExpressionStmt(expression);
     }
@@ -701,9 +696,9 @@ namespace ALKScript.Interpreter.Parser
     {
       Expr target = ParseLogicOr();
 
-      if (Match(ALKScriptTokenType.Equal))
+      if (_stream.Match(ALKScriptTokenType.Equal))
       {
-        ALKScriptToken equals = Previous();
+        ALKScriptToken equals = _stream.Previous();
         Expr value = ParseAssignment();
 
         if (target is IdentifierExpr || target is GetExpr || target is IndexExpr)
@@ -721,9 +716,9 @@ namespace ALKScript.Interpreter.Parser
     {
       Expr expr = ParseLogicAnd();
 
-      while (Match(ALKScriptTokenType.PipePipe))
+      while (_stream.Match(ALKScriptTokenType.PipePipe))
       {
-        ALKScriptToken op = Previous();
+        ALKScriptToken op = _stream.Previous();
         Expr right = ParseLogicAnd();
         expr = new BinaryExpr(expr, op, right);
       }
@@ -735,9 +730,9 @@ namespace ALKScript.Interpreter.Parser
     {
       Expr expr = ParseEquality();
 
-      while (Match(ALKScriptTokenType.AmpAmp))
+      while (_stream.Match(ALKScriptTokenType.AmpAmp))
       {
-        ALKScriptToken op = Previous();
+        ALKScriptToken op = _stream.Previous();
         Expr right = ParseEquality();
         expr = new BinaryExpr(expr, op, right);
       }
@@ -749,9 +744,9 @@ namespace ALKScript.Interpreter.Parser
     {
       Expr expr = ParseComparison();
 
-      while (Match(ALKScriptTokenType.EqualEqual, ALKScriptTokenType.BangEqual))
+      while (_stream.Match(ALKScriptTokenType.EqualEqual, ALKScriptTokenType.BangEqual))
       {
-        ALKScriptToken op = Previous();
+        ALKScriptToken op = _stream.Previous();
         Expr right = ParseComparison();
         expr = new BinaryExpr(expr, op, right);
       }
@@ -763,9 +758,9 @@ namespace ALKScript.Interpreter.Parser
     {
       Expr expr = ParseTerm();
 
-      while (Match(ALKScriptTokenType.Less, ALKScriptTokenType.LessEqual, ALKScriptTokenType.Greater, ALKScriptTokenType.GreaterEqual))
+      while (_stream.Match(ALKScriptTokenType.Less, ALKScriptTokenType.LessEqual, ALKScriptTokenType.Greater, ALKScriptTokenType.GreaterEqual))
       {
-        ALKScriptToken op = Previous();
+        ALKScriptToken op = _stream.Previous();
         Expr right = ParseTerm();
         expr = new BinaryExpr(expr, op, right);
       }
@@ -777,9 +772,9 @@ namespace ALKScript.Interpreter.Parser
     {
       Expr expr = ParseFactor();
 
-      while (Match(ALKScriptTokenType.Plus, ALKScriptTokenType.Minus))
+      while (_stream.Match(ALKScriptTokenType.Plus, ALKScriptTokenType.Minus))
       {
-        ALKScriptToken op = Previous();
+        ALKScriptToken op = _stream.Previous();
         Expr right = ParseFactor();
         expr = new BinaryExpr(expr, op, right);
       }
@@ -791,9 +786,9 @@ namespace ALKScript.Interpreter.Parser
     {
       Expr expr = ParseUnary();
 
-      while (Match(ALKScriptTokenType.Star, ALKScriptTokenType.Slash, ALKScriptTokenType.Percent))
+      while (_stream.Match(ALKScriptTokenType.Star, ALKScriptTokenType.Slash, ALKScriptTokenType.Percent))
       {
-        ALKScriptToken op = Previous();
+        ALKScriptToken op = _stream.Previous();
         Expr right = ParseUnary();
         expr = new BinaryExpr(expr, op, right);
       }
@@ -803,16 +798,16 @@ namespace ALKScript.Interpreter.Parser
 
     private Expr ParseUnary()
     {
-      if (Match(ALKScriptTokenType.Bang, ALKScriptTokenType.Minus))
+      if (_stream.Match(ALKScriptTokenType.Bang, ALKScriptTokenType.Minus))
       {
-        ALKScriptToken op = Previous();
+        ALKScriptToken op = _stream.Previous();
         Expr operand = ParseUnary();
         return new UnaryExpr(op, operand);
       }
 
-      if (Match(ALKScriptTokenType.Await))
+      if (_stream.Match(ALKScriptTokenType.Await))
       {
-        ALKScriptToken keyword = Previous();
+        ALKScriptToken keyword = _stream.Previous();
         Expr operand = ParseUnary();
         return new AwaitExpr(keyword, operand);
       }
@@ -826,19 +821,19 @@ namespace ALKScript.Interpreter.Parser
 
       while (true)
       {
-        if (Match(ALKScriptTokenType.LeftParen))
+        if (_stream.Match(ALKScriptTokenType.LeftParen))
         {
           expr = FinishCall(expr);
         }
-        else if (Match(ALKScriptTokenType.Dot))
+        else if (_stream.Match(ALKScriptTokenType.Dot))
         {
-          ALKScriptToken name = Consume(ALKScriptTokenType.Identifier, "Expect a property or method name after '.'.");
+          ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property or method name after '.'.");
           expr = new GetExpr(expr, name);
         }
-        else if (Match(ALKScriptTokenType.LeftBracket))
+        else if (_stream.Match(ALKScriptTokenType.LeftBracket))
         {
           Expr index = ParseExpression();
-          ALKScriptToken closingBracket = Consume(ALKScriptTokenType.RightBracket, "Expect ']' after index expression.");
+          ALKScriptToken closingBracket = _stream.Consume(ALKScriptTokenType.RightBracket, "Expect ']' after index expression.");
           expr = new IndexExpr(expr, index, closingBracket);
         }
         else
@@ -854,125 +849,125 @@ namespace ALKScript.Interpreter.Parser
     {
       var arguments = new List<Expr>();
 
-      if (!Check(ALKScriptTokenType.RightParen))
+      if (!_stream.Check(ALKScriptTokenType.RightParen))
       {
         do
         {
           arguments.Add(ParseExpression());
-        } while (Match(ALKScriptTokenType.Comma));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
       }
 
-      ALKScriptToken closingParen = Consume(ALKScriptTokenType.RightParen, "Expect ')' after arguments.");
+      ALKScriptToken closingParen = _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after arguments.");
 
       return new CallExpr(callee, closingParen, arguments);
     }
 
     private Expr ParsePrimary()
     {
-      if (Match(ALKScriptTokenType.False))
+      if (_stream.Match(ALKScriptTokenType.False))
       {
-        return new LiteralExpr(Previous(), false);
+        return new LiteralExpr(_stream.Previous(), false);
       }
 
-      if (Match(ALKScriptTokenType.True))
+      if (_stream.Match(ALKScriptTokenType.True))
       {
-        return new LiteralExpr(Previous(), true);
+        return new LiteralExpr(_stream.Previous(), true);
       }
 
-      if (Match(ALKScriptTokenType.Null))
+      if (_stream.Match(ALKScriptTokenType.Null))
       {
-        return new LiteralExpr(Previous(), null);
+        return new LiteralExpr(_stream.Previous(), null);
       }
 
-      if (Match(ALKScriptTokenType.Number))
+      if (_stream.Match(ALKScriptTokenType.Number))
       {
-        ALKScriptToken token = Previous();
+        ALKScriptToken token = _stream.Previous();
         return new LiteralExpr(token, ParseNumberLiteral(token));
       }
 
-      if (Match(ALKScriptTokenType.String))
+      if (_stream.Match(ALKScriptTokenType.String))
       {
-        ALKScriptToken token = Previous();
+        ALKScriptToken token = _stream.Previous();
         return new LiteralExpr(token, token.Lexeme);
       }
 
-      if (Match(ALKScriptTokenType.This))
+      if (_stream.Match(ALKScriptTokenType.This))
       {
-        return new ThisExpr(Previous());
+        return new ThisExpr(_stream.Previous());
       }
 
-      if (Match(ALKScriptTokenType.Base))
+      if (_stream.Match(ALKScriptTokenType.Base))
       {
-        return new BaseExpr(Previous());
+        return new BaseExpr(_stream.Previous());
       }
 
-      if (Match(ALKScriptTokenType.New))
+      if (_stream.Match(ALKScriptTokenType.New))
       {
         return ParseNewExpression();
       }
 
-      if (Match(ALKScriptTokenType.Identifier))
+      if (_stream.Match(ALKScriptTokenType.Identifier))
       {
-        return new IdentifierExpr(Previous());
+        return new IdentifierExpr(_stream.Previous());
       }
 
-      if (Match(ALKScriptTokenType.LeftParen))
+      if (_stream.Match(ALKScriptTokenType.LeftParen))
       {
         Expr expression = ParseExpression();
-        Consume(ALKScriptTokenType.RightParen, "Expect ')' after expression.");
+        _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after expression.");
         return new GroupingExpr(expression);
       }
 
-      if (Match(ALKScriptTokenType.LeftBracket))
+      if (_stream.Match(ALKScriptTokenType.LeftBracket))
       {
         var elements = new List<Expr>();
 
-        if (!Check(ALKScriptTokenType.RightBracket))
+        if (!_stream.Check(ALKScriptTokenType.RightBracket))
         {
           do
           {
             elements.Add(ParseExpression());
-          } while (Match(ALKScriptTokenType.Comma));
+          } while (_stream.Match(ALKScriptTokenType.Comma));
         }
 
-        Consume(ALKScriptTokenType.RightBracket, "Expect ']' after array literal elements.");
+        _stream.Consume(ALKScriptTokenType.RightBracket, "Expect ']' after array literal elements.");
 
         return new ArrayLiteralExpr(elements);
       }
 
-      throw Error(Peek(), "Expect an expression.");
+      throw Error(_stream.Peek(), "Expect an expression.");
     }
 
     private Expr ParseNewExpression()
     {
-      ALKScriptToken keyword = Previous();
-      ALKScriptToken typeName = Consume(ALKScriptTokenType.Identifier, "Expect a type name after 'new'.");
+      ALKScriptToken keyword = _stream.Previous();
+      ALKScriptToken typeName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a type name after 'new'.");
 
       var typeArguments = new List<TypeNode>();
 
-      if (Match(ALKScriptTokenType.Less))
+      if (_stream.Match(ALKScriptTokenType.Less))
       {
         do
         {
           typeArguments.Add(ParseType());
-        } while (Match(ALKScriptTokenType.Comma));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
 
-        Consume(ALKScriptTokenType.Greater, "Expect '>' after type arguments.");
+        _stream.Consume(ALKScriptTokenType.Greater, "Expect '>' after type arguments.");
       }
 
-      Consume(ALKScriptTokenType.LeftParen, "Expect '(' after type name in 'new' expression.");
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' after type name in 'new' expression.");
 
       var arguments = new List<Expr>();
 
-      if (!Check(ALKScriptTokenType.RightParen))
+      if (!_stream.Check(ALKScriptTokenType.RightParen))
       {
         do
         {
           arguments.Add(ParseExpression());
-        } while (Match(ALKScriptTokenType.Comma));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
       }
 
-      Consume(ALKScriptTokenType.RightParen, "Expect ')' after constructor arguments.");
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after constructor arguments.");
 
       return new NewExpr(keyword, typeName, typeArguments, arguments);
     }
@@ -1008,76 +1003,7 @@ namespace ALKScript.Interpreter.Parser
 
     #endregion
 
-    #region Token stream helpers
-
-    private bool Match(params ALKScriptTokenType[] types)
-    {
-      foreach (ALKScriptTokenType type in types)
-      {
-        if (Check(type))
-        {
-          Advance();
-          return true;
-        }
-      }
-
-      return false;
-    }
-
-    private bool Check(ALKScriptTokenType type)
-    {
-      if (IsAtEnd())
-      {
-        return false;
-      }
-
-      return Peek().Type == type;
-    }
-
-    private bool CheckNext(ALKScriptTokenType type)
-    {
-      if (_current + 1 >= _tokens.Count)
-      {
-        return false;
-      }
-
-      return _tokens[_current + 1].Type == type;
-    }
-
-    private ALKScriptToken Advance()
-    {
-      if (!IsAtEnd())
-      {
-        _current++;
-      }
-
-      return Previous();
-    }
-
-    private bool IsAtEnd()
-    {
-      return Peek().Type == ALKScriptTokenType.EndOfFile;
-    }
-
-    private ALKScriptToken Peek()
-    {
-      return _tokens[_current];
-    }
-
-    private ALKScriptToken Previous()
-    {
-      return _tokens[_current - 1];
-    }
-
-    private ALKScriptToken Consume(ALKScriptTokenType type, string errorMessage)
-    {
-      if (Check(type))
-      {
-        return Advance();
-      }
-
-      throw Error(Peek(), errorMessage);
-    }
+    #region Errors
 
     private static ParseException Error(ALKScriptToken token, string message)
     {

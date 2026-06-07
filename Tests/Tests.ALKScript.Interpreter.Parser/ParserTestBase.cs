@@ -15,8 +15,8 @@ public abstract class ParserTestBase
   {
     var lexer = new ALKScriptLexer();
     var tokens = lexer.Tokenize(source);
-    var parser = new ALKScriptParser(tokens);
+    var parser = new ALKScriptParser();
 
-    return parser.ParseProgram();
+    return parser.ParseTokens(tokens);
   }
 }
