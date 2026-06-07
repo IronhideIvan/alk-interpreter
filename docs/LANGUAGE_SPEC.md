@@ -667,15 +667,34 @@ applied to class members, parameters, locals, or any other nested declaration.
 ### 9.2 Importing declarations
 
 `import` brings a target module's exported declarations into the current
-module's scope. The target module is identified by a string-literal path;
-relative paths (`./`, `../`) refer to other ALKScript source files, resolved the
-same way as on the host file system.
+module's scope. The target module is identified by a string-literal **module
+specifier**, which takes one of two forms:
+
+- **Relative file paths** — specifiers beginning with `./` or `../` refer to
+  other ALKScript source files, resolved the same way as on the host file
+  system (relative to the importing file).
+- **Core module names** — any other specifier (no leading `./` or `../`, e.g.
+  `"collections"`, `"datetime"`, `"io/fs"`) names a **core module**: a module
+  that ships as part of the ALKScript standard library rather than being
+  resolved against the file system. The built-in globals described in
+  [§10](#10-built-in-globals-and-standard-library) are organized into core
+  modules of this kind, and importing one is how a program brings a
+  less-common piece of the standard library into scope explicitly (the most
+  common globals, like `print` and `Array<T>`, are available without any
+  `import` at all — see §10.3).
 
 ```
 import { Person, Employee } from "./models";
 import { Array as Arr } from "./collections/array";
 import * as Models from "./models";
+
+import { HttpClient } from "http";
+import * as Collections from "collections";
 ```
+
+Aside from how their specifier is resolved, core modules behave exactly like
+file-path modules with respect to the import forms below, `export` visibility,
+and ordering rules.
 
 Two import forms are supported:
 
@@ -782,12 +801,16 @@ print(start.toIsoString());
 ### 10.3 Relationship to user code
 
 Built-in types and functions are referenced exactly like user-defined ones — the
-type checker treats them no differently once their declarations are known. A
-program may shadow a global function or type with its own module-level
+type checker treats them no differently once their declarations are known. The
+most fundamental globals (`print`, `Array<T>`, `string`, `Task<T>`, etc.) are
+available in every module without an `import`; less-common pieces of the
+standard library are organized into named **core modules** (see §9.2) and must
+be imported explicitly, e.g. `import { HttpClient } from "http"`.
+
+A program may shadow a global function or type with its own module-level
 declaration of the same name; within that module, the local declaration takes
-precedence, and the global remains accessible only through an explicit
-qualified reference if the standard library exposes one (e.g. via a `core`
-namespace import).
+precedence, and the global remains accessible only by importing it from its
+core module under another name, e.g. `import { HttpClient as CoreHttpClient } from "http"`.
 
 ## 11. Sample Program
 
