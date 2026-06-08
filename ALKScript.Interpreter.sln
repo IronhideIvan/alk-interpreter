@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.ALKScript.Interpreter
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Evaluator", "ALKScript.Interpreter.Evaluator\ALKScript.Interpreter.Evaluator.csproj", "{86B75110-16AC-4A46-8B99-5CA042A18D83}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.ALKScript.Interpreter.Evaluator", "Tests\Tests.ALKScript.Interpreter.Evaluator\Tests.ALKScript.Interpreter.Evaluator.csproj", "{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -113,6 +115,18 @@ Global
 		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|x64.Build.0 = Release|Any CPU
 		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|x86.ActiveCfg = Release|Any CPU
 		{86B75110-16AC-4A46-8B99-5CA042A18D83}.Release|x86.Build.0 = Release|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Debug|x64.Build.0 = Debug|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Debug|x86.Build.0 = Debug|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Release|x64.ActiveCfg = Release|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Release|x64.Build.0 = Release|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Release|x86.ActiveCfg = Release|Any CPU
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -120,5 +134,6 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{E83CD3F9-497D-4D4C-AA7E-AB4F5AF4623B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
