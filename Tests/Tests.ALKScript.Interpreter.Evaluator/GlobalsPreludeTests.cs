@@ -1,28 +1,32 @@
-using System;
-using System.IO;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator;
 
 namespace Tests.ALKScript.Interpreter.Evaluator;
 
 /// <summary>
-/// Covers the reserved "globals.alk" prelude (<see cref="GlobalsSource"/>):
-/// ordinary top-level declarations executed into the root environment before
-/// the entry module runs, giving every script "true global" bindings — e.g.
-/// <c>print(...)</c> — callable with no <c>import</c> and no per-script
-/// <c>native function</c> re-declaration. The host still supplies the host
-/// implementation through the same <see cref="ScriptNativeBindings"/> table
-/// used for a script's own <c>native</c> declarations.
+/// Covers <see cref="ProgramEvaluator"/>'s "global prelude" injection point:
+/// runtime-supplied ALKScript source(s), compiled and executed into the root
+/// environment before the entry module runs, giving scripts "true global"
+/// bindings — callable with no <c>import</c> and no per-script re-declaration.
+///
+/// The evaluator ships with no prelude content of its own (see the
+/// constructor docs on <see cref="ProgramEvaluator"/>) — deciding what's
+/// globally available, e.g. a <c>print</c>, is entirely the runtime's call.
+/// These tests stand in for "the runtime" by passing prelude source strings
+/// directly via <see cref="EvaluatorTestBase.RunWithGlobals"/>.
 /// </summary>
 public class GlobalsPreludeTests : EvaluatorTestBase
 {
+  private const string PrintPrelude = "native function void print(Object value);\n";
+
   [Fact]
-  public void Evaluate_Print_IsCallableWithoutAnyDeclarationOrImport()
+  public void Evaluate_RuntimeSuppliedGlobal_IsCallableWithoutAnyDeclarationOrImport()
   {
     var calls = new List<ALKScriptValue>();
 
-    RunWithBindings(
+    RunWithGlobals(
       "print(\"hi\");\nprint(42);",
+      new[] { PrintPrelude },
       new ScriptNativeBindings
       {
         ["print"] = arguments =>
@@ -38,26 +42,28 @@ public class GlobalsPreludeTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Evaluate_Print_EnforcesItsDeclaredArityLikeAnyOtherFunction()
+  public void Evaluate_RuntimeSuppliedGlobal_EnforcesItsDeclaredArityLikeAnyOtherFunction()
   {
     var exception = Assert.Throws<RuntimeException>(() =>
-      RunWithBindings(
+      RunWithGlobals(
         "print(\"too\", \"many\");",
+        new[] { PrintPrelude },
         new ScriptNativeBindings { ["print"] = _ => NullValue.Instance }));
 
     Assert.Contains("Expected 1 argument(s) but got 2", exception.Message);
   }
 
   [Fact]
-  public void Evaluate_TopLevelDeclarationCanShadowAGlobalBinding()
+  public void Evaluate_TopLevelDeclarationCanShadowARuntimeSuppliedGlobal()
   {
     var globalCalls = new List<string>();
     var recorded = new List<ALKScriptValue>();
 
-    RunWithBindings(
+    RunWithGlobals(
       RecordDeclaration +
       "function void print(string message) {\n  record(message);\n}\n" +
       "print(\"shadowed\");\n",
+      new[] { PrintPrelude },
       new ScriptNativeBindings
       {
         ["print"] = _ =>
@@ -78,44 +84,38 @@ public class GlobalsPreludeTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Evaluate_PrintWithoutAHostOverride_FallsBackToTheDefaultConsoleImplementation()
+  public void Evaluate_MultiplePreludeSources_RunInOrderAndShareTheRootEnvironment()
   {
-    var originalOut = Console.Out;
+    var recorded = new List<ALKScriptValue>();
 
-    try
-    {
-      using var captured = new StringWriter();
-      Console.SetOut(captured);
-
-      // No "print" entry supplied — the prelude's default binding should be
-      // used instead of failing at declaration time, so scripts that don't
-      // care about output don't force every host to register one.
-      RunWithBindings("print(\"from default\");", new ScriptNativeBindings());
-
-      Assert.Contains("from default", captured.ToString());
-    }
-    finally
-    {
-      Console.SetOut(originalOut);
-    }
-  }
-
-  [Fact]
-  public void Evaluate_HostSuppliedPrintBinding_OverridesTheDefault()
-  {
-    var calls = new List<string>();
-
-    RunWithBindings(
-      "print(\"overridden\");",
+    RunWithGlobals(
+      RecordDeclaration + "record(triple(7));",
+      new[]
+      {
+        // Second source's "triple" closes over the first source's "double" —
+        // proving both run into the same shared root environment, in order.
+        "native function int double(int n);\n",
+        "function int triple(int n) { return double(n) + n; }\n"
+      },
       new ScriptNativeBindings
       {
-        ["print"] = arguments =>
+        ["double"] = arguments => new IntValue(((IntValue)arguments[0]).Value * 2),
+        ["record"] = arguments =>
         {
-          calls.Add(((StringValue)arguments[0]).Value);
+          recorded.Add(arguments[0]);
           return NullValue.Instance;
         }
       });
 
-    Assert.Equal(new[] { "overridden" }, calls);
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(21L, value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_WithNoPreludeSourcesSupplied_LeavesTheGlobalScopeEmpty()
+  {
+    var exception = Assert.Throws<RuntimeException>(() => Run("print(\"unregistered\");"));
+
+    Assert.Contains("Undefined name 'print'", exception.Message);
   }
 }

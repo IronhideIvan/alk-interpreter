@@ -1,4 +1,5 @@
 using ALKScript.Interpreter.Common;
+using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Common.Token;
 using ALKScript.Interpreter.Lexer;
@@ -26,12 +27,13 @@ public class ProgramLoaderTests
   private static ProgramLoader CreateLoader(
     IReadOnlyDictionary<string, string> files,
     IReadOnlyDictionary<string, string>? coreModuleSources = null,
-    IScriptLexer? lexer = null)
+    IScriptLexer? lexer = null,
+    IGlobalPreludeProvider? globalPreludes = null)
   {
     var fileReader = new FakeModuleFileReader(files);
     var coreModules = new FakeCoreModuleProvider(coreModuleSources ?? new Dictionary<string, string>());
 
-    return new ProgramLoader(lexer ?? new ALKScriptLexer(), new ALKScriptParser(), fileReader, coreModules);
+    return new ProgramLoader(lexer ?? new ALKScriptLexer(), new ALKScriptParser(), fileReader, coreModules, globalPreludes);
   }
 
   [Fact]
@@ -219,6 +221,82 @@ public class ProgramLoaderTests
     };
 
     var exception = Assert.Throws<ModuleLoadException>(() => CreateLoader(files, coreModules).Load("main.alk"));
+    Assert.Contains("Missing", exception.Message);
+  }
+
+  [Fact]
+  public void Load_WithUnnamedPreludeSources_PopulatesGlobalPreludesInOrderAndExcludesThemFromTheGraph()
+  {
+    var files = new Dictionary<string, string> { ["main.alk"] = "var x = 1;" };
+
+    var preludes = new FakeGlobalPreludeProvider(
+      GlobalPreludeSource.Global("native function void print(Object value);"),
+      GlobalPreludeSource.Global("function void assert(bool condition) {}"));
+
+    ModuleGraph graph = CreateLoader(files, globalPreludes: preludes).Load("main.alk");
+
+    Assert.Equal(2, graph.GlobalPreludes.Count);
+    Assert.Single(graph.GlobalPreludes[0].Declarations);
+    Assert.Single(graph.GlobalPreludes[1].Declarations);
+
+    // Unnamed prelude sources have no module identity — they seed the root
+    // environment directly and never appear in the module graph.
+    Assert.Single(graph.Modules);
+  }
+
+  [Fact]
+  public void Load_NamedPreludeSource_IsImportableAsACoreModuleAndAbsentFromGlobalPreludes()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { HttpClient } from \"http\";",
+    };
+
+    var preludes = new FakeGlobalPreludeProvider(
+      GlobalPreludeSource.Module("http", "export class HttpClient {}"));
+
+    ModuleGraph graph = CreateLoader(files, globalPreludes: preludes).Load("main.alk");
+
+    Assert.Empty(graph.GlobalPreludes);
+
+    LoadedModule httpModule = graph.Modules["http"];
+    Assert.Equal(ModuleKind.Core, httpModule.Kind);
+    Assert.Single(httpModule.Program.Declarations);
+  }
+
+  [Fact]
+  public void Load_NamedPreludeSource_TakesPrecedenceOverACoreModuleProviderForTheSameSpecifier()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { FromPrelude } from \"http\";",
+    };
+
+    var coreModules = new Dictionary<string, string> { ["http"] = "export class FromProvider {}" };
+    var preludes = new FakeGlobalPreludeProvider(
+      GlobalPreludeSource.Module("http", "export class FromPrelude {}"));
+
+    ModuleGraph graph = CreateLoader(files, coreModules, globalPreludes: preludes).Load("main.alk");
+
+    LoadedModule httpModule = graph.Modules["http"];
+    Assert.Single(httpModule.Program.Declarations);
+    Assert.Contains(httpModule.Program.Declarations, decl =>
+      decl is ExportDecl exportDecl && exportDecl.Declaration is ClassDecl classDecl && classDecl.Name.Lexeme == "FromPrelude");
+  }
+
+  [Fact]
+  public void Load_NamedImportOfUnexportedNameFromNamedPreludeModule_ThrowsModuleLoadException()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { Missing } from \"http\";",
+    };
+
+    var preludes = new FakeGlobalPreludeProvider(
+      GlobalPreludeSource.Module("http", "export class HttpClient {}"));
+
+    var exception = Assert.Throws<ModuleLoadException>(() => CreateLoader(files, globalPreludes: preludes).Load("main.alk"));
+    Assert.Contains("has no exported member", exception.Message);
     Assert.Contains("Missing", exception.Message);
   }
 }

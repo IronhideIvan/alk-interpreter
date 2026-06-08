@@ -49,10 +49,26 @@ namespace ALKScript.Interpreter.Common.Modules
     public LoadedModule EntryModule { get; }
     public IReadOnlyDictionary<string, LoadedModule> Modules { get; }
 
+    /// <summary>
+    /// "True global" prelude programs — ordinary top-level declarations that
+    /// the runtime wants seeded into the root environment, in order, before
+    /// the entry module's own declarations run (see <c>IGlobalPreludeProvider</c>
+    /// and <c>ProgramEvaluator</c>'s evaluation order). Compiled once, here at
+    /// load time, so the evaluator never needs a lexer/parser of its own.
+    /// Empty when the loader was given no prelude provider.
+    /// </summary>
+    public IReadOnlyList<ProgramNode> GlobalPreludes { get; }
+
     public ModuleGraph(LoadedModule entryModule, IReadOnlyDictionary<string, LoadedModule> modules)
+      : this(entryModule, modules, System.Array.Empty<ProgramNode>())
+    {
+    }
+
+    public ModuleGraph(LoadedModule entryModule, IReadOnlyDictionary<string, LoadedModule> modules, IReadOnlyList<ProgramNode> globalPreludes)
     {
       EntryModule = entryModule;
       Modules = modules;
+      GlobalPreludes = globalPreludes;
     }
   }
 }

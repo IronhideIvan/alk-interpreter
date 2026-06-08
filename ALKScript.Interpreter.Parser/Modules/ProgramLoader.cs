@@ -29,18 +29,27 @@ namespace ALKScript.Interpreter.Parser.Modules
     private readonly IScriptParser _parser;
     private readonly IModuleFileReader _fileReader;
     private readonly ICoreModuleProvider _coreModules;
+    private readonly IGlobalPreludeProvider? _globalPreludes;
 
-    public ProgramLoader(IScriptLexer lexer, IScriptParser parser, IModuleFileReader fileReader, ICoreModuleProvider coreModules)
+    /// <summary>
+    /// Named (<see cref="GlobalPreludeSource.Module"/>) prelude sources,
+    /// compiled and keyed by their module specifier — populated at the start
+    /// of each <see cref="Load"/> and consulted by <see cref="ResolveCoreModule"/>
+    /// alongside <see cref="_coreModules"/>, so a runtime can describe an
+    /// importable core module as raw source text without standing up a whole
+    /// <see cref="ICoreModuleProvider"/>.
+    /// </summary>
+    private IReadOnlyDictionary<string, ProgramNode> _namedPreludeModules = EmptyNamedPreludeModules;
+
+    private static readonly IReadOnlyDictionary<string, ProgramNode> EmptyNamedPreludeModules = new Dictionary<string, ProgramNode>();
+
+    public ProgramLoader(IScriptLexer lexer, IScriptParser parser, IModuleFileReader fileReader, ICoreModuleProvider coreModules, IGlobalPreludeProvider? globalPreludes = null)
     {
       _lexer = lexer;
       _parser = parser;
       _fileReader = fileReader;
       _coreModules = coreModules;
-    }
-
-    public ProgramLoader(IScriptLexer lexer, IScriptParser parser, ICoreModuleProvider coreModules)
-      : this(lexer, parser, new FileSystemModuleFileReader(), coreModules)
-    {
+      _globalPreludes = globalPreludes;
     }
 
     /// <summary>
@@ -57,12 +66,57 @@ namespace ALKScript.Interpreter.Parser.Modules
         throw new FileNotFoundException($"Cannot find entry module '{entryFilePath}'.");
       }
 
+      // Compile the injected prelude before walking the entry module's
+      // imports — named sources need to already be in _namedPreludeModules
+      // for ResolveCoreModule to find them as the graph is assembled.
+      IReadOnlyList<ProgramNode> globalPreludes = CompilePreludes();
+
       var modules = new Dictionary<string, LoadedModule>();
       var loadingStack = new HashSet<string>();
 
       LoadedModule entry = LoadFileModule(entryFilePath, modules, loadingStack);
 
-      return new ModuleGraph(entry, modules);
+      return new ModuleGraph(entry, modules, globalPreludes);
+    }
+
+    /// <summary>
+    /// Compiles every source supplied by the injected <see cref="IGlobalPreludeProvider"/>
+    /// through the same lex -&gt; parse pipeline used for file and core modules
+    /// — keeping that mechanism centralized here rather than duplicated in (or
+    /// requiring a lexer/parser injection into) the evaluator — and splits the
+    /// results by <see cref="GlobalPreludeSource.ModuleName"/>: unnamed sources
+    /// become the returned "true global" list (in order), while named ones are
+    /// stashed in <see cref="_namedPreludeModules"/> for <see cref="ResolveCoreModule"/>
+    /// to fold into the graph as importable core modules. Returns an empty list,
+    /// and leaves <see cref="_namedPreludeModules"/> empty, when no provider was supplied.
+    /// </summary>
+    private IReadOnlyList<ProgramNode> CompilePreludes()
+    {
+      if (_globalPreludes == null || _globalPreludes.Sources.Count == 0)
+      {
+        _namedPreludeModules = EmptyNamedPreludeModules;
+        return System.Array.Empty<ProgramNode>();
+      }
+
+      var globals = new List<ProgramNode>();
+      var named = new Dictionary<string, ProgramNode>();
+
+      foreach (GlobalPreludeSource entry in _globalPreludes.Sources)
+      {
+        ProgramNode program = _parser.ParseTokens(_lexer.Tokenize(entry.Source));
+
+        if (entry.ModuleName == null)
+        {
+          globals.Add(program);
+        }
+        else
+        {
+          named[entry.ModuleName] = program;
+        }
+      }
+
+      _namedPreludeModules = named;
+      return globals;
     }
 
     private LoadedModule LoadFileModule(string path, Dictionary<string, LoadedModule> modules, HashSet<string> loadingStack)
@@ -127,18 +181,43 @@ namespace ALKScript.Interpreter.Parser.Modules
 
     private void ResolveCoreModule(ImportDecl import, string specifier, Dictionary<string, LoadedModule> modules)
     {
-      if (!_coreModules.AvailableModules.Contains(specifier))
-      {
-        throw new ModuleLoadException(import.Source, $"Cannot find core module '{specifier}'.");
-      }
-
       if (!modules.TryGetValue(specifier, out LoadedModule? target))
       {
-        target = new LoadedModule(specifier, ModuleKind.Core, _coreModules.GetModule(specifier));
+        ProgramNode? program = ResolveCoreModuleProgram(specifier);
+
+        if (program == null)
+        {
+          throw new ModuleLoadException(import.Source, $"Cannot find core module '{specifier}'.");
+        }
+
+        target = new LoadedModule(specifier, ModuleKind.Core, program);
         modules[specifier] = target;
       }
 
       ValidateNamedImports(import, specifier, target.Program);
+    }
+
+    /// <summary>
+    /// Resolves a core-module specifier's definition, checking named
+    /// (<see cref="GlobalPreludeSource.Module"/>) prelude sources first and
+    /// falling back to the injected <see cref="ICoreModuleProvider"/> — so a
+    /// runtime can describe a core module either way, and the prelude can
+    /// supply one the provider doesn't know about (or vice versa). Returns
+    /// <c>null</c> when neither knows the specifier.
+    /// </summary>
+    private ProgramNode? ResolveCoreModuleProgram(string specifier)
+    {
+      if (_namedPreludeModules.TryGetValue(specifier, out ProgramNode? fromPrelude))
+      {
+        return fromPrelude;
+      }
+
+      if (_coreModules.AvailableModules.Contains(specifier))
+      {
+        return _coreModules.GetModule(specifier);
+      }
+
+      return null;
     }
 
     private static bool IsRelativeFilePathSpecifier(string specifier)

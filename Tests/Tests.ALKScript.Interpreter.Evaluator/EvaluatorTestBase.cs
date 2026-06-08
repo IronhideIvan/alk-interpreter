@@ -1,3 +1,4 @@
+using System.Linq;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
@@ -45,15 +46,33 @@ public abstract class EvaluatorTestBase
   protected static void RunWithBindings(string source, ScriptNativeBindings nativeBindings)
   {
     var graph = LoadGraph(source);
-    new ProgramEvaluator(new ALKScriptLexer(), new ALKScriptParser(), nativeBindings).Evaluate(graph);
+    new ProgramEvaluator(nativeBindings).Evaluate(graph);
   }
 
-  protected static ModuleGraph LoadGraph(string source)
+  /// <summary>
+  /// Like <see cref="RunWithBindings"/>, but also seeds the graph's
+  /// <see cref="ModuleGraph.GlobalPreludes"/> from <paramref name="globalPreludeSources"/>
+  /// — ALKScript source(s) compiled and executed into the root environment
+  /// before <paramref name="source"/> runs, the same way <c>IProgramLoader</c>
+  /// would compile a runtime-supplied <c>IGlobalPreludeProvider</c> (see
+  /// <see cref="ProgramEvaluator"/>'s constructor docs and
+  /// <see cref="ModuleGraph.GlobalPreludes"/>).
+  /// </summary>
+  protected static void RunWithGlobals(string source, IReadOnlyList<string> globalPreludeSources, ScriptNativeBindings nativeBindings)
+  {
+    var graph = LoadGraph(source, globalPreludeSources);
+    new ProgramEvaluator(nativeBindings).Evaluate(graph);
+  }
+
+  protected static ModuleGraph LoadGraph(string source, IReadOnlyList<string>? globalPreludeSources = null)
   {
     var program = Parse(source);
     var module = new LoadedModule("entry", ModuleKind.File, program);
+    var preludes = (globalPreludeSources ?? System.Array.Empty<string>())
+      .Select(Parse)
+      .ToList();
 
-    return new ModuleGraph(module, new Dictionary<string, LoadedModule> { ["entry"] = module });
+    return new ModuleGraph(module, new Dictionary<string, LoadedModule> { ["entry"] = module }, preludes);
   }
 
   private static ProgramNode Parse(string source)
