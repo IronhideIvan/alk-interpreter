@@ -10,7 +10,7 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
   public sealed class FunctionValue : CallableValue
   {
     public FunctionDecl Declaration { get; }
-    public Environment Closure { get; }
+    public ScriptEnvironment Closure { get; }
 
     /// <summary>
     /// For methods, the instance "this" is bound to when the method is looked
@@ -18,7 +18,7 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     /// </summary>
     public InstanceValue? BoundInstance { get; }
 
-    public FunctionValue(FunctionDecl declaration, Environment closure, InstanceValue? boundInstance = null)
+    public FunctionValue(FunctionDecl declaration, ScriptEnvironment closure, InstanceValue? boundInstance = null)
     {
       Declaration = declaration;
       Closure = closure;

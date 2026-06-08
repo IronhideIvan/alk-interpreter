@@ -8,12 +8,12 @@ namespace ALKScript.Interpreter.Common.Evaluation
   /// an enclosing scope (e.g. a module's global scope enclosing a function's
   /// local scope, which a <see cref="Values.FunctionValue"/> captures as its closure).
   /// </summary>
-  public class Environment
+  public class ScriptEnvironment
   {
-    private readonly Environment? _enclosing;
+    private readonly ScriptEnvironment? _enclosing;
     private readonly Dictionary<string, ALKScriptValue> _values = new Dictionary<string, ALKScriptValue>();
 
-    public Environment(Environment? enclosing = null)
+    public ScriptEnvironment(ScriptEnvironment? enclosing = null)
     {
       _enclosing = enclosing;
     }
@@ -27,7 +27,7 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// <summary>Looks up <paramref name="name"/> in this scope or, failing that, any enclosing scope.</summary>
     public bool TryGet(string name, out ALKScriptValue value)
     {
-      for (Environment? scope = this; scope != null; scope = scope._enclosing)
+      for (ScriptEnvironment? scope = this; scope != null; scope = scope._enclosing)
       {
         if (scope._values.TryGetValue(name, out value!))
         {
@@ -45,7 +45,7 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// </summary>
     public bool TryAssign(string name, ALKScriptValue value)
     {
-      for (Environment? scope = this; scope != null; scope = scope._enclosing)
+      for (ScriptEnvironment? scope = this; scope != null; scope = scope._enclosing)
       {
         if (scope._values.ContainsKey(name))
         {
