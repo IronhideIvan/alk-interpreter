@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
@@ -13,6 +14,7 @@ namespace ALKScript.Interpreter.Evaluator
     private readonly ScriptNativeBindings _nativeBindings;
     private readonly ScriptNativeMethodBindings _nativeMethodBindings;
     private readonly IAsyncOperationBinder? _operationBinder;
+    private readonly List<PendingOperationValue> _created = new List<PendingOperationValue>();
 
     /// <summary>
     /// <paramref name="nativeBindings"/> supplies the host implementations for
@@ -108,7 +110,31 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       var binder = _operationBinder;
-      return new NativeFunctionValue(operationName, arity, arguments => new PendingOperationValue(new PendingOperation(operationName, arguments), binder));
+      var created = _created;
+      return new NativeFunctionValue(operationName, arity, arguments =>
+      {
+        var pending = new PendingOperationValue(new PendingOperation(operationName, arguments), binder);
+        created.Add(pending);
+        return pending;
+      });
+    }
+
+    public void DiscardPending(Action<Exception> onFault)
+    {
+      if (_operationBinder == null) return;
+
+      foreach (var pending in _created)
+      {
+        if (!pending.HasStarted)
+        {
+          _operationBinder.Discard(pending.Operation, onFault);
+        }
+      }
+    }
+
+    public void ReportOperationFaulted(PendingOperation operation, Exception fault)
+    {
+      _operationBinder?.OnOperationFaulted(operation, fault);
     }
 
     /// <summary>

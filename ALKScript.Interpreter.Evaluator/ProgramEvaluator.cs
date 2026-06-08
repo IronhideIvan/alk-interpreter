@@ -24,6 +24,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// </summary>
   public class ProgramEvaluator : IEvaluator, IEvaluationContext
   {
+    private readonly IFunctionValueFactory _functionValueFactory;
     private readonly IStatementExecutor _statements;
     private readonly IExpressionEvaluator _expressions;
     private readonly ICallInvoker _calls;
@@ -91,6 +92,7 @@ namespace ALKScript.Interpreter.Evaluator
     /// </summary>
     internal ProgramEvaluator(IFunctionValueFactory functionValueFactory, IEvaluationComponentFactory componentFactory)
     {
+      _functionValueFactory = functionValueFactory;
       _statements = componentFactory.CreateStatementExecutor(this, functionValueFactory);
       _expressions = componentFactory.CreateExpressionEvaluator(this, functionValueFactory);
       _calls = componentFactory.CreateCallInvoker(this);
@@ -134,6 +136,15 @@ namespace ALKScript.Interpreter.Evaluator
         {
           break;
         }
+      }
+
+      // Fire-and-forget any async native operations that were called but never
+      // awaited — the "Discard" path (see IAsyncOperationBinder.Discard and
+      // docs/ASYNC_AWAIT_DESIGN.md decision #10). Skipped if the script was
+      // cancelled: a cancelled script did not "finish" — it was cut short.
+      if (_signal?.Kind != SignalKind.Cancelled)
+      {
+        _functionValueFactory.DiscardPending(_ => { });
       }
 
       if (_signal is { Kind: SignalKind.Thrown } thrown)

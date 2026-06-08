@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
@@ -132,6 +133,107 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     Assert.Equal(99L, value.Value);
   }
 
+  // -------------------------------------------------------------------------
+  // Discard
+  // -------------------------------------------------------------------------
+
+  [Fact]
+  public void Evaluate_CallingAsyncNativeWithoutAwaiting_DiscardsItAtEndOfScript()
+  {
+    // Calling "move()" without "await" must NOT start the operation eagerly
+    // (lazy/deferred-start guarantee). When the script ends, ProgramEvaluator
+    // sweeps all un-started PendingOperationValues and calls Discard on each —
+    // which is what the host uses to fire them off as fire-and-forget effects.
+    var binder = new FuncBinder(_ => Task.FromResult((ALKScriptValue)NullValue.Instance));
+
+    RunWithOperationBinder("native async function void move(); move();", null, binder);
+
+    var discarded = Assert.Single(binder.Discarded);
+    Assert.Equal("move", discarded.Name);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitedAsyncNative_IsNotDiscardedAtEndOfScript()
+  {
+    // An operation that was already started via "await" must NOT be discarded
+    // a second time at end-of-script (HasStarted guards this).
+    var binder = new FuncBinder(_ => Task.FromResult((ALKScriptValue)NullValue.Instance));
+
+    RunWithOperationBinder("native async function void move(); await move();", null, binder);
+
+    Assert.Empty(binder.Discarded);
+  }
+
+  // -------------------------------------------------------------------------
+  // whenAll — await [a, b, …]
+  // -------------------------------------------------------------------------
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayOfPendingOperations_ReturnsArrayOfResolvedValues()
+  {
+    // "await [fetchA(), fetchB()]" — both operations resolve; result is an
+    // ArrayValue of their resolved values, in element order.
+    var binder = new FuncBinder(op => op.Name == "fetchA"
+      ? Task.FromResult((ALKScriptValue)new IntValue(1))
+      : Task.FromResult((ALKScriptValue)new IntValue(2)));
+
+    var recorded = Run(
+      $"{RecordDeclaration}\nnative async function int fetchA();\nnative async function int fetchB();\nasync function void main() {{\n  var results = await [fetchA(), fetchB()];\n  record(results[0]);\n  record(results[1]);\n}}\nmain();",
+      binder);
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayWhereOneFaults_SurfacesAggregateThrownSignal()
+  {
+    // One operation faults — the script's "catch" sees the fault message, and
+    // run-to-completion means the healthy operation still ran to completion.
+    var pending = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(op => op.Name == "ok"
+      ? Task.FromResult((ALKScriptValue)new IntValue(99))
+      : Task.FromException<ALKScriptValue>(new InvalidOperationException("boom")));
+
+    var recorded = Run(
+      $"{RecordDeclaration}\nnative async function int ok();\nnative async function int fail();\nasync function void main() {{\n  try {{\n    await [ok(), fail()];\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();",
+      binder);
+
+    var fault = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("boom", fault.Value);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayWhereBothFault_AggregatesMesages()
+  {
+    var binder = new FuncBinder(op => Task.FromException<ALKScriptValue>(
+      new InvalidOperationException(op.Name == "a" ? "fault-a" : "fault-b")));
+
+    var recorded = Run(
+      $"{RecordDeclaration}\nnative async function int a();\nnative async function int b();\nasync function void main() {{\n  try {{\n    await [a(), b()];\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();",
+      binder);
+
+    var fault = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Contains("fault-a", fault.Value);
+    Assert.Contains("fault-b", fault.Value);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayFault_ReportsEachFaultedOperationToHost()
+  {
+    var binder = new FuncBinder(op => Task.FromException<ALKScriptValue>(
+      new InvalidOperationException($"fault-{op.Name}")));
+
+    Run(
+      $"{RecordDeclaration}\nnative async function int a();\nnative async function int b();\nasync function void main() {{\n  try {{\n    await [a(), b()];\n  }} catch (string e) {{\n  }}\n}}\nmain();",
+      binder);
+
+    Assert.Equal(2, binder.ReportedFaults.Count);
+    Assert.Contains(binder.ReportedFaults, f => f.Operation.Name == "a");
+    Assert.Contains(binder.ReportedFaults, f => f.Operation.Name == "b");
+  }
+
   private static IReadOnlyList<ALKScriptValue> Run(string source, IAsyncOperationBinder operationBinder, ScriptNativeBindings? extraBindings = null)
   {
     var recorded = new List<ALKScriptValue>();
@@ -152,8 +254,22 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   private sealed class FuncBinder : IAsyncOperationBinder
   {
     private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+
+    internal readonly List<PendingOperation> Discarded = new List<PendingOperation>();
+    internal readonly List<(PendingOperation Operation, Exception Fault)> ReportedFaults = new List<(PendingOperation, Exception)>();
+
     internal FuncBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
+
     public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
+
+    public void Discard(PendingOperation operation, Action<Exception> onFault)
+    {
+      Discarded.Add(operation);
+      _ = _start(operation); // fire-and-forget; fault notification is best-effort in tests
+    }
+
+    public void OnOperationFaulted(PendingOperation operation, Exception fault)
+      => ReportedFaults.Add((operation, fault));
   }
 
   [Fact]

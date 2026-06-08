@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
@@ -344,22 +345,24 @@ namespace ALKScript.Interpreter.Evaluator
         return NullValue.Instance;
       }
 
-      Task<ALKScriptValue> task;
-
       switch (operand)
       {
         case TaskValue taskValue:
-          task = taskValue.Task;
-          break;
+          return await AwaitTask(taskValue.Task);
 
         case PendingOperationValue pending:
-          task = pending.Start();
-          break;
+          return await AwaitTask(pending.Start());
+
+        case ArrayValue array:
+          return await EvalWhenAll(array.Items);
 
         default:
           return operand;
       }
+    }
 
+    private async Task<ALKScriptValue> AwaitTask(Task<ALKScriptValue> task)
+    {
       try
       {
         return await task;
@@ -368,11 +371,85 @@ namespace ALKScript.Interpreter.Evaluator
       {
         throw;
       }
-      catch (System.Exception exception)
+      catch (Exception exception)
       {
         _context.Signal = Signal.Thrown(new StringValue(exception.Message));
         return NullValue.Instance;
       }
+    }
+
+    /// <summary>
+    /// Implements <c>await [a, b, …]</c> — sugar for <c>Task.whenAll</c> (see
+    /// docs/ASYNC_AWAIT_DESIGN.md decision #13). Starts any
+    /// <see cref="PendingOperationValue"/> elements, then awaits all tasks
+    /// concurrently. <see cref="Task.WhenAll"/> natively implements the
+    /// run-to-completion policy (all tasks run to settlement regardless of
+    /// individual faults; it waits for all before resolving or throwing).
+    /// Individual faults are reported to the host via
+    /// <see cref="IFunctionValueFactory.ReportOperationFaulted"/> (decision #11)
+    /// and aggregated into a single catchable <see cref="Signal.Thrown"/>. A
+    /// full-success result is a new <see cref="ArrayValue"/> of the resolved
+    /// values, in element order.
+    /// </summary>
+    private async Task<ALKScriptValue> EvalWhenAll(IReadOnlyList<ALKScriptValue> items)
+    {
+      var count = items.Count;
+      var tasks = new Task<ALKScriptValue>[count];
+      var operations = new PendingOperationValue?[count];
+
+      for (int i = 0; i < count; i++)
+      {
+        switch (items[i])
+        {
+          case TaskValue tv:
+            tasks[i] = tv.Task;
+            break;
+          case PendingOperationValue pov:
+            tasks[i] = pov.Start();
+            operations[i] = pov;
+            break;
+          default:
+            tasks[i] = Task.FromResult(items[i]);
+            break;
+        }
+      }
+
+      ALKScriptValue[] results;
+      try
+      {
+        results = await Task.WhenAll(tasks);
+      }
+      catch (RuntimeException)
+      {
+        throw;
+      }
+      catch
+      {
+        // Task.WhenAll waited for every task to settle before throwing, so all
+        // tasks are now complete. Collect individual faults and aggregate.
+        var faultMessages = new List<string>(count);
+        for (int i = 0; i < count; i++)
+        {
+          if (tasks[i].IsFaulted)
+          {
+            var fault = tasks[i].Exception!.InnerException ?? tasks[i].Exception!;
+            faultMessages.Add(fault.Message);
+            if (operations[i] != null)
+            {
+              _functionValueFactory.ReportOperationFaulted(operations[i]!.Operation, fault);
+            }
+          }
+        }
+
+        var message = faultMessages.Count == 1
+          ? faultMessages[0]
+          : $"Multiple operations failed: {string.Join("; ", faultMessages)}";
+
+        _context.Signal = Signal.Thrown(new StringValue(message));
+        return NullValue.Instance;
+      }
+
+      return new ArrayValue(new List<ALKScriptValue>(results));
     }
 
     private async Task<ALKScriptValue> EvalGet(GetExpr expression, ScriptEnvironment environment)

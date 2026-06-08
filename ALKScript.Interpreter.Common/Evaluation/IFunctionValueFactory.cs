@@ -1,4 +1,6 @@
+using System;
 using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 
 namespace ALKScript.Interpreter.Common.Evaluation
@@ -37,5 +39,21 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// no matching host binding is registered.
     /// </summary>
     ALKScriptValue CreateMethod(MethodDecl declaration, ClassValue declaringClass, ScriptEnvironment closure, InstanceValue? boundInstance);
+
+    /// <summary>
+    /// Fires off any <c>async native</c> operations that were called but never
+    /// <c>await</c>ed — the end-of-script "Discard" path (see
+    /// <see cref="IAsyncOperationBinder.Discard"/>). No-op if no
+    /// <see cref="IAsyncOperationBinder"/> was registered or if every created
+    /// <see cref="PendingOperationValue"/> was already started by <c>await</c>.
+    /// </summary>
+    void DiscardPending(Action<Exception> onFault);
+
+    /// <summary>
+    /// Routes an individual operation fault to the host (see
+    /// <see cref="IAsyncOperationBinder.OnOperationFaulted"/>), called per
+    /// faulted member of a <c>await [a, b, …]</c>. No-op if no binder.
+    /// </summary>
+    void ReportOperationFaulted(PendingOperation operation, Exception fault);
   }
 }

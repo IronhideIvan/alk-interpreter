@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 
@@ -41,5 +42,25 @@ namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
     /// the same operation twice.
     /// </summary>
     Task<ALKScriptValue> Start(PendingOperation operation);
+
+    /// <summary>
+    /// Called at end-of-script for any <c>async native</c> operation that was
+    /// called but never <c>await</c>ed — the "fire-and-forget" path that makes
+    /// an un-awaited <c>moveTo(npc, x, y)</c> actually move the NPC (see
+    /// docs/ASYNC_AWAIT_DESIGN.md's core requirements). The host is responsible
+    /// for starting the operation and feeding any eventual fault back through
+    /// <paramref name="onFault"/>; the framework guarantees
+    /// <see cref="PendingOperationValue.Start"/> has not yet been called, so
+    /// the host is the first (and only) caller.
+    /// </summary>
+    void Discard(PendingOperation operation, Action<Exception> onFault);
+
+    /// <summary>
+    /// Called for each individually-faulted member of a <c>await [a, b, …]</c>
+    /// (see decision #11) — in addition to, not instead of, the aggregate fault
+    /// the script can <c>catch</c>. Use this for host-side logging or telemetry;
+    /// throwing here has no effect on script-visible behavior.
+    /// </summary>
+    void OnOperationFaulted(PendingOperation operation, Exception fault);
   }
 }
