@@ -44,7 +44,7 @@ public class NativeBindingTests : EvaluatorTestBase
     var calls = new List<(string TypeName, string Message)>();
 
     RunWithMethodBindings(
-      "class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"from instance\");",
+      "native class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"from instance\");",
       nativeBindings: null,
       nativeMethodBindings: new ScriptNativeMethodBindings
       {
@@ -67,7 +67,7 @@ public class NativeBindingTests : EvaluatorTestBase
     // represented, only that push/count behave consistently.
     var recorded = Run(
       RecordDeclaration +
-      "class Bag {\n" +
+      "native class Bag {\n" +
       "  public native function void push(Object item);\n" +
       "  public native function int count();\n" +
       "}\n" +
@@ -109,7 +109,7 @@ public class NativeBindingTests : EvaluatorTestBase
     var calls = new List<string>();
 
     RunWithMethodBindings(
-      "class Logger {\n  public native function void log(string message);\n}\n" +
+      "native class Logger {\n  public native function void log(string message);\n}\n" +
       "class FileLogger extends Logger {}\n" +
       "var logger = new FileLogger();\nlogger.log(\"inherited\");",
       nativeBindings: null,
@@ -130,7 +130,7 @@ public class NativeBindingTests : EvaluatorTestBase
   {
     var exception = Assert.Throws<RuntimeException>(() =>
       RunWithMethodBindings(
-        "class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"hi\");",
+        "native class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"hi\");",
         nativeBindings: null,
         nativeMethodBindings: new ScriptNativeMethodBindings()));
 

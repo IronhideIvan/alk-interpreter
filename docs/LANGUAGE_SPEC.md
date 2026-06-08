@@ -172,9 +172,11 @@ declaration    = exportDecl
 exportDecl     = "export" ( classDecl | functionDecl | variableDecl ) ;
                  (* "export" is only valid on top-level declarations *)
 
-classDecl      = "abstract"? "class" IDENTIFIER typeParameters?
+classDecl      = "native"? "abstract"? "class" IDENTIFIER typeParameters?
                  ( "extends" IDENTIFIER ( "<" type ( "," type )* ">" )? )?
                  "{" member* "}" ;
+                 (* a class must be declared "native" if any of its members
+                    are themselves "native" — see "Native classes" *)
 
 typeParameters = "<" IDENTIFIER ( "," IDENTIFIER )* ">" ;
 
@@ -675,12 +677,44 @@ identically to methods (`native` may combine with `async`, may not have a
 body, and is resolved against the host at load time).
 
 ```
-class Console {
+native class Console {
   public native function void log(string message);
 }
 ```
 
-### 8.7 Abstract classes
+### 8.7 Native classes
+
+A class must be declared `native` if **any** of its members — methods,
+currently the only kind of member that may be `native` — are themselves
+marked `native`:
+
+```
+native class Console {
+  public native function void log(string message);
+}
+```
+
+- `native` is written immediately before `class` (and before `abstract`, if
+  both apply — `native abstract class ...`).
+- Declaring a class with one or more `native` members but omitting the
+  `native` keyword on the class itself is a compile-time (parse) error: e.g.
+  `class Console { public native function void log(string message); }` is
+  rejected with a message naming the offending member.
+- The converse is not required: a `native` class may freely mix `native` and
+  ordinary (script-bodied) members — only classes that contain at least one
+  `native` member are obligated to carry the `native` keyword.
+- A `native` class behaves like any other class from the script's perspective
+  — it can be instantiated with `new`, extended, and its non-`native` members
+  work exactly as written. Its `native` members resolve against host-supplied
+  implementations the same way `native` functions do (see
+  [Native functions](#native-functions)), except each implementation also
+  receives the receiving instance, which lets the host back the class with
+  real, runtime-managed state (e.g. a collection whose storage is entirely
+  host-side) — the *runtime-backed collection* pattern.
+- Subclasses inherit `native` methods normally; the inherited method resolves
+  against the *declaring* class's host implementation, not the subclass.
+
+### 8.8 Abstract classes
 
 A class must be declared `abstract` if it declares any `abstract` methods, or if
 it inherits one or more `abstract` methods without providing concrete `override`
@@ -705,7 +739,7 @@ abstract class Person {
   method it inherits that isn't already overridden by an intermediate class; if
   it does not, it must itself be declared `abstract`.
 
-### 8.8 Generic classes
+### 8.9 Generic classes
 
 A class may declare one or more type parameters in angle brackets after its
 name. The type parameters can be used as types anywhere within the class —

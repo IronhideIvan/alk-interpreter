@@ -5,13 +5,18 @@ namespace ALKScript.Interpreter.Common.Ast
 {
   /// <summary>
   /// A class declaration:
-  ///   "abstract"? "class" IDENTIFIER typeParameters?
+  ///   "native"? "abstract"? "class" IDENTIFIER typeParameters?
   ///   ( "extends" IDENTIFIER ( "&lt;" type ("," type)* "&gt;" )? )?
   ///   "{" member* "}" ;
+  ///
+  /// A class must be declared "native" if any of its members are themselves
+  /// "native" — see the parser's validation in <c>ParseClassDecl</c> and the
+  /// "native class" section of the language specification.
   /// </summary>
   public class ClassDecl : Decl
   {
     public bool IsAbstract { get; }
+    public bool IsNative { get; }
     public ALKScriptToken Name { get; }
     public IReadOnlyList<string> TypeParameters { get; }
     public ALKScriptToken? SuperclassName { get; }
@@ -24,9 +29,11 @@ namespace ALKScript.Interpreter.Common.Ast
       IReadOnlyList<string> typeParameters,
       ALKScriptToken? superclassName,
       IReadOnlyList<TypeNode> superclassTypeArguments,
-      IReadOnlyList<MemberDecl> members)
+      IReadOnlyList<MemberDecl> members,
+      bool isNative = false)
     {
       IsAbstract = isAbstract;
+      IsNative = isNative;
       Name = name;
       TypeParameters = typeParameters;
       SuperclassName = superclassName;

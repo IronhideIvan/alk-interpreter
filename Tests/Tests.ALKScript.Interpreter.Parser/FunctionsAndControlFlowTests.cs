@@ -83,15 +83,54 @@ public class FunctionsAndControlFlowTests : ParserTestBase
   [Fact]
   public void Parse_NativeMethodDeclaration_HasNoBodyAndIsFlaggedNative()
   {
-    var program = Parse("class Console {\n  public native function void log(string message);\n}");
+    var program = Parse("native class Console {\n  public native function void log(string message);\n}");
 
     var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
     var method = Assert.IsType<MethodDecl>(Assert.Single(classDecl.Members));
 
+    Assert.True(classDecl.IsNative);
     Assert.True(method.IsNative);
     Assert.Equal(AccessModifier.Public, method.AccessModifier);
     Assert.Equal("log", method.Name.Lexeme);
     Assert.Null(method.Body);
+  }
+
+  [Fact]
+  public void Parse_NativeClassDeclaration_IsFlaggedNative()
+  {
+    var program = Parse("native class Console {\n  public native function void log(string message);\n}");
+
+    var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
+    Assert.True(classDecl.IsNative);
+  }
+
+  [Fact]
+  public void Parse_NativeAbstractClassDeclaration_CapturesBothModifiers()
+  {
+    var program = Parse("native abstract class Console {\n  public native function void log(string message);\n}");
+
+    var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
+    Assert.True(classDecl.IsNative);
+    Assert.True(classDecl.IsAbstract);
+  }
+
+  [Fact]
+  public void Parse_ClassWithNativeMemberButWithoutNativeKeyword_ThrowsParseException()
+  {
+    var exception = Assert.Throws<ParseException>(() =>
+      Parse("class Console {\n  public native function void log(string message);\n}"));
+
+    Assert.Contains("must be declared 'native'", exception.Message);
+  }
+
+  [Fact]
+  public void Parse_NativeClassWithoutNativeMembers_ParsesSuccessfully()
+  {
+    var program = Parse("native class Marker {\n}");
+
+    var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
+    Assert.True(classDecl.IsNative);
+    Assert.Empty(classDecl.Members);
   }
 
   [Fact]

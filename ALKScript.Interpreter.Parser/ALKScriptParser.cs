@@ -160,16 +160,24 @@ namespace ALKScript.Interpreter.Parser
 
     private bool CheckClassDeclStart()
     {
-      if (_stream.Check(ALKScriptTokenType.Class))
+      int offset = 0;
+
+      if (_stream.CheckAhead(offset, ALKScriptTokenType.Native))
       {
-        return true;
+        offset++;
       }
 
-      return _stream.Check(ALKScriptTokenType.Abstract) && _stream.CheckNext(ALKScriptTokenType.Class);
+      if (_stream.CheckAhead(offset, ALKScriptTokenType.Abstract))
+      {
+        offset++;
+      }
+
+      return _stream.CheckAhead(offset, ALKScriptTokenType.Class);
     }
 
     private ClassDecl ParseClassDecl()
     {
+      bool isNative = _stream.Match(ALKScriptTokenType.Native);
       bool isAbstract = _stream.Match(ALKScriptTokenType.Abstract);
       _stream.Consume(ALKScriptTokenType.Class, "Expect 'class'.");
 
@@ -205,7 +213,18 @@ namespace ALKScript.Interpreter.Parser
 
       _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after class body.");
 
-      return new ClassDecl(isAbstract, name, typeParameters, superclassName, superclassTypeArguments, members);
+      if (!isNative)
+      {
+        foreach (var member in members)
+        {
+          if (member is MethodDecl { IsNative: true } nativeMethod)
+          {
+            throw Error(nativeMethod.Name, $"Class '{name.Lexeme}' must be declared 'native' because it has a native member '{nativeMethod.Name.Lexeme}'.");
+          }
+        }
+      }
+
+      return new ClassDecl(isAbstract, name, typeParameters, superclassName, superclassTypeArguments, members, isNative);
     }
 
     private MemberDecl ParseMember()
