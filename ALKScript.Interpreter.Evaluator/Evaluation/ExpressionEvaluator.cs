@@ -309,20 +309,19 @@ namespace ALKScript.Interpreter.Evaluator
             return fieldValue;
           }
 
-          var member = instance.Class.FindMember(expression.Name.Lexeme);
+          var member = instance.Class.FindMember(expression.Name.Lexeme, out var declaringClass);
           if (member is MethodDecl method)
           {
-            var methodValue = _functionValueFactory.Create(FunctionValueFactory.MethodAsFunctionDecl(method), ClassEnvironments.For(instance.Class));
-            return methodValue is FunctionValue boundable ? boundable.BindTo(instance) : methodValue;
+            return _functionValueFactory.CreateMethod(method, declaringClass!, ClassEnvironments.For(instance.Class), instance);
           }
 
           throw new RuntimeException(expression.Name, $"Undefined property '{expression.Name.Lexeme}' on '{target.TypeName}'.");
 
         case ClassValue classValue:
-          var staticMember = classValue.FindMember(expression.Name.Lexeme);
+          var staticMember = classValue.FindMember(expression.Name.Lexeme, out var staticDeclaringClass);
           if (staticMember is MethodDecl staticMethod)
           {
-            return _functionValueFactory.Create(FunctionValueFactory.MethodAsFunctionDecl(staticMethod), ClassEnvironments.For(classValue));
+            return _functionValueFactory.CreateMethod(staticMethod, staticDeclaringClass!, ClassEnvironments.For(classValue), boundInstance: null);
           }
 
           throw new RuntimeException(expression.Name, $"Undefined static member '{expression.Name.Lexeme}' on '{target.TypeName}'.");

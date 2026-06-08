@@ -9,14 +9,20 @@ namespace ALKScript.Interpreter.Evaluator
   public class FunctionValueFactory : IFunctionValueFactory
   {
     private readonly ScriptNativeBindings _nativeBindings;
+    private readonly ScriptNativeMethodBindings _nativeMethodBindings;
 
     /// <summary>
     /// <paramref name="nativeBindings"/> supplies the host implementations for
-    /// <c>native</c> function/method declarations, keyed by declared name.
+    /// free-standing <c>native function</c> declarations, keyed by declared
+    /// name. <paramref name="nativeMethodBindings"/> supplies the host
+    /// implementations for <c>native</c> methods, keyed by declaring class and
+    /// member name — see <see cref="ScriptNativeMethodBindings"/> for why
+    /// methods need a separate, class-scoped table.
     /// </summary>
-    public FunctionValueFactory(ScriptNativeBindings? nativeBindings = null)
+    public FunctionValueFactory(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null)
     {
       _nativeBindings = nativeBindings ?? new ScriptNativeBindings();
+      _nativeMethodBindings = nativeMethodBindings ?? new ScriptNativeMethodBindings();
     }
 
     public ALKScriptValue Create(FunctionDecl declaration, ScriptEnvironment closure)
@@ -32,6 +38,30 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       throw new RuntimeException(declaration.Name, $"Native function '{declaration.Name.Lexeme}' has no host implementation registered.");
+    }
+
+    public ALKScriptValue CreateMethod(MethodDecl declaration, ClassValue declaringClass, ScriptEnvironment closure, InstanceValue? boundInstance)
+    {
+      if (!declaration.IsNative)
+      {
+        return new FunctionValue(MethodAsFunctionDecl(declaration), closure, boundInstance);
+      }
+
+      string className = declaringClass.Declaration.Name.Lexeme;
+      string memberName = declaration.Name.Lexeme;
+
+      if (boundInstance == null)
+      {
+        throw new RuntimeException(declaration.Name, $"Native method '{className}.{memberName}' must be accessed on an instance.");
+      }
+
+      if (_nativeMethodBindings.TryGetValue(className, memberName, out var implementation))
+      {
+        var instance = boundInstance;
+        return new NativeFunctionValue(memberName, declaration.Parameters.Count, arguments => implementation(instance, arguments));
+      }
+
+      throw new RuntimeException(declaration.Name, $"Native method '{className}.{memberName}' has no host implementation registered.");
     }
 
     /// <summary>

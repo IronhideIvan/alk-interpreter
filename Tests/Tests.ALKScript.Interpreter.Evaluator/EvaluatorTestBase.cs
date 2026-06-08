@@ -50,6 +50,20 @@ public abstract class EvaluatorTestBase
   }
 
   /// <summary>
+  /// Like <see cref="RunWithBindings"/>, but also injects
+  /// <paramref name="nativeMethodBindings"/> — host implementations for
+  /// <c>native</c> methods, keyed by declaring class and member name (see
+  /// <see cref="ScriptNativeMethodBindings"/> and <see cref="ProgramEvaluator"/>'s
+  /// constructor docs) — so tests can exercise native methods that read or
+  /// mutate the receiving instance's state.
+  /// </summary>
+  protected static void RunWithMethodBindings(string source, ScriptNativeBindings? nativeBindings, ScriptNativeMethodBindings nativeMethodBindings)
+  {
+    var graph = LoadGraph(source);
+    new ProgramEvaluator(nativeBindings, nativeMethodBindings).Evaluate(graph);
+  }
+
+  /// <summary>
   /// Like <see cref="RunWithBindings"/>, but also seeds the graph's
   /// <see cref="ModuleGraph.GlobalPreludes"/> from <paramref name="globalPreludeSources"/>
   /// — ALKScript source(s) compiled and executed into the root environment

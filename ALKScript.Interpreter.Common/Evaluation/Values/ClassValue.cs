@@ -32,7 +32,18 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     public override string ToString() => $"<class {Declaration.Name.Lexeme}>";
 
     /// <summary>Finds a member by name on this class or, failing that, its superclass chain.</summary>
-    public MemberDecl? FindMember(string name)
+    public MemberDecl? FindMember(string name) => FindMember(name, out _);
+
+    /// <summary>
+    /// Like <see cref="FindMember(string)"/>, but also reports which class in
+    /// the chain — this one or a superclass — actually declares the member.
+    /// Resolving a <c>native</c> method's host binding needs the declaring
+    /// class (bindings are scoped to it; see <see cref="ScriptNativeMethodBindings"/>),
+    /// not the runtime type of the receiving instance, so a binding
+    /// registered against a superclass is found through any subclass that
+    /// merely inherits the method.
+    /// </summary>
+    public MemberDecl? FindMember(string name, out ClassValue? declaringClass)
     {
       for (ClassValue? current = this; current != null; current = current.Superclass)
       {
@@ -40,11 +51,13 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
         {
           if (MemberName(member) == name)
           {
+            declaringClass = current;
             return member;
           }
         }
       }
 
+      declaringClass = null;
       return null;
     }
 

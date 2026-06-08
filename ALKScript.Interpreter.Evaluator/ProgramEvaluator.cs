@@ -33,13 +33,20 @@ namespace ALKScript.Interpreter.Evaluator
     /// Creates an evaluator.
     ///
     /// <paramref name="nativeBindings"/> supplies the host implementations for
-    /// <c>native</c> function/method declarations, keyed by declared name —
-    /// both the entry module's own <c>native</c> declarations and any in the
-    /// graph's <see cref="ModuleGraph.GlobalPreludes"/> resolve against this
-    /// table. A <c>native</c> declaration with no matching binding fails with
-    /// a <see cref="RuntimeException"/> as soon as it is declared, so a
-    /// runtime that supplies a prelude with <c>native</c> members is
-    /// responsible for registering bindings for them here.
+    /// free-standing <c>native function</c> declarations, keyed by declared
+    /// name; <paramref name="nativeMethodBindings"/> supplies them for
+    /// <c>native</c> methods, keyed by declaring class and member name (see
+    /// <see cref="ScriptNativeMethodBindings"/> for why methods need their own,
+    /// class-scoped table — e.g. an <c>Array</c> and a <c>Set</c> can each
+    /// declare a native <c>add</c> without colliding, and each implementation
+    /// receives the receiving instance so it can back the class with real,
+    /// host-managed storage). Both the entry module's own <c>native</c>
+    /// declarations and any in the graph's <see cref="ModuleGraph.GlobalPreludes"/>
+    /// resolve against these tables. A <c>native</c> declaration with no
+    /// matching binding fails with a <see cref="RuntimeException"/> as soon as
+    /// it is declared (functions) or first accessed (methods), so a runtime
+    /// that supplies a prelude with <c>native</c> members is responsible for
+    /// registering bindings for them here.
     ///
     /// This evaluator is a pure executor: it never lexes or parses anything
     /// itself — and so never references the concrete <c>ALKScriptLexer</c>/
@@ -53,8 +60,8 @@ namespace ALKScript.Interpreter.Evaluator
     /// provides the mechanism (parse-and-assemble), the runtime supplies the
     /// content, and the evaluator just walks the result.
     /// </summary>
-    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null)
-      : this(new FunctionValueFactory(nativeBindings))
+    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null)
+      : this(new FunctionValueFactory(nativeBindings, nativeMethodBindings))
     {
     }
 

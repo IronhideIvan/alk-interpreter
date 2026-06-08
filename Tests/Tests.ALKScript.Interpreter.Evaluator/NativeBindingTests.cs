@@ -39,22 +39,102 @@ public class NativeBindingTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Evaluate_NativeMethodWithRegisteredBinding_InvokesHostImplementationBoundToInstance()
+  public void Evaluate_NativeMethodWithRegisteredBinding_InvokesHostImplementationWithReceivingInstance()
   {
+    var calls = new List<(string TypeName, string Message)>();
+
+    RunWithMethodBindings(
+      "class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"from instance\");",
+      nativeBindings: null,
+      nativeMethodBindings: new ScriptNativeMethodBindings
+      {
+        ["Console", "log"] = (instance, arguments) =>
+        {
+          calls.Add((instance.TypeName, ((StringValue)arguments[0]).Value));
+          return NullValue.Instance;
+        }
+      });
+
+    Assert.Equal(new[] { ("Console", "from instance") }, calls);
+  }
+
+  [Fact]
+  public void Evaluate_NativeMethod_CanReadAndMutateTheReceivingInstancesFields()
+  {
+    // The defining "runtime-backed collection" scenario: a native method
+    // backs a class with real, host-managed storage by reading/writing the
+    // receiver's Fields directly — script code never sees how "items" is
+    // represented, only that push/count behave consistently.
+    var recorded = Run(
+      RecordDeclaration +
+      "class Bag {\n" +
+      "  public native function void push(Object item);\n" +
+      "  public native function int count();\n" +
+      "}\n" +
+      "var bag = new Bag();\n" +
+      "bag.push(\"a\");\n" +
+      "bag.push(\"b\");\n" +
+      "record(bag.count());\n",
+      new ScriptNativeBindings(),
+      new ScriptNativeMethodBindings
+      {
+        ["Bag", "push"] = (instance, arguments) =>
+        {
+          if (!instance.Fields.TryGetValue("__items", out var items) || !(items is ArrayValue array))
+          {
+            array = new ArrayValue(new List<ALKScriptValue>());
+            instance.Fields["__items"] = array;
+          }
+
+          array.Items.Add(arguments[0]);
+          return NullValue.Instance;
+        },
+        ["Bag", "count"] = (instance, _) =>
+        {
+          var count = instance.Fields.TryGetValue("__items", out var items) && items is ArrayValue array ? array.Items.Count : 0;
+          return new IntValue(count);
+        }
+      });
+
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(2L, value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_NativeMethodInheritedFromSuperclass_ResolvesAgainstTheDeclaringClassesBinding()
+  {
+    // Bindings are scoped to the class that *declares* the native method, not
+    // the runtime type of the receiver — so a binding registered for the
+    // superclass is found through a subclass that merely inherits it.
     var calls = new List<string>();
 
-    RunWithBindings(
-      "class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"from instance\");",
-      new ScriptNativeBindings
+    RunWithMethodBindings(
+      "class Logger {\n  public native function void log(string message);\n}\n" +
+      "class FileLogger extends Logger {}\n" +
+      "var logger = new FileLogger();\nlogger.log(\"inherited\");",
+      nativeBindings: null,
+      nativeMethodBindings: new ScriptNativeMethodBindings
       {
-        ["log"] = arguments =>
+        ["Logger", "log"] = (instance, arguments) =>
         {
           calls.Add(((StringValue)arguments[0]).Value);
           return NullValue.Instance;
         }
       });
 
-    Assert.Equal(new[] { "from instance" }, calls);
+    Assert.Equal(new[] { "inherited" }, calls);
+  }
+
+  [Fact]
+  public void Evaluate_NativeMethodWithoutRegisteredBinding_ThrowsRuntimeExceptionWhenAccessed()
+  {
+    var exception = Assert.Throws<RuntimeException>(() =>
+      RunWithMethodBindings(
+        "class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"hi\");",
+        nativeBindings: null,
+        nativeMethodBindings: new ScriptNativeMethodBindings()));
+
+    Assert.Contains("Native method 'Console.log' has no host implementation registered", exception.Message);
   }
 
   [Fact]
@@ -66,7 +146,7 @@ public class NativeBindingTests : EvaluatorTestBase
     Assert.Contains("Native function 'log' has no host implementation registered", exception.Message);
   }
 
-  private static IReadOnlyList<ALKScriptValue> Run(string source, ScriptNativeBindings nativeBindings)
+  private static IReadOnlyList<ALKScriptValue> Run(string source, ScriptNativeBindings nativeBindings, ScriptNativeMethodBindings? nativeMethodBindings = null)
   {
     var recorded = new List<ALKScriptValue>();
     var bindings = new ScriptNativeBindings(nativeBindings)
@@ -78,7 +158,15 @@ public class NativeBindingTests : EvaluatorTestBase
       }
     };
 
-    RunWithBindings(source, bindings);
+    if (nativeMethodBindings == null)
+    {
+      RunWithBindings(source, bindings);
+    }
+    else
+    {
+      RunWithMethodBindings(source, bindings, nativeMethodBindings);
+    }
+
     return recorded;
   }
 }
