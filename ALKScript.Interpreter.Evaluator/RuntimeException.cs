@@ -1,4 +1,4 @@
-using System;
+using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Token;
 
 namespace ALKScript.Interpreter.Evaluator
@@ -9,7 +9,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// value). Mirrors <c>ParseException</c>'s shape: a source token plus a
   /// formatted, location-bearing message.
   /// </summary>
-  public class RuntimeException : Exception
+  public class RuntimeException : InterpreterBaseException
   {
     public ALKScriptToken Token { get; }
 

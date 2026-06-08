@@ -1,4 +1,4 @@
-using System;
+using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Token;
 
 namespace ALKScript.Interpreter.Parser
@@ -7,7 +7,7 @@ namespace ALKScript.Interpreter.Parser
   /// Thrown when the parser encounters a token sequence that does not conform
   /// to the language grammar.
   /// </summary>
-  public class ParseException : Exception
+  public class ParseException : InterpreterBaseException
   {
     public ALKScriptToken Token { get; }
 

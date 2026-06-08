@@ -1,4 +1,4 @@
-using System;
+using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Token;
 
 namespace ALKScript.Interpreter.Parser.Modules
@@ -10,7 +10,7 @@ namespace ALKScript.Interpreter.Parser.Modules
   /// declaration the target module does not export. These are compile-time
   /// errors per §9.2 of the language spec.
   /// </summary>
-  public class ModuleLoadException : Exception
+  public class ModuleLoadException : InterpreterBaseException
   {
     /// <summary>The token (import specifier string or imported name) the error is reported against.</summary>
     public ALKScriptToken Token { get; }
