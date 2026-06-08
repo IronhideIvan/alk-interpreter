@@ -66,16 +66,21 @@ WinForms/WPF/Unity main-thread dispatcher pattern.
 ### 3. Voluntary yielding (`pause`)
 
 Endorsed a `pause(frames)` primitive for scripts that would otherwise starve
-the frame. It is implemented as a **scheduler-native primitive** — a
-`FrameDelay` `PendingOperation` resolved internally by the scheduler, *not*
-routed through the host's `IAsyncOperationBinder` — so it works in every
-embedding for free, with no host wiring required.
+the frame. It is exposed as a **standard-library function** (`async native
+pause(int frames)`), not a new keyword. Reasons: preserves "`await` is the one
+true suspension primitive" as a language invariant, avoids grammar bloat, stays
+more composable/extensible, and avoids a naming collision with generator-style
+"yield" semantics in other languages.
 
-It is exposed as a **core-library function** (e.g. `async native Pause(int
-frames)`), not a new keyword. Reasons: preserves "`await` is the one true
-suspension primitive" as a language invariant, avoids grammar bloat, stays
-more composable/extensible, and avoids a naming collision with
-generator-style "yield" semantics in other languages.
+The implementation is entirely the **host's responsibility**, handled inside
+their `IAsyncOperationBinder.Start` like any other async native operation. The
+standard library only supplies the declaration; the host wires up the behavior.
+This requires no changes to the scheduler — `Pump()`, called once per game-loop
+tick, already is the frame boundary. A host implementing `pause(n)` counts how
+many more `Pump()` calls should elapse before settling the operation's
+`TaskCompletionSource`, because the host controls when `Pump()` is called and
+therefore knows exactly when each frame ends. The scheduler needs no
+`AdvanceFrame()` or other frame-awareness API.
 
 ### 4. `await`-only-in-`async` enforcement
 
@@ -201,8 +206,12 @@ handle separately.
 
 ### 12. `whenAny` / race combinators
 
-**Deferred** — not a current requirement. Avoids having to design
-non-deterministic replay-log semantics for a feature that isn't needed yet.
+**Rejected** — incompatible with the run-to-completion guarantee established by
+decision #11. `whenAny` resolves as soon as the first member settles while its
+siblings are still running; decision #11 requires every member to run to
+settlement before the combinator resolves. These are mutually exclusive: there
+is no definition of `whenAny` that satisfies run-to-completion. The feature is
+not deferred — it is ruled out by a committed design choice.
 
 ### 13. `await [a, b]` syntax
 
@@ -304,8 +313,10 @@ All originally-identified open questions have been resolved:
 1. Suspension mechanism → `async`/`Task`-based evaluator, `Signal` unchanged
    plus new `Cancelled` kind
 2. Concurrency model → single-threaded custom scheduler/`SynchronizationContext`
-3. Voluntary yielding → `pause(frames)` as a scheduler-native, core-library
-   `async native`
+3. Voluntary yielding → `pause(frames)` as a standard-library `async native`
+   declaration; implementation is the host's responsibility inside their
+   `IAsyncOperationBinder`; `Pump()` already serves as the frame boundary so
+   no scheduler changes are required
 4. `await`-in-`async` enforcement → parse time, via reusable `ParsingContext`
 5. Script identity → one compiled program, many concurrent instances
 6. `pause` frame semantics → resumes at next completed simulation step
@@ -315,7 +326,7 @@ All originally-identified open questions have been resolved:
    onUnobservedFault)`; mid-script case eliminated by `whenAll` semantics
 10. `whenAll` policy → run-to-completion + aggregate faults to script,
     individual faults also reported to host
-11. `whenAny` → deferred
+11. `whenAny` → rejected; incompatible with the run-to-completion guarantee
 12. `await [a, b]` → sugar for `await Task.whenAll([a, b])`
 13. Combinator cancellation → shared token to members + cancellation-aware
     combinator suspension
