@@ -17,6 +17,16 @@ namespace ALKScript.Interpreter.Evaluator
     private readonly IReadOnlyDictionary<string, NativeFunctionImplementation> _nativeBindings;
 
     /// <summary>
+    /// A pending non-local exit ("return" or "throw") raised while executing
+    /// the statement or evaluating the expression currently in progress.
+    /// Checked after each sub-execution/sub-evaluation so control can unwind
+    /// to the right handler (a function call, a "try", or the top level)
+    /// without using .NET exceptions for script-level control flow — a script
+    /// "throw" should not cost (or look like) a .NET exception.
+    /// </summary>
+    private Signal? _signal;
+
+    /// <summary>
     /// Creates an evaluator. <paramref name="nativeBindings"/> supplies the host
     /// implementations for <c>native</c> function/method declarations, keyed by
     /// declared name; a <c>native</c> declaration with no matching binding fails
@@ -32,6 +42,17 @@ namespace ALKScript.Interpreter.Evaluator
       var globals = new Environment();
 
       ExecuteModule(graph.EntryModule, globals);
+
+      if (_signal is { Kind: SignalKind.Thrown } thrown)
+      {
+        _signal = null;
+        throw new RuntimeException(
+          new ALKScriptToken(ALKScriptTokenType.EndOfFile, string.Empty, 0, 0),
+          $"Uncaught exception: {Stringify(thrown.Value)}");
+      }
+
+      // A stray top-level "return" simply ends the module's execution.
+      _signal = null;
     }
 
     private void ExecuteModule(LoadedModule module, Environment environment)
@@ -39,6 +60,11 @@ namespace ALKScript.Interpreter.Evaluator
       foreach (var declaration in module.Program.Declarations)
       {
         Execute(declaration, environment);
+
+        if (_signal != null)
+        {
+          return;
+        }
       }
     }
 
@@ -48,6 +74,11 @@ namespace ALKScript.Interpreter.Evaluator
 
     private void Execute(Stmt statement, Environment environment)
     {
+      if (_signal != null)
+      {
+        return;
+      }
+
       switch (statement)
       {
         case StatementDecl statementDecl:
@@ -111,9 +142,17 @@ namespace ALKScript.Interpreter.Evaluator
 
     private void ExecuteVariableDecl(VariableDecl declaration, Environment environment)
     {
-      ALKScriptValue value = declaration.Initializer != null
-        ? Eval(declaration.Initializer, environment)
-        : NullValue.Instance;
+      ALKScriptValue value = NullValue.Instance;
+
+      if (declaration.Initializer != null)
+      {
+        value = Eval(declaration.Initializer, environment);
+
+        if (_signal != null)
+        {
+          return;
+        }
+      }
 
       environment.Define(declaration.Name.Lexeme, value);
     }
@@ -137,12 +176,24 @@ namespace ALKScript.Interpreter.Evaluator
       foreach (var statement in statements)
       {
         Execute(statement, environment);
+
+        if (_signal != null)
+        {
+          return;
+        }
       }
     }
 
     private void ExecuteIf(IfStmt statement, Environment environment)
     {
-      if (Eval(statement.Condition, environment).IsTruthy)
+      var condition = Eval(statement.Condition, environment);
+
+      if (_signal != null)
+      {
+        return;
+      }
+
+      if (condition.IsTruthy)
       {
         Execute(statement.ThenBranch, environment);
       }
@@ -154,9 +205,26 @@ namespace ALKScript.Interpreter.Evaluator
 
     private void ExecuteWhile(WhileStmt statement, Environment environment)
     {
-      while (Eval(statement.Condition, environment).IsTruthy)
+      while (true)
       {
+        var condition = Eval(statement.Condition, environment);
+
+        if (_signal != null)
+        {
+          return;
+        }
+
+        if (!condition.IsTruthy)
+        {
+          return;
+        }
+
         Execute(statement.Body, environment);
+
+        if (_signal != null)
+        {
+          return;
+        }
       }
     }
 
@@ -167,48 +235,104 @@ namespace ALKScript.Interpreter.Evaluator
       if (statement.Initializer != null)
       {
         Execute(statement.Initializer, loopEnvironment);
+
+        if (_signal != null)
+        {
+          return;
+        }
       }
 
-      while (statement.Condition == null || Eval(statement.Condition, loopEnvironment).IsTruthy)
+      while (true)
       {
+        if (statement.Condition != null)
+        {
+          var condition = Eval(statement.Condition, loopEnvironment);
+
+          if (_signal != null)
+          {
+            return;
+          }
+
+          if (!condition.IsTruthy)
+          {
+            return;
+          }
+        }
+
         Execute(statement.Body, loopEnvironment);
+
+        if (_signal != null)
+        {
+          return;
+        }
 
         if (statement.Increment != null)
         {
           Eval(statement.Increment, loopEnvironment);
+
+          if (_signal != null)
+          {
+            return;
+          }
         }
       }
     }
 
     private void ExecuteReturn(ReturnStmt statement, Environment environment)
     {
-      var value = statement.Value != null ? Eval(statement.Value, environment) : NullValue.Instance;
-      throw new ReturnSignal(value);
+      var value = NullValue.Instance as ALKScriptValue;
+
+      if (statement.Value != null)
+      {
+        value = Eval(statement.Value, environment);
+
+        if (_signal != null)
+        {
+          return;
+        }
+      }
+
+      _signal = Signal.Return(value);
     }
 
     private void ExecuteThrow(ThrowStmt statement, Environment environment)
     {
-      throw new ThrownValueSignal(Eval(statement.Value, environment));
+      var value = Eval(statement.Value, environment);
+
+      if (_signal != null)
+      {
+        return;
+      }
+
+      _signal = Signal.Thrown(value);
     }
 
     private void ExecuteTry(TryStmt statement, Environment environment)
     {
-      try
+      ExecuteBlock(statement.TryBlock.Statements, new Environment(environment));
+
+      if (_signal is { Kind: SignalKind.Thrown } thrown)
       {
-        ExecuteBlock(statement.TryBlock.Statements, new Environment(environment));
-      }
-      catch (ThrownValueSignal signal)
-      {
-        if (!TryHandle(statement.CatchClauses, signal.Value, environment))
+        _signal = null;
+
+        if (!TryHandle(statement.CatchClauses, thrown.Value, environment) && _signal == null)
         {
-          throw;
+          _signal = thrown;
         }
       }
-      finally
+
+      if (statement.FinallyBlock != null)
       {
-        if (statement.FinallyBlock != null)
+        var pending = _signal;
+        _signal = null;
+
+        ExecuteBlock(statement.FinallyBlock.Statements, new Environment(environment));
+
+        // A "return"/"throw" raised by the "finally" block overrides whatever
+        // was pending beforehand — matching ordinary try/finally semantics.
+        if (_signal == null)
         {
-          ExecuteBlock(statement.FinallyBlock.Statements, new Environment(environment));
+          _signal = pending;
         }
       }
     }
@@ -237,6 +361,11 @@ namespace ALKScript.Interpreter.Evaluator
 
     private ALKScriptValue Eval(Expr expression, Environment environment)
     {
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
+
       switch (expression)
       {
         case LiteralExpr literal:
@@ -316,6 +445,11 @@ namespace ALKScript.Interpreter.Evaluator
       foreach (var element in expression.Elements)
       {
         items.Add(Eval(element, environment));
+
+        if (_signal != null)
+        {
+          return NullValue.Instance;
+        }
       }
 
       return new ArrayValue(items);
@@ -324,6 +458,11 @@ namespace ALKScript.Interpreter.Evaluator
     private ALKScriptValue EvalAssignment(AssignmentExpr expression, Environment environment)
     {
       var value = Eval(expression.Value, environment);
+
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
 
       switch (expression.Target)
       {
@@ -336,6 +475,10 @@ namespace ALKScript.Interpreter.Evaluator
 
         case GetExpr get:
           var target = Eval(get.Target, environment);
+          if (_signal != null)
+          {
+            return NullValue.Instance;
+          }
           var instance = target as InstanceValue
             ?? throw new RuntimeException(get.Name, $"Cannot set property '{get.Name.Lexeme}' on a value of type '{target.TypeName}'.");
           instance.Fields[get.Name.Lexeme] = value;
@@ -343,9 +486,18 @@ namespace ALKScript.Interpreter.Evaluator
 
         case IndexExpr index:
           var indexed = Eval(index.Target, environment);
+          if (_signal != null)
+          {
+            return NullValue.Instance;
+          }
           var array = indexed as ArrayValue
             ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{indexed.TypeName}'.");
-          int position = ExpectIndex(Eval(index.Index, environment), index.ClosingBracket, array.Items.Count);
+          var indexValue = Eval(index.Index, environment);
+          if (_signal != null)
+          {
+            return NullValue.Instance;
+          }
+          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count);
           array.Items[position] = value;
           return value;
 
@@ -360,17 +512,35 @@ namespace ALKScript.Interpreter.Evaluator
       if (expression.Operator.Type == ALKScriptTokenType.AmpAmp)
       {
         var left = Eval(expression.Left, environment);
+        if (_signal != null)
+        {
+          return NullValue.Instance;
+        }
         return left.IsTruthy ? Eval(expression.Right, environment) : left;
       }
 
       if (expression.Operator.Type == ALKScriptTokenType.PipePipe)
       {
         var left = Eval(expression.Left, environment);
+        if (_signal != null)
+        {
+          return NullValue.Instance;
+        }
         return left.IsTruthy ? left : Eval(expression.Right, environment);
       }
 
       var leftValue = Eval(expression.Left, environment);
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
+
       var rightValue = Eval(expression.Right, environment);
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
+
       var op = expression.Operator;
 
       switch (op.Type)
@@ -490,6 +660,11 @@ namespace ALKScript.Interpreter.Evaluator
     {
       var operand = Eval(expression.Operand, environment);
 
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
+
       switch (expression.Operator.Type)
       {
         case ALKScriptTokenType.Bang:
@@ -515,10 +690,20 @@ namespace ALKScript.Interpreter.Evaluator
     {
       var callee = Eval(expression.Callee, environment);
 
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
+
       var arguments = new List<ALKScriptValue>(expression.Arguments.Count);
       foreach (var argument in expression.Arguments)
       {
         arguments.Add(Eval(argument, environment));
+
+        if (_signal != null)
+        {
+          return NullValue.Instance;
+        }
       }
 
       return Call(callee, arguments, expression.ClosingParen);
@@ -574,13 +759,14 @@ namespace ALKScript.Interpreter.Evaluator
         callEnvironment.Define(function.Declaration.Parameters[i].Name, arguments[i]);
       }
 
-      try
+      ExecuteBlock(function.Declaration.Body!.Statements, callEnvironment);
+
+      // "return" is consumed here — it unwinds no further than the call that
+      // produced it. A "throw" is left pending so it propagates to the caller.
+      if (_signal is { Kind: SignalKind.Return } returned)
       {
-        ExecuteBlock(function.Declaration.Body!.Statements, callEnvironment);
-      }
-      catch (ReturnSignal signal)
-      {
-        return signal.Value;
+        _signal = null;
+        return returned.Value;
       }
 
       return NullValue.Instance;
@@ -606,13 +792,13 @@ namespace ALKScript.Interpreter.Evaluator
           constructorEnvironment.Define(constructor.Parameters[i].Name, arguments[i]);
         }
 
-        try
+        ExecuteBlock(constructor.Body.Statements, constructorEnvironment);
+
+        // A bare "return;" inside a constructor simply ends construction early;
+        // a "throw" is left pending so it propagates to the caller.
+        if (_signal is { Kind: SignalKind.Return })
         {
-          ExecuteBlock(constructor.Body.Statements, constructorEnvironment);
-        }
-        catch (ReturnSignal)
-        {
-          // A bare "return;" inside a constructor simply ends construction early.
+          _signal = null;
         }
       }
       else if (arguments.Count != 0)
@@ -646,6 +832,11 @@ namespace ALKScript.Interpreter.Evaluator
     private ALKScriptValue EvalGet(GetExpr expression, Environment environment)
     {
       var target = Eval(expression.Target, environment);
+
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
 
       switch (target)
       {
@@ -681,10 +872,23 @@ namespace ALKScript.Interpreter.Evaluator
     private ALKScriptValue EvalIndex(IndexExpr expression, Environment environment)
     {
       var target = Eval(expression.Target, environment);
+
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
+
       var array = target as ArrayValue
         ?? throw new RuntimeException(expression.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
 
-      int position = ExpectIndex(Eval(expression.Index, environment), expression.ClosingBracket, array.Items.Count);
+      var indexValue = Eval(expression.Index, environment);
+
+      if (_signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      int position = ExpectIndex(indexValue, expression.ClosingBracket, array.Items.Count);
       return array.Items[position];
     }
 
@@ -714,6 +918,11 @@ namespace ALKScript.Interpreter.Evaluator
       foreach (var argument in expression.Arguments)
       {
         arguments.Add(Eval(argument, environment));
+
+        if (_signal != null)
+        {
+          return NullValue.Instance;
+        }
       }
 
       return Construct(classValue, arguments, expression.Keyword);
