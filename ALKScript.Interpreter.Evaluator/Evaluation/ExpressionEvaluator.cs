@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Values;
@@ -11,6 +12,14 @@ namespace ALKScript.Interpreter.Evaluator
   /// <see cref="ALKScriptValue"/>s. Operator semantics are delegated to
   /// <see cref="Operators"/>; calls/construction are delegated through
   /// <see cref="IEvaluationContext"/> to <see cref="CallInvoker"/>.
+  ///
+  /// <c>async</c>/<see cref="Task"/>-returning throughout — see
+  /// <see cref="IEvaluationContext"/> for why: this is the plumbing that lets
+  /// an <c>await</c> anywhere in an expression tree suspend evaluation
+  /// mid-expression and later resume it without losing any in-flight state.
+  /// Phase 2 wires this plumbing through without changing behavior — every
+  /// expression (including <see cref="AwaitExpr"/>, still a pass-through here)
+  /// continues to resolve synchronously.
   /// </summary>
   internal class ExpressionEvaluator : IExpressionEvaluator
   {
@@ -23,7 +32,7 @@ namespace ALKScript.Interpreter.Evaluator
       _functionValueFactory = functionValueFactory;
     }
 
-    public ALKScriptValue Eval(Expr expression, ScriptEnvironment environment)
+    public async Task<ALKScriptValue> Eval(Expr expression, ScriptEnvironment environment)
     {
       if (_context.Signal != null)
       {
@@ -45,34 +54,34 @@ namespace ALKScript.Interpreter.Evaluator
           return Names.LookUp(baseExpr.Keyword, environment);
 
         case GroupingExpr grouping:
-          return Eval(grouping.Expression, environment);
+          return await Eval(grouping.Expression, environment);
 
         case ArrayLiteralExpr arrayLiteral:
-          return EvalArrayLiteral(arrayLiteral, environment);
+          return await EvalArrayLiteral(arrayLiteral, environment);
 
         case AssignmentExpr assignment:
-          return EvalAssignment(assignment, environment);
+          return await EvalAssignment(assignment, environment);
 
         case BinaryExpr binary:
-          return EvalBinary(binary, environment);
+          return await EvalBinary(binary, environment);
 
         case UnaryExpr unary:
-          return EvalUnary(unary, environment);
+          return await EvalUnary(unary, environment);
 
         case CallExpr call:
-          return EvalCall(call, environment);
+          return await EvalCall(call, environment);
 
         case GetExpr get:
-          return EvalGet(get, environment);
+          return await EvalGet(get, environment);
 
         case IndexExpr index:
-          return EvalIndex(index, environment);
+          return await EvalIndex(index, environment);
 
         case NewExpr newExpr:
-          return EvalNew(newExpr, environment);
+          return await EvalNew(newExpr, environment);
 
         case AwaitExpr awaitExpr:
-          return Eval(awaitExpr.Operand, environment);
+          return await Eval(awaitExpr.Operand, environment);
 
         default:
           throw new RuntimeException(
@@ -102,13 +111,13 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private ALKScriptValue EvalArrayLiteral(ArrayLiteralExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalArrayLiteral(ArrayLiteralExpr expression, ScriptEnvironment environment)
     {
       var items = new List<ALKScriptValue>(expression.Elements.Count);
 
       foreach (var element in expression.Elements)
       {
-        items.Add(Eval(element, environment));
+        items.Add(await Eval(element, environment));
 
         if (_context.Signal != null)
         {
@@ -119,9 +128,9 @@ namespace ALKScript.Interpreter.Evaluator
       return new ArrayValue(items);
     }
 
-    private ALKScriptValue EvalAssignment(AssignmentExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalAssignment(AssignmentExpr expression, ScriptEnvironment environment)
     {
-      var value = Eval(expression.Value, environment);
+      var value = await Eval(expression.Value, environment);
 
       if (_context.Signal != null)
       {
@@ -138,7 +147,7 @@ namespace ALKScript.Interpreter.Evaluator
           return value;
 
         case GetExpr get:
-          var target = Eval(get.Target, environment);
+          var target = await Eval(get.Target, environment);
           if (_context.Signal != null)
           {
             return NullValue.Instance;
@@ -149,14 +158,14 @@ namespace ALKScript.Interpreter.Evaluator
           return value;
 
         case IndexExpr index:
-          var indexed = Eval(index.Target, environment);
+          var indexed = await Eval(index.Target, environment);
           if (_context.Signal != null)
           {
             return NullValue.Instance;
           }
           var array = indexed as ArrayValue
             ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{indexed.TypeName}'.");
-          var indexValue = Eval(index.Index, environment);
+          var indexValue = await Eval(index.Index, environment);
           if (_context.Signal != null)
           {
             return NullValue.Instance;
@@ -170,36 +179,36 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private ALKScriptValue EvalBinary(BinaryExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalBinary(BinaryExpr expression, ScriptEnvironment environment)
     {
       // Short-circuiting logical operators evaluate their right-hand side lazily.
       if (expression.Operator.Type == ALKScriptTokenType.AmpAmp)
       {
-        var left = Eval(expression.Left, environment);
+        var left = await Eval(expression.Left, environment);
         if (_context.Signal != null)
         {
           return NullValue.Instance;
         }
-        return left.IsTruthy ? Eval(expression.Right, environment) : left;
+        return left.IsTruthy ? await Eval(expression.Right, environment) : left;
       }
 
       if (expression.Operator.Type == ALKScriptTokenType.PipePipe)
       {
-        var left = Eval(expression.Left, environment);
+        var left = await Eval(expression.Left, environment);
         if (_context.Signal != null)
         {
           return NullValue.Instance;
         }
-        return left.IsTruthy ? left : Eval(expression.Right, environment);
+        return left.IsTruthy ? left : await Eval(expression.Right, environment);
       }
 
-      var leftValue = Eval(expression.Left, environment);
+      var leftValue = await Eval(expression.Left, environment);
       if (_context.Signal != null)
       {
         return NullValue.Instance;
       }
 
-      var rightValue = Eval(expression.Right, environment);
+      var rightValue = await Eval(expression.Right, environment);
       if (_context.Signal != null)
       {
         return NullValue.Instance;
@@ -239,9 +248,9 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private ALKScriptValue EvalUnary(UnaryExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalUnary(UnaryExpr expression, ScriptEnvironment environment)
     {
-      var operand = Eval(expression.Operand, environment);
+      var operand = await Eval(expression.Operand, environment);
 
       if (_context.Signal != null)
       {
@@ -269,9 +278,9 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private ALKScriptValue EvalCall(CallExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalCall(CallExpr expression, ScriptEnvironment environment)
     {
-      var callee = Eval(expression.Callee, environment);
+      var callee = await Eval(expression.Callee, environment);
 
       if (_context.Signal != null)
       {
@@ -281,7 +290,7 @@ namespace ALKScript.Interpreter.Evaluator
       var arguments = new List<ALKScriptValue>(expression.Arguments.Count);
       foreach (var argument in expression.Arguments)
       {
-        arguments.Add(Eval(argument, environment));
+        arguments.Add(await Eval(argument, environment));
 
         if (_context.Signal != null)
         {
@@ -289,12 +298,12 @@ namespace ALKScript.Interpreter.Evaluator
         }
       }
 
-      return _context.Call(callee, arguments, expression.ClosingParen);
+      return await _context.Call(callee, arguments, expression.ClosingParen);
     }
 
-    private ALKScriptValue EvalGet(GetExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalGet(GetExpr expression, ScriptEnvironment environment)
     {
-      var target = Eval(expression.Target, environment);
+      var target = await Eval(expression.Target, environment);
 
       if (_context.Signal != null)
       {
@@ -331,9 +340,9 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private ALKScriptValue EvalIndex(IndexExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalIndex(IndexExpr expression, ScriptEnvironment environment)
     {
-      var target = Eval(expression.Target, environment);
+      var target = await Eval(expression.Target, environment);
 
       if (_context.Signal != null)
       {
@@ -343,7 +352,7 @@ namespace ALKScript.Interpreter.Evaluator
       var array = target as ArrayValue
         ?? throw new RuntimeException(expression.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
 
-      var indexValue = Eval(expression.Index, environment);
+      var indexValue = await Eval(expression.Index, environment);
 
       if (_context.Signal != null)
       {
@@ -370,7 +379,7 @@ namespace ALKScript.Interpreter.Evaluator
       return (int)index;
     }
 
-    private ALKScriptValue EvalNew(NewExpr expression, ScriptEnvironment environment)
+    private async Task<ALKScriptValue> EvalNew(NewExpr expression, ScriptEnvironment environment)
     {
       var callee = Names.LookUp(expression.TypeName, environment);
       var classValue = callee as ClassValue
@@ -379,7 +388,7 @@ namespace ALKScript.Interpreter.Evaluator
       var arguments = new List<ALKScriptValue>(expression.Arguments.Count);
       foreach (var argument in expression.Arguments)
       {
-        arguments.Add(Eval(argument, environment));
+        arguments.Add(await Eval(argument, environment));
 
         if (_context.Signal != null)
         {
@@ -387,7 +396,7 @@ namespace ALKScript.Interpreter.Evaluator
         }
       }
 
-      return _context.Construct(classValue, arguments, expression.Keyword);
+      return await _context.Construct(classValue, arguments, expression.Keyword);
     }
   }
 }

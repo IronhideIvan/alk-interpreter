@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
@@ -87,7 +88,7 @@ namespace ALKScript.Interpreter.Evaluator
       _calls = componentFactory.CreateCallInvoker(this);
     }
 
-    public void Evaluate(ModuleGraph graph)
+    public async Task Evaluate(ModuleGraph graph)
     {
       var globals = new ScriptEnvironment();
 
@@ -101,7 +102,7 @@ namespace ALKScript.Interpreter.Evaluator
       {
         foreach (var declaration in program.Declarations)
         {
-          _statements.Execute(declaration, globals);
+          await _statements.Execute(declaration, globals);
 
           if (_signal != null)
           {
@@ -119,7 +120,7 @@ namespace ALKScript.Interpreter.Evaluator
 
       foreach (var declaration in graph.EntryModule.Program.Declarations)
       {
-        _statements.Execute(declaration, globals);
+        await _statements.Execute(declaration, globals);
 
         if (_signal != null)
         {
@@ -150,19 +151,19 @@ namespace ALKScript.Interpreter.Evaluator
       set => _signal = value;
     }
 
-    void IEvaluationContext.Execute(Stmt statement, ScriptEnvironment environment)
+    Task IEvaluationContext.Execute(Stmt statement, ScriptEnvironment environment)
       => _statements.Execute(statement, environment);
 
-    void IEvaluationContext.ExecuteBlock(IReadOnlyList<Stmt> statements, ScriptEnvironment environment)
+    Task IEvaluationContext.ExecuteBlock(IReadOnlyList<Stmt> statements, ScriptEnvironment environment)
       => _statements.ExecuteBlock(statements, environment);
 
-    ALKScriptValue IEvaluationContext.Eval(Expr expression, ScriptEnvironment environment)
+    Task<ALKScriptValue> IEvaluationContext.Eval(Expr expression, ScriptEnvironment environment)
       => _expressions.Eval(expression, environment);
 
-    ALKScriptValue IEvaluationContext.Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    Task<ALKScriptValue> IEvaluationContext.Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
       => _calls.Call(callee, arguments, site);
 
-    ALKScriptValue IEvaluationContext.Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    Task<ALKScriptValue> IEvaluationContext.Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
       => _calls.Construct(classValue, arguments, site);
   }
 }

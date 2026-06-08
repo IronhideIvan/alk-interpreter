@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Values;
@@ -15,6 +16,11 @@ namespace Tests.ALKScript.Interpreter.Evaluator.Unit;
 /// recurses through. Each operation defaults to throwing, so a test that
 /// triggers an unstubbed recursive call fails loudly rather than silently
 /// exercising production collaborators.
+///
+/// The stub delegates (<c>*Impl</c>) stay synchronous — none of the unit tests
+/// need to model actual suspension — but the interface members wrap their
+/// results in completed <see cref="Task"/>s so the fake satisfies the
+/// <see cref="Task"/>-returning <see cref="IEvaluationContext"/> surface.
 /// </summary>
 internal sealed class FakeEvaluationContext : IEvaluationContext
 {
@@ -35,13 +41,24 @@ internal sealed class FakeEvaluationContext : IEvaluationContext
   public Func<ClassValue, IReadOnlyList<ALKScriptValue>, ALKScriptToken, ALKScriptValue> ConstructImpl { get; set; } =
     (_, _, _) => throw new InvalidOperationException("Construct was not expected.");
 
-  public void Execute(Stmt statement, ScriptEnvironment environment) => ExecuteImpl(statement, environment);
+  public Task Execute(Stmt statement, ScriptEnvironment environment)
+  {
+    ExecuteImpl(statement, environment);
+    return Task.CompletedTask;
+  }
 
-  public void ExecuteBlock(IReadOnlyList<Stmt> statements, ScriptEnvironment environment) => ExecuteBlockImpl(statements, environment);
+  public Task ExecuteBlock(IReadOnlyList<Stmt> statements, ScriptEnvironment environment)
+  {
+    ExecuteBlockImpl(statements, environment);
+    return Task.CompletedTask;
+  }
 
-  public ALKScriptValue Eval(Expr expression, ScriptEnvironment environment) => EvalImpl(expression, environment);
+  public Task<ALKScriptValue> Eval(Expr expression, ScriptEnvironment environment)
+    => Task.FromResult(EvalImpl(expression, environment));
 
-  public ALKScriptValue Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site) => CallImpl(callee, arguments, site);
+  public Task<ALKScriptValue> Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    => Task.FromResult(CallImpl(callee, arguments, site));
 
-  public ALKScriptValue Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site) => ConstructImpl(classValue, arguments, site);
+  public Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    => Task.FromResult(ConstructImpl(classValue, arguments, site));
 }

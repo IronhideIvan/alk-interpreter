@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Values;
@@ -10,6 +11,15 @@ namespace ALKScript.Interpreter.Evaluator
   /// control flow (blocks, conditionals, loops, "return"/"throw"/"try").
   /// Expression evaluation and calls are delegated through
   /// <see cref="IEvaluationContext"/>.
+  ///
+  /// Every method here is <c>async</c>/<see cref="Task"/>-returning — not
+  /// because anything actually suspends yet (Phase 2 introduces no new
+  /// behavior; everything still resolves synchronously), but because this is
+  /// the plumbing <c>await</c> needs: turning each method into a
+  /// compiler-generated continuation lets a future suspension (e.g. on a
+  /// pending host operation) unwind through this exact call chain and later
+  /// resume it without losing any in-flight control-flow state — see
+  /// <see cref="IEvaluationContext"/> for the fuller rationale.
   /// </summary>
   internal class StatementExecutor : IStatementExecutor
   {
@@ -22,7 +32,7 @@ namespace ALKScript.Interpreter.Evaluator
       _functionValueFactory = functionValueFactory;
     }
 
-    public void Execute(Stmt statement, ScriptEnvironment environment)
+    public async Task Execute(Stmt statement, ScriptEnvironment environment)
     {
       if (_context.Signal != null)
       {
@@ -32,11 +42,11 @@ namespace ALKScript.Interpreter.Evaluator
       switch (statement)
       {
         case StatementDecl statementDecl:
-          Execute(statementDecl.Statement, environment);
+          await Execute(statementDecl.Statement, environment);
           break;
 
         case VariableDecl variableDecl:
-          ExecuteVariableDecl(variableDecl, environment);
+          await ExecuteVariableDecl(variableDecl, environment);
           break;
 
         case FunctionDecl functionDecl:
@@ -48,39 +58,39 @@ namespace ALKScript.Interpreter.Evaluator
           break;
 
         case ExportDecl exportDecl:
-          Execute(exportDecl.Declaration, environment);
+          await Execute(exportDecl.Declaration, environment);
           break;
 
         case ExpressionStmt expressionStmt:
-          _context.Eval(expressionStmt.Expression, environment);
+          await _context.Eval(expressionStmt.Expression, environment);
           break;
 
         case BlockStmt blockStmt:
-          ExecuteBlock(blockStmt.Statements, new ScriptEnvironment(environment));
+          await ExecuteBlock(blockStmt.Statements, new ScriptEnvironment(environment));
           break;
 
         case IfStmt ifStmt:
-          ExecuteIf(ifStmt, environment);
+          await ExecuteIf(ifStmt, environment);
           break;
 
         case WhileStmt whileStmt:
-          ExecuteWhile(whileStmt, environment);
+          await ExecuteWhile(whileStmt, environment);
           break;
 
         case ForStmt forStmt:
-          ExecuteFor(forStmt, environment);
+          await ExecuteFor(forStmt, environment);
           break;
 
         case ReturnStmt returnStmt:
-          ExecuteReturn(returnStmt, environment);
+          await ExecuteReturn(returnStmt, environment);
           break;
 
         case ThrowStmt throwStmt:
-          ExecuteThrow(throwStmt, environment);
+          await ExecuteThrow(throwStmt, environment);
           break;
 
         case TryStmt tryStmt:
-          ExecuteTry(tryStmt, environment);
+          await ExecuteTry(tryStmt, environment);
           break;
 
         default:
@@ -90,11 +100,11 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    public void ExecuteBlock(IReadOnlyList<Stmt> statements, ScriptEnvironment environment)
+    public async Task ExecuteBlock(IReadOnlyList<Stmt> statements, ScriptEnvironment environment)
     {
       foreach (var statement in statements)
       {
-        Execute(statement, environment);
+        await Execute(statement, environment);
 
         if (_context.Signal != null)
         {
@@ -103,13 +113,13 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private void ExecuteVariableDecl(VariableDecl declaration, ScriptEnvironment environment)
+    private async Task ExecuteVariableDecl(VariableDecl declaration, ScriptEnvironment environment)
     {
       ALKScriptValue value = NullValue.Instance;
 
       if (declaration.Initializer != null)
       {
-        value = _context.Eval(declaration.Initializer, environment);
+        value = await _context.Eval(declaration.Initializer, environment);
 
         if (_context.Signal != null)
         {
@@ -134,9 +144,9 @@ namespace ALKScript.Interpreter.Evaluator
       environment.Define(declaration.Name.Lexeme, new ClassValue(declaration, superclass, environment));
     }
 
-    private void ExecuteIf(IfStmt statement, ScriptEnvironment environment)
+    private async Task ExecuteIf(IfStmt statement, ScriptEnvironment environment)
     {
-      var condition = _context.Eval(statement.Condition, environment);
+      var condition = await _context.Eval(statement.Condition, environment);
 
       if (_context.Signal != null)
       {
@@ -145,19 +155,19 @@ namespace ALKScript.Interpreter.Evaluator
 
       if (condition.IsTruthy)
       {
-        Execute(statement.ThenBranch, environment);
+        await Execute(statement.ThenBranch, environment);
       }
       else if (statement.ElseBranch != null)
       {
-        Execute(statement.ElseBranch, environment);
+        await Execute(statement.ElseBranch, environment);
       }
     }
 
-    private void ExecuteWhile(WhileStmt statement, ScriptEnvironment environment)
+    private async Task ExecuteWhile(WhileStmt statement, ScriptEnvironment environment)
     {
       while (true)
       {
-        var condition = _context.Eval(statement.Condition, environment);
+        var condition = await _context.Eval(statement.Condition, environment);
 
         if (_context.Signal != null)
         {
@@ -169,7 +179,7 @@ namespace ALKScript.Interpreter.Evaluator
           return;
         }
 
-        Execute(statement.Body, environment);
+        await Execute(statement.Body, environment);
 
         if (_context.Signal != null)
         {
@@ -178,13 +188,13 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private void ExecuteFor(ForStmt statement, ScriptEnvironment environment)
+    private async Task ExecuteFor(ForStmt statement, ScriptEnvironment environment)
     {
       var loopEnvironment = new ScriptEnvironment(environment);
 
       if (statement.Initializer != null)
       {
-        Execute(statement.Initializer, loopEnvironment);
+        await Execute(statement.Initializer, loopEnvironment);
 
         if (_context.Signal != null)
         {
@@ -196,7 +206,7 @@ namespace ALKScript.Interpreter.Evaluator
       {
         if (statement.Condition != null)
         {
-          var condition = _context.Eval(statement.Condition, loopEnvironment);
+          var condition = await _context.Eval(statement.Condition, loopEnvironment);
 
           if (_context.Signal != null)
           {
@@ -209,7 +219,7 @@ namespace ALKScript.Interpreter.Evaluator
           }
         }
 
-        Execute(statement.Body, loopEnvironment);
+        await Execute(statement.Body, loopEnvironment);
 
         if (_context.Signal != null)
         {
@@ -218,7 +228,7 @@ namespace ALKScript.Interpreter.Evaluator
 
         if (statement.Increment != null)
         {
-          _context.Eval(statement.Increment, loopEnvironment);
+          await _context.Eval(statement.Increment, loopEnvironment);
 
           if (_context.Signal != null)
           {
@@ -228,13 +238,13 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private void ExecuteReturn(ReturnStmt statement, ScriptEnvironment environment)
+    private async Task ExecuteReturn(ReturnStmt statement, ScriptEnvironment environment)
     {
       var value = NullValue.Instance as ALKScriptValue;
 
       if (statement.Value != null)
       {
-        value = _context.Eval(statement.Value, environment);
+        value = await _context.Eval(statement.Value, environment);
 
         if (_context.Signal != null)
         {
@@ -245,9 +255,9 @@ namespace ALKScript.Interpreter.Evaluator
       _context.Signal = Signal.Return(value);
     }
 
-    private void ExecuteThrow(ThrowStmt statement, ScriptEnvironment environment)
+    private async Task ExecuteThrow(ThrowStmt statement, ScriptEnvironment environment)
     {
-      var value = _context.Eval(statement.Value, environment);
+      var value = await _context.Eval(statement.Value, environment);
 
       if (_context.Signal != null)
       {
@@ -257,15 +267,15 @@ namespace ALKScript.Interpreter.Evaluator
       _context.Signal = Signal.Thrown(value);
     }
 
-    private void ExecuteTry(TryStmt statement, ScriptEnvironment environment)
+    private async Task ExecuteTry(TryStmt statement, ScriptEnvironment environment)
     {
-      ExecuteBlock(statement.TryBlock.Statements, new ScriptEnvironment(environment));
+      await ExecuteBlock(statement.TryBlock.Statements, new ScriptEnvironment(environment));
 
       if (_context.Signal is { Kind: SignalKind.Thrown } thrown)
       {
         _context.Signal = null;
 
-        if (!TryHandle(statement.CatchClauses, thrown.Value, environment) && _context.Signal == null)
+        if (!await TryHandle(statement.CatchClauses, thrown.Value, environment) && _context.Signal == null)
         {
           _context.Signal = thrown;
         }
@@ -276,7 +286,7 @@ namespace ALKScript.Interpreter.Evaluator
         var pending = _context.Signal;
         _context.Signal = null;
 
-        ExecuteBlock(statement.FinallyBlock.Statements, new ScriptEnvironment(environment));
+        await ExecuteBlock(statement.FinallyBlock.Statements, new ScriptEnvironment(environment));
 
         // A "return"/"throw" raised by the "finally" block overrides whatever
         // was pending beforehand — matching ordinary try/finally semantics.
@@ -287,7 +297,7 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private bool TryHandle(IReadOnlyList<CatchClause> clauses, ALKScriptValue thrown, ScriptEnvironment environment)
+    private async Task<bool> TryHandle(IReadOnlyList<CatchClause> clauses, ALKScriptValue thrown, ScriptEnvironment environment)
     {
       foreach (var clause in clauses)
       {
@@ -298,7 +308,7 @@ namespace ALKScript.Interpreter.Evaluator
           catchEnvironment.Define(clause.ExceptionName.Lexeme, thrown);
         }
 
-        ExecuteBlock(clause.Body.Statements, catchEnvironment);
+        await ExecuteBlock(clause.Body.Statements, catchEnvironment);
         return true;
       }
 

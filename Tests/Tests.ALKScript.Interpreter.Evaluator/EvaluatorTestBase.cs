@@ -46,7 +46,12 @@ public abstract class EvaluatorTestBase
   protected static void RunWithBindings(string source, ScriptNativeBindings nativeBindings)
   {
     var graph = LoadGraph(source);
-    new ProgramEvaluator(nativeBindings).Evaluate(graph);
+
+    // The evaluator is Task-returning so "await" can suspend mid-script (see
+    // IEvaluationContext) — but nothing in these tests actually suspends, so
+    // every task here completes synchronously. Blocking on it keeps the test
+    // helpers' signatures synchronous without changing what they verify.
+    new ProgramEvaluator(nativeBindings).Evaluate(graph).GetAwaiter().GetResult();
   }
 
   /// <summary>
@@ -60,7 +65,7 @@ public abstract class EvaluatorTestBase
   protected static void RunWithMethodBindings(string source, ScriptNativeBindings? nativeBindings, ScriptNativeMethodBindings nativeMethodBindings)
   {
     var graph = LoadGraph(source);
-    new ProgramEvaluator(nativeBindings, nativeMethodBindings).Evaluate(graph);
+    new ProgramEvaluator(nativeBindings, nativeMethodBindings).Evaluate(graph).GetAwaiter().GetResult();
   }
 
   /// <summary>
@@ -75,7 +80,7 @@ public abstract class EvaluatorTestBase
   protected static void RunWithGlobals(string source, IReadOnlyList<string> globalPreludeSources, ScriptNativeBindings nativeBindings)
   {
     var graph = LoadGraph(source, globalPreludeSources);
-    new ProgramEvaluator(nativeBindings).Evaluate(graph);
+    new ProgramEvaluator(nativeBindings).Evaluate(graph).GetAwaiter().GetResult();
   }
 
   protected static ModuleGraph LoadGraph(string source, IReadOnlyList<string>? globalPreludeSources = null)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Values;
@@ -10,6 +11,11 @@ namespace ALKScript.Interpreter.Evaluator
   /// Resolves a callee to an invocation, binds arguments to parameters, and
   /// runs constructors for <c>new</c> expressions. Statement execution (running
   /// function/constructor bodies) is delegated through <see cref="IEvaluationContext"/>.
+  ///
+  /// <c>async</c>/<see cref="Task"/>-returning — see <see cref="IEvaluationContext"/>
+  /// for why: a function/constructor body may itself contain an <c>await</c>
+  /// that suspends mid-call, and this is the plumbing that lets the call resume
+  /// later exactly where it left off.
   /// </summary>
   internal class CallInvoker : ICallInvoker
   {
@@ -20,26 +26,26 @@ namespace ALKScript.Interpreter.Evaluator
       _context = context;
     }
 
-    public ALKScriptValue Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    public async Task<ALKScriptValue> Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     {
       switch (callee)
       {
         case ClassValue classValue:
-          return Construct(classValue, arguments, site);
+          return await Construct(classValue, arguments, site);
 
         case CallableValue callable:
           if (arguments.Count != callable.Arity)
           {
             throw new RuntimeException(site, $"Expected {callable.Arity} argument(s) but got {arguments.Count}.");
           }
-          return Invoke(callable, arguments);
+          return await Invoke(callable, arguments);
 
         default:
           throw new RuntimeException(site, $"Cannot call a value of type '{callee.TypeName}'.");
       }
     }
 
-    public ALKScriptValue Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    public async Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     {
       var instance = new InstanceValue(classValue);
       var constructor = FindConstructor(classValue);
@@ -59,7 +65,7 @@ namespace ALKScript.Interpreter.Evaluator
           constructorEnvironment.Define(constructor.Parameters[i].Name, arguments[i]);
         }
 
-        _context.ExecuteBlock(constructor.Body.Statements, constructorEnvironment);
+        await _context.ExecuteBlock(constructor.Body.Statements, constructorEnvironment);
 
         // A bare "return;" inside a constructor simply ends construction early;
         // a "throw" is left pending so it propagates to the caller.
@@ -76,7 +82,7 @@ namespace ALKScript.Interpreter.Evaluator
       return instance;
     }
 
-    private ALKScriptValue Invoke(CallableValue callable, IReadOnlyList<ALKScriptValue> arguments)
+    private async Task<ALKScriptValue> Invoke(CallableValue callable, IReadOnlyList<ALKScriptValue> arguments)
     {
       switch (callable)
       {
@@ -84,7 +90,7 @@ namespace ALKScript.Interpreter.Evaluator
           return nativeFunction.Implementation(arguments);
 
         case FunctionValue function:
-          return InvokeFunction(function, arguments);
+          return await InvokeFunction(function, arguments);
 
         default:
           throw new RuntimeException(
@@ -93,7 +99,7 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private ALKScriptValue InvokeFunction(FunctionValue function, IReadOnlyList<ALKScriptValue> arguments)
+    private async Task<ALKScriptValue> InvokeFunction(FunctionValue function, IReadOnlyList<ALKScriptValue> arguments)
     {
       var callEnvironment = new ScriptEnvironment(function.Closure);
 
@@ -107,7 +113,7 @@ namespace ALKScript.Interpreter.Evaluator
         callEnvironment.Define(function.Declaration.Parameters[i].Name, arguments[i]);
       }
 
-      _context.ExecuteBlock(function.Declaration.Body!.Statements, callEnvironment);
+      await _context.ExecuteBlock(function.Declaration.Body!.Statements, callEnvironment);
 
       // "return" is consumed here — it unwinds no further than the call that
       // produced it. A "throw" is left pending so it propagates to the caller.
