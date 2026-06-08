@@ -29,6 +29,7 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
   {
     private readonly IAsyncOperationBinder _binder;
     private Task<ALKScriptValue>? _started;
+    private bool _replayed;
 
     public PendingOperation Operation { get; }
 
@@ -38,8 +39,20 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
       _binder = binder;
     }
 
-    /// <summary>Whether this operation's host-side effect has been (lazily) started yet — i.e. whether <see cref="Start"/> has been called.</summary>
-    public bool HasStarted => _started != null;
+    /// <summary>
+    /// Whether this operation is "consumed" — either started via <see cref="Start"/>
+    /// or short-circuited via <see cref="MarkReplayed"/> during log replay —
+    /// and therefore must not be passed to <see cref="IAsyncOperationBinder.Discard"/>
+    /// at end-of-script.
+    /// </summary>
+    public bool HasStarted => _started != null || _replayed;
+
+    /// <summary>
+    /// Marks this operation as consumed by log replay — its result came from the
+    /// recorded log, so the host-side effect must not be started again via
+    /// <see cref="IAsyncOperationBinder.Discard"/> at end-of-script.
+    /// </summary>
+    public void MarkReplayed() => _replayed = true;
 
     /// <summary>
     /// Starts the underlying host-side effect via the <see cref="IAsyncOperationBinder"/>
@@ -51,8 +64,8 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     public override string TypeName => "Task";
 
     public override string ToString() =>
-      _started == null
-        ? "<task not started>"
-        : $"<task {(_started.IsCompleted ? "completed" : "pending")}>";
+      _replayed ? "<task replayed>" :
+      _started == null ? "<task not started>" :
+      $"<task {(_started.IsCompleted ? "completed" : "pending")}>";
   }
 }

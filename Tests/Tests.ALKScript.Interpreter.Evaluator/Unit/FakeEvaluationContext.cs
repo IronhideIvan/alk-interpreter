@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
 using ALKScript.Interpreter.Evaluator;
@@ -61,4 +62,8 @@ internal sealed class FakeEvaluationContext : IEvaluationContext
 
   public Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     => Task.FromResult(ConstructImpl(classValue, arguments, site));
+
+  // Replay log stubs — no-op by default; override per-test if needed.
+  public OperationLogEntry? TryReplayNext() => null;
+  public void RecordEntry(OperationLogEntry entry) { }
 }

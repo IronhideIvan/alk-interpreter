@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
@@ -77,6 +78,43 @@ public abstract class EvaluatorTestBase
   /// <c>native</c> declarations in the same script (e.g. test helpers such as
   /// <c>record</c> or a <c>resolve()</c> native that completes a pending task).
   /// </summary>
+  /// <summary>
+  /// Runs <paramref name="source"/> live (no replay log), returning both the
+  /// values passed to <c>record()</c> and the full operation log captured
+  /// during evaluation — for use in replay-round-trip tests.
+  /// </summary>
+  protected static (IReadOnlyList<ALKScriptValue> Recorded, IReadOnlyList<OperationLogEntry> Log)
+    RunAndCaptureLog(string source, IAsyncOperationBinder operationBinder, ScriptNativeBindings? extraBindings = null)
+  {
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings(extraBindings ?? new ScriptNativeBindings())
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+    var graph = LoadGraph(source);
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: operationBinder);
+    new ScriptScheduler().RunUntilComplete(evaluator.Evaluate(graph));
+    return (recorded, evaluator.Log);
+  }
+
+  /// <summary>
+  /// Replays <paramref name="source"/> against <paramref name="replayLog"/>,
+  /// returning the values passed to <c>record()</c>. The binder is still
+  /// required because execution may advance past the log into live territory.
+  /// </summary>
+  protected static IReadOnlyList<ALKScriptValue> RunWithReplayLog(string source, IAsyncOperationBinder operationBinder, IReadOnlyList<OperationLogEntry> replayLog, ScriptNativeBindings? extraBindings = null)
+  {
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings(extraBindings ?? new ScriptNativeBindings())
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+    var graph = LoadGraph(source);
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: operationBinder, replayLog: replayLog);
+    new ScriptScheduler().RunUntilComplete(evaluator.Evaluate(graph));
+    return recorded;
+  }
+
   protected static void RunWithOperationBinder(string source, ScriptNativeBindings? nativeBindings, IAsyncOperationBinder operationBinder)
   {
     var graph = LoadGraph(source);

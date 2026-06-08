@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
 
@@ -351,7 +352,7 @@ namespace ALKScript.Interpreter.Evaluator
           return await AwaitTask(taskValue.Task);
 
         case PendingOperationValue pending:
-          return await AwaitTask(pending.Start());
+          return await AwaitPending(pending);
 
         case ArrayValue array:
           return await EvalWhenAll(array.Items);
@@ -379,77 +380,170 @@ namespace ALKScript.Interpreter.Evaluator
     }
 
     /// <summary>
-    /// Implements <c>await [a, b, …]</c> — sugar for <c>Task.whenAll</c> (see
-    /// docs/ASYNC_AWAIT_DESIGN.md decision #13). Starts any
-    /// <see cref="PendingOperationValue"/> elements, then awaits all tasks
-    /// concurrently. <see cref="Task.WhenAll"/> natively implements the
-    /// run-to-completion policy (all tasks run to settlement regardless of
-    /// individual faults; it waits for all before resolving or throwing).
-    /// Individual faults are reported to the host via
-    /// <see cref="IFunctionValueFactory.ReportOperationFaulted"/> (decision #11)
-    /// and aggregated into a single catchable <see cref="Signal.Thrown"/>. A
-    /// full-success result is a new <see cref="ArrayValue"/> of the resolved
-    /// values, in element order.
+    /// Handles <c>await &lt;pendingOperationValue&gt;</c> with record-and-replay
+    /// awareness. During replay (log not yet exhausted), the next log entry is
+    /// consumed positionally and its recorded result or fault is returned
+    /// immediately — the host-side effect is not started. During live execution,
+    /// <see cref="PendingOperationValue.Start"/> is called, the result is
+    /// awaited, and an <see cref="OperationLogEntry"/> is appended to the log
+    /// for future replay.
     /// </summary>
-    private async Task<ALKScriptValue> EvalWhenAll(IReadOnlyList<ALKScriptValue> items)
+    private async Task<ALKScriptValue> AwaitPending(PendingOperationValue pending)
     {
-      var count = items.Count;
-      var tasks = new Task<ALKScriptValue>[count];
-      var operations = new PendingOperationValue?[count];
-
-      for (int i = 0; i < count; i++)
+      var entry = _context.TryReplayNext();
+      if (entry != null)
       {
-        switch (items[i])
+        pending.MarkReplayed();
+        if (entry.IsFaulted)
         {
-          case TaskValue tv:
-            tasks[i] = tv.Task;
-            break;
-          case PendingOperationValue pov:
-            tasks[i] = pov.Start();
-            operations[i] = pov;
-            break;
-          default:
-            tasks[i] = Task.FromResult(items[i]);
-            break;
+          _context.Signal = Signal.Thrown(new StringValue(entry.FaultMessage!));
+          return NullValue.Instance;
         }
+        return entry.Result!;
       }
 
-      ALKScriptValue[] results;
       try
       {
-        results = await Task.WhenAll(tasks);
+        var result = await pending.Start();
+        _context.RecordEntry(OperationLogEntry.FromResult(pending.Operation, result));
+        return result;
       }
       catch (RuntimeException)
       {
         throw;
       }
-      catch
+      catch (Exception exception)
       {
-        // Task.WhenAll waited for every task to settle before throwing, so all
-        // tasks are now complete. Collect individual faults and aggregate.
-        var faultMessages = new List<string>(count);
+        _context.RecordEntry(OperationLogEntry.FromFault(pending.Operation, exception.Message));
+        _context.Signal = Signal.Thrown(new StringValue(exception.Message));
+        return NullValue.Instance;
+      }
+    }
+
+    /// <summary>
+    /// Implements <c>await [a, b, …]</c> — sugar for <c>Task.whenAll</c> (see
+    /// docs/ASYNC_AWAIT_DESIGN.md decision #13). Record-and-replay aware: each
+    /// <see cref="PendingOperationValue"/> element is tried against the replay
+    /// log first (consuming the next entry positionally); elements not covered
+    /// by the log are started live. <see cref="Task.WhenAll"/> provides the
+    /// run-to-completion guarantee for the live portion. Live results and faults
+    /// are recorded to the log in source (array-element) order so replays
+    /// encounter them in the same sequence. Individual faults are also reported
+    /// to the host (decision #11) and aggregated into one catchable
+    /// <see cref="Signal.Thrown"/>.
+    /// </summary>
+    private async Task<ALKScriptValue> EvalWhenAll(IReadOnlyList<ALKScriptValue> items)
+    {
+      var count = items.Count;
+      var resolved = new ALKScriptValue?[count];
+      var faultMessages = new string?[count];
+      var pendingOps = new PendingOperationValue?[count];
+      var liveTasks = new Task<ALKScriptValue>?[count];
+      var liveCount = 0;
+
+      // First pass: replay what the log covers; queue up the rest as live tasks.
+      for (int i = 0; i < count; i++)
+      {
+        switch (items[i])
+        {
+          case PendingOperationValue pov:
+            pendingOps[i] = pov;
+            var entry = _context.TryReplayNext();
+            if (entry != null)
+            {
+              pov.MarkReplayed();
+              if (entry.IsFaulted) faultMessages[i] = entry.FaultMessage;
+              else resolved[i] = entry.Result;
+            }
+            else
+            {
+              liveTasks[i] = pov.Start();
+              liveCount++;
+            }
+            break;
+
+          case TaskValue tv:
+            liveTasks[i] = tv.Task;
+            liveCount++;
+            break;
+
+          default:
+            resolved[i] = items[i];
+            break;
+        }
+      }
+
+      // Await all live tasks concurrently.
+      if (liveCount > 0)
+      {
+        var taskList = new List<Task<ALKScriptValue>>(liveCount);
+        var indices = new List<int>(liveCount);
         for (int i = 0; i < count; i++)
         {
-          if (tasks[i].IsFaulted)
+          if (liveTasks[i] != null) { taskList.Add(liveTasks[i]!); indices.Add(i); }
+        }
+
+        try
+        {
+          var liveResults = await Task.WhenAll(taskList);
+          for (int j = 0; j < indices.Count; j++)
           {
-            var fault = tasks[i].Exception!.InnerException ?? tasks[i].Exception!;
-            faultMessages.Add(fault.Message);
-            if (operations[i] != null)
+            int i = indices[j];
+            resolved[i] = liveResults[j];
+            if (pendingOps[i] != null)
+              _context.RecordEntry(OperationLogEntry.FromResult(pendingOps[i]!.Operation, resolved[i]!));
+          }
+        }
+        catch (RuntimeException)
+        {
+          throw;
+        }
+        catch
+        {
+          // Task.WhenAll waited for all to settle. Collect results and faults
+          // in source order, recording each to the log.
+          for (int j = 0; j < indices.Count; j++)
+          {
+            int i = indices[j];
+            if (taskList[j].IsFaulted)
             {
-              _functionValueFactory.ReportOperationFaulted(operations[i]!.Operation, fault);
+              var fault = taskList[j].Exception!.InnerException ?? taskList[j].Exception!;
+              faultMessages[i] = fault.Message;
+              if (pendingOps[i] != null)
+              {
+                _context.RecordEntry(OperationLogEntry.FromFault(pendingOps[i]!.Operation, fault.Message));
+                _functionValueFactory.ReportOperationFaulted(pendingOps[i]!.Operation, fault);
+              }
+            }
+            else
+            {
+              resolved[i] = taskList[j].Result;
+              if (pendingOps[i] != null)
+                _context.RecordEntry(OperationLogEntry.FromResult(pendingOps[i]!.Operation, resolved[i]!));
             }
           }
         }
+      }
 
-        var message = faultMessages.Count == 1
-          ? faultMessages[0]
-          : $"Multiple operations failed: {string.Join("; ", faultMessages)}";
+      // Surface any faults (from replay or live) as an aggregate thrown signal.
+      var allFaults = new List<string>();
+      for (int i = 0; i < count; i++)
+      {
+        if (faultMessages[i] != null) allFaults.Add(faultMessages[i]!);
+      }
 
+      if (allFaults.Count > 0)
+      {
+        var message = allFaults.Count == 1
+          ? allFaults[0]
+          : $"Multiple operations failed: {string.Join("; ", allFaults)}";
         _context.Signal = Signal.Thrown(new StringValue(message));
         return NullValue.Instance;
       }
 
-      return new ArrayValue(new List<ALKScriptValue>(results));
+      var results = new List<ALKScriptValue>(count);
+      for (int i = 0; i < count; i++) results.Add(resolved[i] ?? NullValue.Instance);
+      return new ArrayValue(results);
     }
 
     private async Task<ALKScriptValue> EvalGet(GetExpr expression, ScriptEnvironment environment)

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
 
@@ -48,5 +49,18 @@ namespace ALKScript.Interpreter.Common.Evaluation
     Task<ALKScriptValue> Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site);
 
     Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site);
+
+    /// <summary>
+    /// Consumes and returns the next entry from the replay log, or <c>null</c>
+    /// if the log is exhausted (live mode). Called at each <c>await</c> on a
+    /// <see cref="PendingOperationValue"/> — the positional log contract.
+    /// </summary>
+    OperationLogEntry? TryReplayNext();
+
+    /// <summary>
+    /// Appends <paramref name="entry"/> to the operation log, recording an
+    /// <c>async native</c> operation's outcome for future replay.
+    /// </summary>
+    void RecordEntry(OperationLogEntry entry);
   }
 }

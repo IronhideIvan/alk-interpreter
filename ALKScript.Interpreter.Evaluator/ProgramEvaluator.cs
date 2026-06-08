@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Common.Token;
@@ -30,6 +31,10 @@ namespace ALKScript.Interpreter.Evaluator
     private readonly ICallInvoker _calls;
 
     private Signal? _signal;
+
+    private readonly List<OperationLogEntry> _log = new List<OperationLogEntry>();
+    private int _replayIndex;
+    private int _replayLength; // fixed at construction; live-recorded entries never qualify as replay
 
     /// <summary>
     /// Creates an evaluator.
@@ -70,9 +75,20 @@ namespace ALKScript.Interpreter.Evaluator
     /// <paramref name="nativeBindings"/>). A runtime that declares no
     /// <c>native async</c> functions can omit it.
     /// </param>
-    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, Common.Evaluation.Scheduling.IAsyncOperationBinder? operationBinder = null)
+    /// <param name="replayLog">
+    /// A previously-captured operation log to replay (see
+    /// <see cref="Log"/> and docs/ASYNC_AWAIT_DESIGN.md decision #17). When
+    /// supplied, each <c>await</c> on a <see cref="Common.Evaluation.Values.PendingOperationValue"/>
+    /// consumes the next log entry positionally — returning its recorded result
+    /// or fault without starting the operation — until the log is exhausted,
+    /// at which point live execution resumes and new entries are appended.
+    /// Omit (or pass <c>null</c>) for a fresh run with no prior log.
+    /// </param>
+    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, Common.Evaluation.Scheduling.IAsyncOperationBinder? operationBinder = null, IReadOnlyList<OperationLogEntry>? replayLog = null)
       : this(new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder))
     {
+      if (replayLog != null) _log.AddRange(replayLog);
+      _replayLength = _log.Count;
     }
 
     /// <summary>
@@ -160,6 +176,19 @@ namespace ALKScript.Interpreter.Evaluator
     }
 
     // ---------------------------------------------------------------------
+    // Replay log — the record-and-replay save/load surface (decision #17).
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// The ordered log of every <c>async native</c> operation outcome recorded
+    /// during this run, for persistence and future replay (see
+    /// docs/ASYNC_AWAIT_DESIGN.md decision #17). During a replay run this list
+    /// starts pre-populated with the saved entries and grows as execution
+    /// advances past the last saved point into live territory.
+    /// </summary>
+    public IReadOnlyList<OperationLogEntry> Log => _log;
+
+    // ---------------------------------------------------------------------
     // IEvaluationContext — routes recursive calls between the collaborators
     // and exposes the pending-signal slot they coordinate on.
     // ---------------------------------------------------------------------
@@ -184,5 +213,10 @@ namespace ALKScript.Interpreter.Evaluator
 
     Task<ALKScriptValue> IEvaluationContext.Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
       => _calls.Construct(classValue, arguments, site);
+
+    OperationLogEntry? IEvaluationContext.TryReplayNext()
+      => _replayIndex < _replayLength ? _log[_replayIndex++] : null;
+
+    void IEvaluationContext.RecordEntry(OperationLogEntry entry) => _log.Add(entry);
   }
 }
