@@ -5,6 +5,7 @@ using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Lexer;
 using ALKScript.Interpreter.Parser;
 using ALKScript.Interpreter.Evaluator;
+using ALKScript.Interpreter.Evaluator.Scheduling;
 
 namespace Tests.ALKScript.Interpreter.Evaluator;
 
@@ -48,10 +49,15 @@ public abstract class EvaluatorTestBase
     var graph = LoadGraph(source);
 
     // The evaluator is Task-returning so "await" can suspend mid-script (see
-    // IEvaluationContext) — but nothing in these tests actually suspends, so
-    // every task here completes synchronously. Blocking on it keeps the test
-    // helpers' signatures synchronous without changing what they verify.
-    new ProgramEvaluator(nativeBindings).Evaluate(graph).GetAwaiter().GetResult();
+    // IEvaluationContext) — and, with real suspension (see TaskValue/EvalAwait),
+    // some of these tests' scripts genuinely do suspend and later resume via
+    // continuations that must run on the scheduler's single host thread (see
+    // ScriptScheduler — design decision #2). Driving evaluation through
+    // RunUntilComplete is the test-helper equivalent of a host's per-tick
+    // Pump() loop: it installs the scheduler as SynchronizationContext.Current
+    // and pumps continuations until the whole script — including any
+    // suspensions — has completed, then unwraps the result/exception.
+    new ScriptScheduler().RunUntilComplete(new ProgramEvaluator(nativeBindings).Evaluate(graph));
   }
 
   /// <summary>
@@ -65,7 +71,7 @@ public abstract class EvaluatorTestBase
   protected static void RunWithMethodBindings(string source, ScriptNativeBindings? nativeBindings, ScriptNativeMethodBindings nativeMethodBindings)
   {
     var graph = LoadGraph(source);
-    new ProgramEvaluator(nativeBindings, nativeMethodBindings).Evaluate(graph).GetAwaiter().GetResult();
+    new ScriptScheduler().RunUntilComplete(new ProgramEvaluator(nativeBindings, nativeMethodBindings).Evaluate(graph));
   }
 
   /// <summary>
@@ -80,7 +86,7 @@ public abstract class EvaluatorTestBase
   protected static void RunWithGlobals(string source, IReadOnlyList<string> globalPreludeSources, ScriptNativeBindings nativeBindings)
   {
     var graph = LoadGraph(source, globalPreludeSources);
-    new ProgramEvaluator(nativeBindings).Evaluate(graph).GetAwaiter().GetResult();
+    new ScriptScheduler().RunUntilComplete(new ProgramEvaluator(nativeBindings).Evaluate(graph));
   }
 
   protected static ModuleGraph LoadGraph(string source, IReadOnlyList<string>? globalPreludeSources = null)

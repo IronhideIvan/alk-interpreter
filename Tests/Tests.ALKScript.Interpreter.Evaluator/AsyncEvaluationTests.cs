@@ -98,6 +98,46 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     Assert.Equal(42L, resolved.Value);
   }
 
+  [Fact]
+  public void Evaluate_AwaitOnTaskCompletedFromABackgroundThread_SuspendsAndSafelyResumesOnTheScriptThread()
+  {
+    // This is the scenario Phase 3 had to work around (see its "known
+    // limitation" tests' comments): a native hands back a task that genuinely
+    // settles on a background thread — via Task.Run — fully concurrently with
+    // the script. Without a scheduler, that continuation would either run
+    // unobserved (the driver had already returned) or race the script on
+    // whatever thread it happened to land on. Now that EvaluatorTestBase
+    // drives evaluation through ScriptScheduler.RunUntilComplete, the
+    // continuation is Post()ed back to — and only ever runs on — the single
+    // host thread that's pumping the script, exactly like every other
+    // continuation: genuinely concurrent settlement, but cooperative,
+    // single-threaded resumption.
+    //
+    // NB: this awaits directly at the top level rather than from inside an
+    // "async function main()" — top-level statements run as part of the
+    // overall (also Task-returning) program evaluation, so awaiting here
+    // suspends *that* task, and RunUntilComplete genuinely waits for it.
+    // (Awaiting only from within a fire-and-forget "async" call wouldn't:
+    // per the eager-start model such a call returns immediately, so the
+    // top-level "Evaluate" task — and thus RunUntilComplete — would
+    // consider the program already finished. Observing a fire-and-forget
+    // async call's *eventual* completion is exactly the "Discard"/lazy-start
+    // mechanism the design defers past this phase.)
+    var recorded = Run(
+      $"{RecordDeclaration}\nnative async function int fetch();\nrecord(await fetch());",
+      new ScriptNativeBindings
+      {
+        ["fetch"] = _ => new TaskValue(Task.Run(async () =>
+        {
+          await Task.Delay(20);
+          return (ALKScriptValue)new IntValue(99);
+        }))
+      });
+
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(99L, value.Value);
+  }
+
   private static IReadOnlyList<ALKScriptValue> Run(string source, ScriptNativeBindings nativeBindings)
   {
     var recorded = new List<ALKScriptValue>();
