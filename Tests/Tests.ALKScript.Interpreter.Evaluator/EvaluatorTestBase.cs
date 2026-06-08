@@ -45,7 +45,7 @@ public abstract class EvaluatorTestBase
   protected static void RunWithBindings(string source, ScriptNativeBindings nativeBindings)
   {
     var graph = LoadGraph(source);
-    new ProgramEvaluator(nativeBindings).Evaluate(graph);
+    new ProgramEvaluator(new ALKScriptLexer(), new ALKScriptParser(), nativeBindings).Evaluate(graph);
   }
 
   protected static ModuleGraph LoadGraph(string source)
