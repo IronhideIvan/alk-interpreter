@@ -12,10 +12,19 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     public ClassDecl Declaration { get; }
     public ClassValue? Superclass { get; }
 
-    public ClassValue(ClassDecl declaration, ClassValue? superclass)
+    /// <summary>
+    /// The environment the class was declared in, captured as a closure so its
+    /// methods and constructors can see enclosing module-level bindings (other
+    /// top-level declarations, imports, etc.) — the same way a function's body
+    /// closes over the scope it was declared in.
+    /// </summary>
+    public ScriptEnvironment Closure { get; }
+
+    public ClassValue(ClassDecl declaration, ClassValue? superclass, ScriptEnvironment closure)
     {
       Declaration = declaration;
       Superclass = superclass;
+      Closure = closure;
     }
 
     public override string TypeName => "class";

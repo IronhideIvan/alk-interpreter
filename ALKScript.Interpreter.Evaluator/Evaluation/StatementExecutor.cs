@@ -131,7 +131,7 @@ namespace ALKScript.Interpreter.Evaluator
           ?? throw new RuntimeException(declaration.SuperclassName, $"'{declaration.SuperclassName.Lexeme}' is not a class.");
       }
 
-      environment.Define(declaration.Name.Lexeme, new ClassValue(declaration, superclass));
+      environment.Define(declaration.Name.Lexeme, new ClassValue(declaration, superclass, environment));
     }
 
     private void ExecuteIf(IfStmt statement, ScriptEnvironment environment)

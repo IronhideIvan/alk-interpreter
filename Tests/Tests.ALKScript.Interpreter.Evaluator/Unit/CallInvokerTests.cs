@@ -15,7 +15,7 @@ public class CallInvokerTests
     new FunctionDecl(false, false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("f"), parameters, new BlockStmt(System.Array.Empty<Stmt>()));
 
   private static ClassValue MakeClass(IReadOnlyList<MemberDecl> members, string name = "Foo") =>
-    new ClassValue(new ClassDecl(false, Nodes.Identifier(name), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), members), null);
+    new ClassValue(new ClassDecl(false, Nodes.Identifier(name), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), members), null, new ScriptEnvironment());
 
   [Fact]
   public void Call_WithClassValue_DelegatesToConstruct()

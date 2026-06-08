@@ -201,7 +201,7 @@ public class ExpressionEvaluatorTests
   public void Eval_New_EvaluatesArgumentsThenDelegatesConstructionToTheContext()
   {
     var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
-    var classValue = new ClassValue(classDecl, null);
+    var classValue = new ClassValue(classDecl, null, new ScriptEnvironment());
     var environment = new ScriptEnvironment();
     environment.Define("Foo", classValue);
 
@@ -234,7 +234,7 @@ public class ExpressionEvaluatorTests
   public void Eval_GetOnInstance_ReturnsFieldValue()
   {
     var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
-    var instance = new InstanceValue(new ClassValue(classDecl, null));
+    var instance = new InstanceValue(new ClassValue(classDecl, null, new ScriptEnvironment()));
     instance.Fields["name"] = new StringValue("Ada");
     var environment = new ScriptEnvironment();
     environment.Define("instance", instance);
@@ -250,7 +250,7 @@ public class ExpressionEvaluatorTests
   public void Eval_GetOfUndefinedProperty_ThrowsRuntimeException()
   {
     var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
-    var instance = new InstanceValue(new ClassValue(classDecl, null));
+    var instance = new InstanceValue(new ClassValue(classDecl, null, new ScriptEnvironment()));
     var environment = new ScriptEnvironment();
     environment.Define("instance", instance);
     var get = new GetExpr(Nodes.Ident("instance"), Nodes.Identifier("missing"));
