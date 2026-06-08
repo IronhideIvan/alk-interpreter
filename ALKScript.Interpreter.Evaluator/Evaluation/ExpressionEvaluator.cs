@@ -17,9 +17,11 @@ namespace ALKScript.Interpreter.Evaluator
   /// <see cref="IEvaluationContext"/> for why: this is the plumbing that lets
   /// an <c>await</c> anywhere in an expression tree suspend evaluation
   /// mid-expression and later resume it without losing any in-flight state.
-  /// Phase 2 wires this plumbing through without changing behavior — every
-  /// expression (including <see cref="AwaitExpr"/>, still a pass-through here)
-  /// continues to resolve synchronously.
+  /// <see cref="AwaitExpr"/> (handled by <see cref="EvalAwait"/>) is where that
+  /// suspension becomes real: awaiting a <see cref="TaskValue"/> genuinely
+  /// parks the C#-compiler-generated continuation chain on the underlying
+  /// <see cref="Task"/>, which is what lets the whole evaluator suspend and
+  /// later resume mid-script without losing tree-walk state.
   /// </summary>
   internal class ExpressionEvaluator : IExpressionEvaluator
   {
@@ -81,7 +83,7 @@ namespace ALKScript.Interpreter.Evaluator
           return await EvalNew(newExpr, environment);
 
         case AwaitExpr awaitExpr:
-          return await Eval(awaitExpr.Operand, environment);
+          return await EvalAwait(awaitExpr, environment);
 
         default:
           throw new RuntimeException(
@@ -299,6 +301,59 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       return await _context.Call(callee, arguments, expression.ClosingParen);
+    }
+
+    /// <summary>
+    /// Evaluates <c>await &lt;operand&gt;</c>.
+    ///
+    /// If the operand produces a <see cref="TaskValue"/> — the shape every
+    /// <c>async</c> function call and <c>async native</c> invocation
+    /// produces — this genuinely <c>await</c>s its underlying
+    /// <see cref="System.Threading.Tasks.Task{TResult}"/>: real suspension,
+    /// not a pass-through. That single <c>await</c> is what parks the whole
+    /// compiler-generated continuation chain (this method, its caller, theirs,
+    /// ... all the way up through <see cref="IEvaluationContext"/>) on the
+    /// underlying task, and resumes it later — possibly long after this call
+    /// returns control to whatever is pumping the scheduler — exactly where it
+    /// left off, with no hand-written state machine required.
+    ///
+    /// A faulted task surfaces as a catchable script-level <see cref="Signal.Thrown"/>
+    /// (mirroring a "throw" of the fault's message) rather than tearing down
+    /// the whole evaluation — except for <see cref="RuntimeException"/>, which
+    /// signals an interpreter-level error and is left to propagate as-is.
+    ///
+    /// Awaiting a value that is *not* a <see cref="TaskValue"/> is permissive
+    /// identity — it simply yields the value, mirroring "awaiting an
+    /// already-resolved value" in other async languages — so e.g. `await 1`
+    /// is harmless rather than a type error.
+    /// </summary>
+    private async Task<ALKScriptValue> EvalAwait(AwaitExpr expression, ScriptEnvironment environment)
+    {
+      var operand = await Eval(expression.Operand, environment);
+
+      if (_context.Signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      if (operand is not TaskValue taskValue)
+      {
+        return operand;
+      }
+
+      try
+      {
+        return await taskValue.Task;
+      }
+      catch (RuntimeException)
+      {
+        throw;
+      }
+      catch (System.Exception exception)
+      {
+        _context.Signal = Signal.Thrown(new StringValue(exception.Message));
+        return NullValue.Instance;
+      }
     }
 
     private async Task<ALKScriptValue> EvalGet(GetExpr expression, ScriptEnvironment environment)

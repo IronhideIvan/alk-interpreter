@@ -99,7 +99,7 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private async Task<ALKScriptValue> InvokeFunction(FunctionValue function, IReadOnlyList<ALKScriptValue> arguments)
+    private Task<ALKScriptValue> InvokeFunction(FunctionValue function, IReadOnlyList<ALKScriptValue> arguments)
     {
       var callEnvironment = new ScriptEnvironment(function.Closure);
 
@@ -113,6 +113,31 @@ namespace ALKScript.Interpreter.Evaluator
         callEnvironment.Define(function.Declaration.Parameters[i].Name, arguments[i]);
       }
 
+      // A non-"async" function/method runs its body to completion before
+      // returning, exactly as before — calling it suspends the caller (via
+      // the "await" on RunBody below) for as long as the body takes, with no
+      // observable "in-flight operation" of its own.
+      //
+      // An "async" function/method instead returns a TaskValue immediately,
+      // wrapping whatever RunBody produces — calling it starts the body
+      // running (synchronously, up to its first genuine suspension point,
+      // exactly like a C# "async Task<T>" method), and hands back a
+      // (possibly still-pending) handle the caller can "await" later, do
+      // other work alongside, or even ignore (fire-and-forget). This is what
+      // makes "let t = asyncFn(); ...; await t;" meaningfully different from
+      // "await asyncFn();" — the defining shape of async/await.
+      var bodyTask = RunBody(function, callEnvironment);
+
+      if (function.Declaration.IsAsync)
+      {
+        return Task.FromResult<ALKScriptValue>(new TaskValue(bodyTask));
+      }
+
+      return bodyTask;
+    }
+
+    private async Task<ALKScriptValue> RunBody(FunctionValue function, ScriptEnvironment callEnvironment)
+    {
       await _context.ExecuteBlock(function.Declaration.Body!.Statements, callEnvironment);
 
       // "return" is consumed here — it unwinds no further than the call that
