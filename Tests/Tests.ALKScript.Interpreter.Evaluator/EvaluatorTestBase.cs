@@ -1,5 +1,6 @@
 using System.Linq;
 using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Lexer;
@@ -68,6 +69,20 @@ public abstract class EvaluatorTestBase
   /// constructor docs) — so tests can exercise native methods that read or
   /// mutate the receiving instance's state.
   /// </summary>
+  /// <summary>
+  /// Like <see cref="RunWithBindings"/>, but supplies an
+  /// <paramref name="operationBinder"/> for <c>async native</c> free-standing
+  /// function declarations (see <see cref="IAsyncOperationBinder"/>).
+  /// <paramref name="nativeBindings"/> is still used for any synchronous
+  /// <c>native</c> declarations in the same script (e.g. test helpers such as
+  /// <c>record</c> or a <c>resolve()</c> native that completes a pending task).
+  /// </summary>
+  protected static void RunWithOperationBinder(string source, ScriptNativeBindings? nativeBindings, IAsyncOperationBinder operationBinder)
+  {
+    var graph = LoadGraph(source);
+    new ScriptScheduler().RunUntilComplete(new ProgramEvaluator(nativeBindings, operationBinder: operationBinder).Evaluate(graph));
+  }
+
   protected static void RunWithMethodBindings(string source, ScriptNativeBindings? nativeBindings, ScriptNativeMethodBindings nativeMethodBindings)
   {
     var graph = LoadGraph(source);

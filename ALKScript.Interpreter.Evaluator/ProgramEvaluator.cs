@@ -61,8 +61,16 @@ namespace ALKScript.Interpreter.Evaluator
     /// provides the mechanism (parse-and-assemble), the runtime supplies the
     /// content, and the evaluator just walks the result.
     /// </summary>
-    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null)
-      : this(new FunctionValueFactory(nativeBindings, nativeMethodBindings))
+    /// <param name="operationBinder">
+    /// The host's <see cref="Common.Evaluation.Scheduling.IAsyncOperationBinder"/>
+    /// — the integration seam for free-standing <c>native async</c>
+    /// declarations specifically (see <see cref="FunctionValueFactory"/>'s
+    /// constructor docs for why they're bound separately from
+    /// <paramref name="nativeBindings"/>). A runtime that declares no
+    /// <c>native async</c> functions can omit it.
+    /// </param>
+    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, Common.Evaluation.Scheduling.IAsyncOperationBinder? operationBinder = null)
+      : this(new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder))
     {
     }
 

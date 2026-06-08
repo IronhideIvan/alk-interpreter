@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
-using ALKScript.Interpreter.Evaluator;
 
 namespace Tests.ALKScript.Interpreter.Evaluator;
 
@@ -21,10 +21,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   {
     var recorded = Run(
       $"{RecordDeclaration}\nnative async function int fetch();\nasync function void main() {{\n  record(await fetch());\n}}\nmain();",
-      new ScriptNativeBindings
-      {
-        ["fetch"] = _ => TaskValue.FromResult(new IntValue(42))
-      });
+      new FuncBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(42))));
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(42L, value.Value);
@@ -46,9 +43,9 @@ public class AsyncEvaluationTests : EvaluatorTestBase
 
     var recorded = Run(
       $"{RecordDeclaration}\nnative async function int fetch();\nnative function void resolve();\nasync function void main() {{\n  record(await fetch());\n}}\nmain();\nresolve();",
+      new FuncBinder(_ => pending.Task),
       new ScriptNativeBindings
       {
-        ["fetch"] = _ => new TaskValue(pending.Task),
         ["resolve"] = _ => { pending.SetResult(new IntValue(7)); return NullValue.Instance; }
       });
 
@@ -63,9 +60,9 @@ public class AsyncEvaluationTests : EvaluatorTestBase
 
     var recorded = Run(
       $"{RecordDeclaration}\nnative async function int fetch();\nnative function void reject();\nasync function void main() {{\n  try {{\n    await fetch();\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();\nreject();",
+      new FuncBinder(_ => pending.Task),
       new ScriptNativeBindings
       {
-        ["fetch"] = _ => new TaskValue(pending.Task),
         ["reject"] = _ => { pending.SetException(new System.InvalidOperationException("boom")); return NullValue.Instance; }
       });
 
@@ -125,23 +122,20 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // mechanism the design defers past this phase.)
     var recorded = Run(
       $"{RecordDeclaration}\nnative async function int fetch();\nrecord(await fetch());",
-      new ScriptNativeBindings
+      new FuncBinder(_ => Task.Run(async () =>
       {
-        ["fetch"] = _ => new TaskValue(Task.Run(async () =>
-        {
-          await Task.Delay(20);
-          return (ALKScriptValue)new IntValue(99);
-        }))
-      });
+        await Task.Delay(20);
+        return (ALKScriptValue)new IntValue(99);
+      })));
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(99L, value.Value);
   }
 
-  private static IReadOnlyList<ALKScriptValue> Run(string source, ScriptNativeBindings nativeBindings)
+  private static IReadOnlyList<ALKScriptValue> Run(string source, IAsyncOperationBinder operationBinder, ScriptNativeBindings? extraBindings = null)
   {
     var recorded = new List<ALKScriptValue>();
-    var bindings = new ScriptNativeBindings(nativeBindings)
+    var bindings = new ScriptNativeBindings(extraBindings ?? new ScriptNativeBindings())
     {
       ["record"] = arguments =>
       {
@@ -150,9 +144,16 @@ public class AsyncEvaluationTests : EvaluatorTestBase
       }
     };
 
-    RunWithBindings(source, bindings);
+    RunWithOperationBinder(source, bindings, operationBinder);
 
     return recorded;
+  }
+
+  private sealed class FuncBinder : IAsyncOperationBinder
+  {
+    private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+    internal FuncBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
+    public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
   }
 
   [Fact]
@@ -167,9 +168,9 @@ public class AsyncEvaluationTests : EvaluatorTestBase
 
     var recorded = Run(
       $"{RecordDeclaration}\nnative async function int fetch();\nnative function void resolve();\nasync function int load() {{\n  var n = await fetch();\n  return n + 1;\n}}\nasync function void main() {{\n  record(await load());\n}}\nmain();\nresolve();",
+      new FuncBinder(_ => pending.Task),
       new ScriptNativeBindings
       {
-        ["fetch"] = _ => new TaskValue(pending.Task),
         ["resolve"] = _ => { pending.SetResult(new IntValue(9)); return NullValue.Instance; }
       });
 

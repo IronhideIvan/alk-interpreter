@@ -1,5 +1,6 @@
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Token;
+using ALKScript.Interpreter.Parser;
 
 namespace Tests.ALKScript.Interpreter.Parser;
 
@@ -68,6 +69,64 @@ public class ExpressionTests : ParserTestBase
 
     var awaitExpr = Assert.IsType<AwaitExpr>(SingleExpressionStatement(program));
     Assert.IsType<CallExpr>(awaitExpr.Operand);
+  }
+
+  [Fact]
+  public void Parse_AwaitExpressionAtTopLevel_IsAllowed()
+  {
+    // The entry module's top level runs as part of the (Task-returning)
+    // overall program evaluation and can itself genuinely suspend on an
+    // "await" — so it counts as an async context (see ASYNC_AWAIT_DESIGN.md
+    // decisions #4/#9) even though it isn't textually inside an "async"
+    // function/method body.
+    var program = Parse("await fetchValue();");
+
+    Assert.IsType<AwaitExpr>(SingleExpressionStatement(program));
+  }
+
+  [Fact]
+  public void Parse_AwaitExpressionInsideAsyncFunctionBody_IsAllowed()
+  {
+    var program = Parse("async function void main() {\n  await fetchValue();\n}");
+
+    var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(function.Body!.Statements));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    Assert.IsType<AwaitExpr>(exprStmt.Expression);
+  }
+
+  [Fact]
+  public void Parse_AwaitExpressionInsideNonAsyncFunctionBody_ThrowsParseException()
+  {
+    var exception = Assert.Throws<ParseException>(() => Parse("function void main() {\n  await fetchValue();\n}"));
+
+    Assert.Contains("'await' is only valid inside an 'async' function or method.", exception.Message);
+  }
+
+  [Fact]
+  public void Parse_AwaitExpressionInsideNonAsyncMethodNestedInAsyncOne_ThrowsParseException()
+  {
+    // Saving/restoring (rather than just setting a flag) on entering each
+    // body is what makes a non-"async" method nested inside an "async" one
+    // correctly rejected — its own context governs, not its enclosing one's.
+    Assert.Throws<ParseException>(() => Parse(
+      "class Loader {\n" +
+      "  async function void load() {}\n" +
+      "  function void helper() {\n" +
+      "    await fetchValue();\n" +
+      "  }\n" +
+      "}"));
+  }
+
+  [Fact]
+  public void Parse_AwaitExpressionInsideConstructorBody_ThrowsParseException()
+  {
+    Assert.Throws<ParseException>(() => Parse(
+      "class Loader {\n" +
+      "  new() {\n" +
+      "    await fetchValue();\n" +
+      "  }\n" +
+      "}"));
   }
 
   [Fact]

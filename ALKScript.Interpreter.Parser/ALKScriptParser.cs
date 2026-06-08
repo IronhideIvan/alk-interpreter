@@ -27,6 +27,7 @@ namespace ALKScript.Interpreter.Parser
       };
 
     private TokenStream _stream = null!;
+    private readonly ParsingContext _parsingContext = new ParsingContext();
 
     /// <summary>Parses the given token stream into a <see cref="ProgramNode"/>.</summary>
     public ProgramNode ParseTokens(IEnumerable<ALKScriptToken> tokens)
@@ -42,9 +43,16 @@ namespace ALKScript.Interpreter.Parser
 
       var declarations = new List<Stmt>();
 
-      while (!_stream.IsAtEnd())
+      // The entry module's top level runs as part of the (Task-returning)
+      // overall program evaluation and can itself genuinely suspend on an
+      // "await" — mirroring top-level "await" in other async-capable
+      // languages — so it counts as an async context for this check.
+      using (_parsingContext.EnterFunctionBody(isAsync: true))
       {
-        declarations.Add(ParseDeclaration());
+        while (!_stream.IsAtEnd())
+        {
+          declarations.Add(ParseDeclaration());
+        }
       }
 
       return new ProgramNode(imports, declarations);
@@ -236,7 +244,11 @@ namespace ALKScript.Interpreter.Parser
       {
         _stream.Advance();
         List<Parameter> ctorParameters = ParseParameterList();
-        BlockStmt ctorBody = ParseBlock();
+        BlockStmt ctorBody;
+        using (_parsingContext.EnterFunctionBody(isAsync: false))
+        {
+          ctorBody = ParseBlock();
+        }
         return new ConstructorDecl(accessModifier, ctorParameters, ctorBody);
       }
 
@@ -255,17 +267,20 @@ namespace ALKScript.Interpreter.Parser
 
         BlockStmt? body;
 
-        if (isNative)
+        using (_parsingContext.EnterFunctionBody(isAsync))
         {
-          body = ParseFunctionOrMethodBody(isNative: true, declarationKind: "method");
-        }
-        else if (_stream.Match(ALKScriptTokenType.Semicolon))
-        {
-          body = null;
-        }
-        else
-        {
-          body = ParseBlock();
+          if (isNative)
+          {
+            body = ParseFunctionOrMethodBody(isNative: true, declarationKind: "method");
+          }
+          else if (_stream.Match(ALKScriptTokenType.Semicolon))
+          {
+            body = null;
+          }
+          else
+          {
+            body = ParseBlock();
+          }
         }
 
         return new MethodDecl(accessModifier, overrideModifier, isNative, isAsync, typeParameters, returnType, methodName, parameters, body);
@@ -355,7 +370,12 @@ namespace ALKScript.Interpreter.Parser
       TypeNode returnType = ParseType();
       ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a function name.");
       List<Parameter> parameters = ParseParameterList();
-      BlockStmt? body = ParseFunctionOrMethodBody(isNative, "function");
+
+      BlockStmt? body;
+      using (_parsingContext.EnterFunctionBody(isAsync))
+      {
+        body = ParseFunctionOrMethodBody(isNative, "function");
+      }
 
       return new FunctionDecl(isNative, isAsync, typeParameters, returnType, name, parameters, body);
     }
@@ -857,6 +877,12 @@ namespace ALKScript.Interpreter.Parser
       if (_stream.Match(ALKScriptTokenType.Await))
       {
         ALKScriptToken keyword = _stream.Previous();
+
+        if (!_parsingContext.InAsyncBody)
+        {
+          throw Error(keyword, "'await' is only valid inside an 'async' function or method.");
+        }
+
         Expr operand = ParseUnary();
         return new AwaitExpr(keyword, operand);
       }
@@ -1060,5 +1086,51 @@ namespace ALKScript.Interpreter.Parser
     }
 
     #endregion
+
+    /// <summary>
+    /// Tracks parsing context that's relevant several frames down the
+    /// recursive descent — currently just "are we inside an <c>async</c>
+    /// function/method body, so that <c>await</c> is valid here?" (see
+    /// docs/ASYNC_AWAIT_DESIGN.md decisions #4 and #9), generalizing to e.g.
+    /// a future <c>break</c>/<c>continue</c>-must-be-in-a-loop check by
+    /// adding one field and one <c>EnterX</c>/<c>InX</c> pair.
+    ///
+    /// Each <c>EnterX</c> returns an <see cref="IDisposable"/> scope guard
+    /// that saves the previous state and restores it on disposal — rather
+    /// than just setting a flag — so that e.g. a non-<c>async</c> function
+    /// nested inside an <c>async</c> one is correctly tracked as its own,
+    /// non-async, context.
+    /// </summary>
+    private sealed class ParsingContext
+    {
+      private bool _inAsyncBody;
+
+      /// <summary>
+      /// Enters a function/method (or constructor, or the entry module's top
+      /// level) body, tracking whether <c>await</c> is valid directly within
+      /// it, and returns a guard that restores the enclosing context's state
+      /// when the body has been fully parsed.
+      /// </summary>
+      public IDisposable EnterFunctionBody(bool isAsync)
+      {
+        bool previous = _inAsyncBody;
+        _inAsyncBody = isAsync;
+        return new Restorer(() => _inAsyncBody = previous);
+      }
+
+      public bool InAsyncBody => _inAsyncBody;
+
+      private sealed class Restorer : IDisposable
+      {
+        private readonly Action _restore;
+
+        public Restorer(Action restore)
+        {
+          _restore = restore;
+        }
+
+        public void Dispose() => _restore();
+      }
+    }
   }
 }

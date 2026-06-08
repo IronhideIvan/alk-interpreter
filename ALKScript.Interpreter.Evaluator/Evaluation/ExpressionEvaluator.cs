@@ -306,26 +306,34 @@ namespace ALKScript.Interpreter.Evaluator
     /// <summary>
     /// Evaluates <c>await &lt;operand&gt;</c>.
     ///
-    /// If the operand produces a <see cref="TaskValue"/> — the shape every
-    /// <c>async</c> function call and <c>async native</c> invocation
-    /// produces — this genuinely <c>await</c>s its underlying
-    /// <see cref="System.Threading.Tasks.Task{TResult}"/>: real suspension,
-    /// not a pass-through. That single <c>await</c> is what parks the whole
-    /// compiler-generated continuation chain (this method, its caller, theirs,
-    /// ... all the way up through <see cref="IEvaluationContext"/>) on the
-    /// underlying task, and resumes it later — possibly long after this call
-    /// returns control to whatever is pumping the scheduler — exactly where it
-    /// left off, with no hand-written state machine required.
+    /// Two shapes genuinely suspend here — both ultimately by `await`ing a
+    /// real <see cref="System.Threading.Tasks.Task{TResult}"/>, which is what
+    /// parks the whole compiler-generated continuation chain (this method,
+    /// its caller, theirs, ... all the way up through <see cref="IEvaluationContext"/>)
+    /// and resumes it later — possibly long after this call returns control
+    /// to whatever is pumping the scheduler — exactly where it left off, with
+    /// no hand-written state machine required:
+    ///
+    /// - <see cref="TaskValue"/> — an already-running (or already-completed)
+    ///   operation: what a synchronously-resolving native, or an eager-start
+    ///   `async` *function* call (mirroring C#/JS), produces.
+    /// - <see cref="PendingOperationValue"/> — a not-yet-started "lazy/deferred
+    ///   start" `async native` operation (see docs/ASYNC_AWAIT_DESIGN.md's core
+    ///   requirements and <see cref="ALKScript.Interpreter.Common.Evaluation.Scheduling.IAsyncOperationBinder"/>):
+    ///   `await` is what "Suspend"s it — its <see cref="PendingOperationValue.Start"/>
+    ///   is what actually kicks off the host-side effect, at the moment (and
+    ///   only if) the script genuinely needs its result, fulfilling the "must
+    ///   not begin running merely because it was called" requirement.
     ///
     /// A faulted task surfaces as a catchable script-level <see cref="Signal.Thrown"/>
     /// (mirroring a "throw" of the fault's message) rather than tearing down
     /// the whole evaluation — except for <see cref="RuntimeException"/>, which
     /// signals an interpreter-level error and is left to propagate as-is.
     ///
-    /// Awaiting a value that is *not* a <see cref="TaskValue"/> is permissive
-    /// identity — it simply yields the value, mirroring "awaiting an
-    /// already-resolved value" in other async languages — so e.g. `await 1`
-    /// is harmless rather than a type error.
+    /// Awaiting any other kind of value is permissive identity — it simply
+    /// yields the value, mirroring "awaiting an already-resolved value" in
+    /// other async languages — so e.g. `await 1` is harmless rather than a
+    /// type error.
     /// </summary>
     private async Task<ALKScriptValue> EvalAwait(AwaitExpr expression, ScriptEnvironment environment)
     {
@@ -336,14 +344,25 @@ namespace ALKScript.Interpreter.Evaluator
         return NullValue.Instance;
       }
 
-      if (operand is not TaskValue taskValue)
+      Task<ALKScriptValue> task;
+
+      switch (operand)
       {
-        return operand;
+        case TaskValue taskValue:
+          task = taskValue.Task;
+          break;
+
+        case PendingOperationValue pending:
+          task = pending.Start();
+          break;
+
+        default:
+          return operand;
       }
 
       try
       {
-        return await taskValue.Task;
+        return await task;
       }
       catch (RuntimeException)
       {
