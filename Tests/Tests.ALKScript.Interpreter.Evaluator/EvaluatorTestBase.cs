@@ -30,7 +30,7 @@ public abstract class EvaluatorTestBase
   {
     var recorded = new List<ALKScriptValue>();
 
-    RunWithBindings(source, new Dictionary<string, NativeFunctionImplementation>
+    RunWithBindings(source, new ScriptNativeBindings
     {
       ["record"] = arguments =>
       {
@@ -42,7 +42,7 @@ public abstract class EvaluatorTestBase
     return recorded;
   }
 
-  protected static void RunWithBindings(string source, IReadOnlyDictionary<string, NativeFunctionImplementation> nativeBindings)
+  protected static void RunWithBindings(string source, ScriptNativeBindings nativeBindings)
   {
     var graph = LoadGraph(source);
     new ProgramEvaluator(nativeBindings).Evaluate(graph);

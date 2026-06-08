@@ -1,6 +1,6 @@
 using ALKScript.Interpreter.Common.Evaluation.Values;
 
-namespace ALKScript.Interpreter.Evaluator
+namespace ALKScript.Interpreter.Common.Evaluation
 {
   /// <summary>
   /// A pending non-local exit from normal statement execution: either a
@@ -11,7 +11,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// throw values do not rely on .NET's exception machinery for what is, at
   /// the script level, ordinary control flow.
   /// </summary>
-  internal readonly struct Signal
+  public readonly struct Signal
   {
     public SignalKind Kind { get; }
     public ALKScriptValue Value { get; }

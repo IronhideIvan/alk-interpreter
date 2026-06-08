@@ -11,7 +11,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// runs constructors for <c>new</c> expressions. Statement execution (running
   /// function/constructor bodies) is delegated through <see cref="IEvaluationContext"/>.
   /// </summary>
-  internal class CallInvoker
+  internal class CallInvoker : ICallInvoker
   {
     private readonly IEvaluationContext _context;
 

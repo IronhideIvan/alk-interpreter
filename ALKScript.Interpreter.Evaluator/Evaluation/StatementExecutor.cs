@@ -11,7 +11,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// Expression evaluation and calls are delegated through
   /// <see cref="IEvaluationContext"/>.
   /// </summary>
-  internal class StatementExecutor
+  internal class StatementExecutor : IStatementExecutor
   {
     private readonly IEvaluationContext _context;
     private readonly IFunctionValueFactory _functionValueFactory;

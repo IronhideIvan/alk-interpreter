@@ -1,8 +1,7 @@
 using ALKScript.Interpreter.Common.Ast;
-using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 
-namespace ALKScript.Interpreter.Evaluator
+namespace ALKScript.Interpreter.Common.Evaluation
 {
   /// <summary>
   /// Builds the callable <see cref="ALKScriptValue"/> for a function or method

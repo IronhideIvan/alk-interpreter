@@ -8,15 +8,15 @@ namespace ALKScript.Interpreter.Evaluator
   /// <inheritdoc cref="IFunctionValueFactory"/>
   public class FunctionValueFactory : IFunctionValueFactory
   {
-    private readonly IReadOnlyDictionary<string, NativeFunctionImplementation> _nativeBindings;
+    private readonly ScriptNativeBindings _nativeBindings;
 
     /// <summary>
     /// <paramref name="nativeBindings"/> supplies the host implementations for
     /// <c>native</c> function/method declarations, keyed by declared name.
     /// </summary>
-    public FunctionValueFactory(IReadOnlyDictionary<string, NativeFunctionImplementation>? nativeBindings = null)
+    public FunctionValueFactory(ScriptNativeBindings? nativeBindings = null)
     {
-      _nativeBindings = nativeBindings ?? new Dictionary<string, NativeFunctionImplementation>();
+      _nativeBindings = nativeBindings ?? new ScriptNativeBindings();
     }
 
     public ALKScriptValue Create(FunctionDecl declaration, ScriptEnvironment closure)

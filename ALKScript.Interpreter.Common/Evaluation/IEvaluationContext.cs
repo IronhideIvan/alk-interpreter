@@ -1,10 +1,9 @@
 using System.Collections.Generic;
 using ALKScript.Interpreter.Common.Ast;
-using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
 
-namespace ALKScript.Interpreter.Evaluator
+namespace ALKScript.Interpreter.Common.Evaluation
 {
   /// <summary>
   /// The shared surface that <see cref="StatementExecutor"/>,
@@ -19,7 +18,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// which composes and wires up the three — lets each be built independently
   /// and breaks the cycle.
   /// </summary>
-  internal interface IEvaluationContext
+  public interface IEvaluationContext
   {
     /// <summary>
     /// A pending non-local exit ("return" or "throw") raised while executing

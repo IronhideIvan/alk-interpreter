@@ -12,7 +12,7 @@ public class NativeBindingTests : EvaluatorTestBase
 
     RunWithBindings(
       "native function void log(string message);\nlog(\"hi\");\nlog(\"there\");",
-      new Dictionary<string, NativeFunctionImplementation>
+      new ScriptNativeBindings
       {
         ["log"] = arguments =>
         {
@@ -29,7 +29,7 @@ public class NativeBindingTests : EvaluatorTestBase
   {
     var recorded = Run(
       $"{RecordDeclaration}\nnative function int double(int n);\nrecord(double(21));",
-      new Dictionary<string, NativeFunctionImplementation>
+      new ScriptNativeBindings
       {
         ["double"] = arguments => new IntValue(((IntValue)arguments[0]).Value * 2)
       });
@@ -45,7 +45,7 @@ public class NativeBindingTests : EvaluatorTestBase
 
     RunWithBindings(
       "class Console {\n  public native function void log(string message);\n}\nvar console = new Console();\nconsole.log(\"from instance\");",
-      new Dictionary<string, NativeFunctionImplementation>
+      new ScriptNativeBindings
       {
         ["log"] = arguments =>
         {
@@ -61,15 +61,15 @@ public class NativeBindingTests : EvaluatorTestBase
   public void Evaluate_NativeFunctionWithoutRegisteredBinding_ThrowsRuntimeExceptionAtDeclaration()
   {
     var exception = Assert.Throws<RuntimeException>(() =>
-      RunWithBindings("native function void log(string message);", new Dictionary<string, NativeFunctionImplementation>()));
+      RunWithBindings("native function void log(string message);", new ScriptNativeBindings()));
 
     Assert.Contains("Native function 'log' has no host implementation registered", exception.Message);
   }
 
-  private static IReadOnlyList<ALKScriptValue> Run(string source, IReadOnlyDictionary<string, NativeFunctionImplementation> nativeBindings)
+  private static IReadOnlyList<ALKScriptValue> Run(string source, ScriptNativeBindings nativeBindings)
   {
     var recorded = new List<ALKScriptValue>();
-    var bindings = new Dictionary<string, NativeFunctionImplementation>(nativeBindings)
+    var bindings = new ScriptNativeBindings(nativeBindings)
     {
       ["record"] = arguments =>
       {

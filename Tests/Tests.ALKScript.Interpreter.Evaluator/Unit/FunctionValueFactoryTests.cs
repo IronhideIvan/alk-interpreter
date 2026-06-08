@@ -36,7 +36,7 @@ public class FunctionValueFactoryTests
   public void Create_NativeDeclarationWithBinding_ReturnsNativeFunctionValue()
   {
     NativeFunctionImplementation implementation = _ => NullValue.Instance;
-    var factory = new FunctionValueFactory(new Dictionary<string, NativeFunctionImplementation> { ["log"] = implementation });
+    var factory = new FunctionValueFactory(new ScriptNativeBindings { ["log"] = implementation });
     var declaration = MakeDeclaration("log", isNative: true);
 
     var value = Assert.IsType<NativeFunctionValue>(factory.Create(declaration, new ScriptEnvironment()));

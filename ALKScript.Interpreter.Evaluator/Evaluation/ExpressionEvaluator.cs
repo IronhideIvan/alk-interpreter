@@ -12,7 +12,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// <see cref="Operators"/>; calls/construction are delegated through
   /// <see cref="IEvaluationContext"/> to <see cref="CallInvoker"/>.
   /// </summary>
-  internal class ExpressionEvaluator
+  internal class ExpressionEvaluator : IExpressionEvaluator
   {
     private readonly IEvaluationContext _context;
     private readonly IFunctionValueFactory _functionValueFactory;

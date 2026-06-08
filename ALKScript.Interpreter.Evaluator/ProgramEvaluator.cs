@@ -22,9 +22,9 @@ namespace ALKScript.Interpreter.Evaluator
   /// </summary>
   public class ProgramEvaluator : IEvaluator, IEvaluationContext
   {
-    private readonly StatementExecutor _statements;
-    private readonly ExpressionEvaluator _expressions;
-    private readonly CallInvoker _calls;
+    private readonly IStatementExecutor _statements;
+    private readonly IExpressionEvaluator _expressions;
+    private readonly ICallInvoker _calls;
 
     private Signal? _signal;
 
@@ -34,7 +34,7 @@ namespace ALKScript.Interpreter.Evaluator
     /// declared name; a <c>native</c> declaration with no matching binding fails
     /// with a <see cref="RuntimeException"/> as soon as it is declared.
     /// </summary>
-    public ProgramEvaluator(IReadOnlyDictionary<string, NativeFunctionImplementation>? nativeBindings = null)
+    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null)
       : this(new FunctionValueFactory(nativeBindings))
     {
     }
@@ -44,10 +44,21 @@ namespace ALKScript.Interpreter.Evaluator
     /// e.g. for testing or to supply a host-specific binding strategy.
     /// </summary>
     public ProgramEvaluator(IFunctionValueFactory functionValueFactory)
+      : this(functionValueFactory, new EvaluationComponentFactory())
     {
-      _statements = new StatementExecutor(this, functionValueFactory);
-      _expressions = new ExpressionEvaluator(this, functionValueFactory);
-      _calls = new CallInvoker(this);
+    }
+
+    /// <summary>
+    /// Creates an evaluator with explicit <see cref="IFunctionValueFactory"/> and
+    /// <see cref="IEvaluationComponentFactory"/> implementations. Internal — the
+    /// component factory deals in the internal collaborator interfaces — but
+    /// reachable from tests via <c>InternalsVisibleTo</c>.
+    /// </summary>
+    internal ProgramEvaluator(IFunctionValueFactory functionValueFactory, IEvaluationComponentFactory componentFactory)
+    {
+      _statements = componentFactory.CreateStatementExecutor(this, functionValueFactory);
+      _expressions = componentFactory.CreateExpressionEvaluator(this, functionValueFactory);
+      _calls = componentFactory.CreateCallInvoker(this);
     }
 
     public void Evaluate(ModuleGraph graph)
