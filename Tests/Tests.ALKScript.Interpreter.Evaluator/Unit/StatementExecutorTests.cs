@@ -120,6 +120,79 @@ public class StatementExecutorTests
   }
 
   [Fact]
+  public void Execute_TryWithCancelledSignalDuringTryBlock_BypassesCatchClauses()
+  {
+    // "Cancelled" is an uncatchable unwind — unlike "Thrown", it must pass
+    // straight through any "catch" clauses without invoking them, leaving the
+    // pending "Cancelled" signal in place so the unwind continues outward.
+    // Each statement's expression is a distinctly-tagged literal; the fake
+    // EvalImpl records which tags actually got evaluated and raises the
+    // "Cancelled" signal when it sees "trigger-cancel" — modelling an
+    // external stop request arriving mid-try-block.
+    var context = new FakeEvaluationContext();
+    var evaluatedTags = new List<string>();
+    context.EvalImpl = (expr, _) =>
+    {
+      var tag = (string)((LiteralExpr)expr).Value!;
+      evaluatedTags.Add(tag);
+
+      if (tag == "trigger-cancel")
+      {
+        context.Signal = Signal.Cancelled();
+      }
+
+      return NullValue.Instance;
+    };
+
+    var tryStmt = new TryStmt(
+      tryBlock: new BlockStmt(new Stmt[] { new ExpressionStmt(Nodes.Literal("trigger-cancel")) }),
+      catchClauses: new[]
+      {
+        new CatchClause(null, Nodes.Identifier("e"), new BlockStmt(new Stmt[] { new ExpressionStmt(Nodes.Literal("caught")) })),
+      },
+      finallyBlock: null);
+
+    MakeExecutor(context).Execute(tryStmt, new ScriptEnvironment());
+
+    Assert.Equal(new[] { "trigger-cancel" }, evaluatedTags);
+    Assert.NotNull(context.Signal);
+    Assert.Equal(SignalKind.Cancelled, context.Signal!.Value.Kind);
+  }
+
+  [Fact]
+  public void Execute_TryWithCancelledSignalDuringTryBlock_StillRunsFinallyBlock()
+  {
+    // "Finally" blocks must still run on a "Cancelled" unwind so resources get
+    // cleaned up — and the pending "Cancelled" signal is restored once
+    // "finally" completes without itself raising an overriding signal.
+    var context = new FakeEvaluationContext();
+    var evaluatedTags = new List<string>();
+    context.EvalImpl = (expr, _) =>
+    {
+      var tag = (string)((LiteralExpr)expr).Value!;
+      evaluatedTags.Add(tag);
+
+      if (tag == "trigger-cancel")
+      {
+        context.Signal = Signal.Cancelled();
+      }
+
+      return NullValue.Instance;
+    };
+
+    var tryStmt = new TryStmt(
+      tryBlock: new BlockStmt(new Stmt[] { new ExpressionStmt(Nodes.Literal("trigger-cancel")) }),
+      catchClauses: System.Array.Empty<CatchClause>(),
+      finallyBlock: new BlockStmt(new Stmt[] { new ExpressionStmt(Nodes.Literal("finally")) }));
+
+    MakeExecutor(context).Execute(tryStmt, new ScriptEnvironment());
+
+    Assert.Equal(new[] { "trigger-cancel", "finally" }, evaluatedTags);
+    Assert.NotNull(context.Signal);
+    Assert.Equal(SignalKind.Cancelled, context.Signal!.Value.Kind);
+  }
+
+  [Fact]
   public void Execute_AlreadyPendingSignal_SkipsExecutionEntirely()
   {
     var context = new FakeEvaluationContext { Signal = Signal.Return(NullValue.Instance) };
