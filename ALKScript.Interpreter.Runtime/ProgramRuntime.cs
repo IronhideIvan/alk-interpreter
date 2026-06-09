@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
+using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Evaluator;
 using ALKScript.Interpreter.Evaluator.Scheduling;
@@ -43,6 +45,14 @@ namespace ALKScript.Interpreter.Runtime
     private readonly IEvaluatorFactory _factory;
 
     /// <summary>
+    /// ALKScript source text for each core module (bare-specifier import, e.g.
+    /// <c>"console"</c> or <c>"http"</c>), keyed by specifier. Populate before
+    /// calling <see cref="RunFromSource"/> or <see cref="RunFromFile"/>; entries
+    /// added after construction are visible to subsequent load calls.
+    /// </summary>
+    public ScriptCoreModules CoreModules { get; } = new ScriptCoreModules();
+
+    /// <summary>
     /// Host implementations for free-standing <c>native function</c>
     /// declarations, keyed by declared name. Populate before calling
     /// <see cref="RunFromSource"/> or <see cref="RunFromFile"/>.
@@ -61,7 +71,9 @@ namespace ALKScript.Interpreter.Runtime
 
     /// <summary>
     /// Creates a runtime with the default pipeline: real filesystem module
-    /// loading, no core modules, and a fresh <see cref="ScriptScheduler"/>.
+    /// loading, a fresh <see cref="ScriptScheduler"/>, and a core-module table
+    /// backed by <see cref="CoreModules"/>. Populate <see cref="CoreModules"/>
+    /// before calling any Run method to make bare-specifier imports available.
     /// </summary>
     public ProgramRuntime()
     {
@@ -73,7 +85,26 @@ namespace ALKScript.Interpreter.Runtime
         new ALKScriptLexer(),
         new ALKScriptParser(),
         new FileSystemModuleFileReader(),
-        new EmptyCoreModuleProvider());
+        new DictionaryCoreModuleProvider(CoreModules));
+    }
+
+    /// <summary>
+    /// Creates a runtime with a custom module file reader — for hosts that
+    /// provide modules from a source other than the real filesystem (e.g. an
+    /// in-memory virtual file system, an asset bundle, or a network store)
+    /// while keeping the rest of the default pipeline intact.
+    /// </summary>
+    public ProgramRuntime(IModuleFileReader moduleFileReader)
+    {
+      var scheduler = new ScriptScheduler();
+      _scheduler = scheduler;
+      _loop = scheduler;
+      _factory = new EvaluatorFactory();
+      _loader = new ProgramLoader(
+        new ALKScriptLexer(),
+        new ALKScriptParser(),
+        moduleFileReader,
+        new DictionaryCoreModuleProvider(CoreModules));
     }
 
     /// <summary>
@@ -116,5 +147,33 @@ namespace ALKScript.Interpreter.Runtime
 
     /// <inheritdoc/>
     public void RunUntilComplete(ScriptEvaluation evaluation) => _loop.RunUntilComplete(evaluation);
+
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Bridges the mutable <see cref="CoreModules"/> dictionary to the
+    /// <see cref="ICoreModuleProvider"/> contract expected by
+    /// <see cref="ProgramLoader"/>. Modules are parsed on demand so entries
+    /// added after construction are always visible to subsequent load calls.
+    /// </summary>
+    private sealed class DictionaryCoreModuleProvider : ICoreModuleProvider
+    {
+      private readonly ScriptCoreModules _modules;
+      private readonly ALKScriptLexer _lexer = new ALKScriptLexer();
+      private readonly ALKScriptParser _parser = new ALKScriptParser();
+
+      internal DictionaryCoreModuleProvider(ScriptCoreModules modules)
+      {
+        _modules = modules;
+      }
+
+      public IReadOnlyCollection<string> AvailableModules => new List<string>(_modules.Keys);
+
+      public ProgramNode GetModule(string specifier)
+      {
+        _modules.TryGetValue(specifier, out var source);
+        return _parser.ParseTokens(_lexer.Tokenize(source!));
+      }
+    }
   }
 }
