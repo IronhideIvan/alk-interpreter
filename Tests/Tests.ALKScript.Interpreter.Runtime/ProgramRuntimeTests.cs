@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
+using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Parser.Modules;
 using Tests.ALKScript.Interpreter.Runtime.Support;
 
@@ -9,11 +10,111 @@ namespace Tests.ALKScript.Interpreter.Runtime;
 
 /// <summary>
 /// Integration tests for <see cref="ALKScript.Interpreter.Runtime.ProgramRuntime"/>.
-/// Each test exercises the full lex → load → evaluate pipeline through the two
-/// public entry points: <c>RunFromSource</c> and <c>RunFromFile</c>.
+/// Each test exercises the full lex → load → evaluate pipeline through the
+/// public entry points.
 /// </summary>
 public class ProgramRuntimeTests : RuntimeTestBase
 {
+  // ── LoadFromSource ───────────────────────────────────────────────────────
+
+  [Fact]
+  public void LoadFromSource_ReturnsModuleGraph_WithoutExecuting()
+  {
+    var runtime = CreateRuntimeForEvaluation();
+    var recorded = new List<ALKScriptValue>();
+    runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
+
+    ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(1);");
+
+    Assert.NotNull(graph);
+    Assert.NotNull(graph.EntryModule);
+    Assert.Empty(recorded); // no execution yet
+  }
+
+  [Fact]
+  public void LoadFromSource_WithRelativePathImport_ThrowsModuleLoadException()
+  {
+    var runtime = CreateRuntimeForEvaluation();
+
+    Assert.Throws<ModuleLoadException>(() =>
+      runtime.LoadFromSource("import { helper } from \"./helpers\";"));
+  }
+
+  // ── LoadFromFile ─────────────────────────────────────────────────────────
+
+  [Fact]
+  public void LoadFromFile_ReturnsModuleGraph_WithoutExecuting()
+  {
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = $"{RecordDeclaration}record(99);"
+      });
+    var recorded = new List<ALKScriptValue>();
+    runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
+
+    ModuleGraph graph = runtime.LoadFromFile("main.alk");
+
+    Assert.NotNull(graph);
+    Assert.NotNull(graph.EntryModule);
+    Assert.Empty(recorded); // no execution yet
+  }
+
+  [Fact]
+  public void LoadFromFile_NonexistentFile_ThrowsFileNotFoundException()
+  {
+    var runtime = CreateRuntimeForEvaluation();
+
+    Assert.Throws<FileNotFoundException>(() =>
+      runtime.LoadFromFile("missing.alk"));
+  }
+
+  // ── RunFromGraph ─────────────────────────────────────────────────────────
+
+  [Fact]
+  public void RunFromGraph_ExecutesStatements()
+  {
+    var runtime = CreateRuntimeForEvaluation();
+    var recorded = new List<ALKScriptValue>();
+    runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
+
+    ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(7);");
+    runtime.RunUntilComplete(runtime.RunFromGraph(graph));
+
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(7L, value.Value);
+  }
+
+  [Fact]
+  public void RunFromGraph_EvaluationIsCompleted_AfterRunUntilComplete()
+  {
+    var runtime = CreateRuntimeForEvaluation();
+
+    ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}var x = 1;");
+    ScriptEvaluation evaluation = runtime.RunFromGraph(graph);
+    runtime.RunUntilComplete(evaluation);
+
+    Assert.True(evaluation.IsCompleted);
+  }
+
+  [Fact]
+  public void RunFromGraph_SameGraph_ProducesIndependentEvaluations()
+  {
+    // The same compiled graph can be run multiple times; each call produces a
+    // fully independent evaluation with its own state.
+    var runtime = CreateRuntimeForEvaluation();
+    var recorded = new List<ALKScriptValue>();
+    runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
+
+    ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(5);");
+
+    runtime.RunUntilComplete(runtime.RunFromGraph(graph));
+    runtime.RunUntilComplete(runtime.RunFromGraph(graph));
+
+    Assert.Equal(2, recorded.Count);
+    Assert.All(recorded, v => Assert.Equal(5L, Assert.IsType<IntValue>(v).Value));
+  }
+
   // ── RunFromSource ────────────────────────────────────────────────────────
 
   [Fact]
@@ -135,5 +236,80 @@ public class ProgramRuntimeTests : RuntimeTestBase
   {
     Assert.Throws<FileNotFoundException>(() =>
       RunFromFile("missing.alk", new Dictionary<string, string>()));
+  }
+
+  [Fact]
+  public void RunFromFile_EvaluationIsCompleted_AfterRunUntilComplete()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = $"{RecordDeclaration}var x = 1;"
+    };
+    var runtime = CreateRuntimeForEvaluation(files: files);
+
+    ScriptEvaluation evaluation = runtime.RunFromFile("main.alk");
+    runtime.RunUntilComplete(evaluation);
+
+    Assert.True(evaluation.IsCompleted);
+  }
+
+  // ── Multiple concurrent scripts ──────────────────────────────────────────
+
+  [Fact]
+  public void MultipleConcurrentScripts_BothComplete_WhenDrivenBySharedLoop()
+  {
+    // Two independent scripts are started before either has run. A single
+    // RunUntilComplete on the second evaluation must also advance (and
+    // complete) the first, because both share the same scheduler.
+    var runtime = CreateRuntimeForEvaluation();
+    var recordedA = new List<ALKScriptValue>();
+    var recordedB = new List<ALKScriptValue>();
+    runtime.NativeBindings["recordA"] = args => { recordedA.Add(args[0]); return NullValue.Instance; };
+    runtime.NativeBindings["recordB"] = args => { recordedB.Add(args[0]); return NullValue.Instance; };
+
+    ScriptEvaluation evalA = runtime.RunFromSource(
+      "native function void recordA(Object v);\nrecordA(1);");
+    ScriptEvaluation evalB = runtime.RunFromSource(
+      "native function void recordB(Object v);\nrecordB(2);");
+
+    // Pumping until evalB is done must advance evalA as well, since both
+    // share the same underlying ScriptScheduler.
+    runtime.RunUntilComplete(evalB);
+
+    Assert.True(evalA.IsCompleted);
+    Assert.True(evalB.IsCompleted);
+    Assert.Equal(1L, Assert.IsType<IntValue>(Assert.Single(recordedA)).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(Assert.Single(recordedB)).Value);
+  }
+
+  [Fact]
+  public void MultipleConcurrentScripts_FromSameGraph_RunIndependently()
+  {
+    // Two evaluations of the same compiled graph both produce their own
+    // output; completing one does not suppress the other.
+    var runtime = CreateRuntimeForEvaluation();
+    var recorded = new List<ALKScriptValue>();
+    runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
+
+    ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(42);");
+    ScriptEvaluation eval1 = runtime.RunFromGraph(graph);
+    ScriptEvaluation eval2 = runtime.RunFromGraph(graph);
+
+    runtime.RunUntilComplete(eval2);
+
+    Assert.True(eval1.IsCompleted);
+    Assert.True(eval2.IsCompleted);
+    Assert.Equal(2, recorded.Count);
+    Assert.All(recorded, v => Assert.Equal(42L, Assert.IsType<IntValue>(v).Value));
+  }
+
+  [Fact]
+  public void Pump_WhenNoActiveEvaluations_ReturnsZero()
+  {
+    var runtime = CreateRuntimeForEvaluation();
+
+    int advanced = runtime.Pump();
+
+    Assert.Equal(0, advanced);
   }
 }

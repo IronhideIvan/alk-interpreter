@@ -66,12 +66,13 @@ public abstract class RuntimeTestBase
   /// calling <see cref="IScriptLoop.RunUntilComplete"/>.
   /// </summary>
   protected static ProgramRuntime CreateRuntimeForEvaluation(
+    IReadOnlyDictionary<string, string>? files = null,
     IReadOnlyDictionary<string, string>? coreModules = null,
     IGlobalPreludeProvider? preludes = null,
     ScriptNativeBindings? extraBindings = null)
   {
     return CreateRuntime(
-      files: new Dictionary<string, string>(),
+      files: files ?? new Dictionary<string, string>(),
       coreModules: coreModules,
       preludes: preludes,
       extraBindings: extraBindings,
