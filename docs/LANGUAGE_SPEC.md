@@ -444,6 +444,25 @@ declaration point to the end of the enclosing block.
 
 ## 6. Expressions
 
+### 6.1 Array literals
+
+An **array literal** constructs an array value inline using bracket syntax:
+
+```
+[]              // empty array
+[1, 2, 3]       // three-element int array
+["a", "b"]      // two-element string array
+```
+
+Elements are separated by commas and evaluated left-to-right. All elements must
+share a common type (the element type of the resulting array). An empty literal
+`[]` is valid; its element type is inferred from context (e.g. the declared
+type of the variable it is assigned to). Array literals appear wherever any other
+expression is permitted — including as the operand of `await` for the `whenAll`
+idiom (see [§7.4](#74-concurrent-await-whenall)).
+
+### 6.2 Operators
+
 - Arithmetic operators (`+ - * / %`) require both operands to be numeric
   (`int`, `long`, or `float`); the narrower operand is widened to match the wider
   one (`int` → `long` → `float`), and the result has the wider of the two types.
@@ -518,6 +537,33 @@ async function Task<int> run() {
   return greeting.length;
 }
 ```
+
+### 7.4 Concurrent await (`whenAll`)
+
+Passing an **array literal** of tasks to `await` runs all of them concurrently
+and suspends until every one has completed — equivalent to `Task.whenAll` in
+.NET. The result is an array containing each operation's return value in the
+same order as the input:
+
+```
+native async function Task<int> fetchA();
+native async function Task<int> fetchB();
+
+async function void run() {
+  var results = await [fetchA(), fetchB()];  // both run concurrently
+  print(results[0]);                         // result of fetchA
+  print(results[1]);                         // result of fetchB
+}
+```
+
+**Fault policy:** if one or more member operations fault, every member is still
+allowed to run to completion before the `await` resolves. All faults are then
+aggregated and surfaced as a single catchable error. Individual faults are also
+reported to the host (e.g. for logging).
+
+**Lazy-start:** as with any `Task`-producing call, calling `fetchA()` or
+`fetchB()` above does *not* immediately start the operation — it produces a
+pending value. The concurrent run begins only when the array reaches `await`.
 
 ## 8. Classes
 

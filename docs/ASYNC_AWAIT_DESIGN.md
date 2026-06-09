@@ -213,11 +213,13 @@ settlement before the combinator resolves. These are mutually exclusive: there
 is no definition of `whenAny` that satisfies run-to-completion. The feature is
 not deferred — it is ruled out by a committed design choice.
 
-### 13. `await [a, b]` syntax
+### 13. `await [a, b]` syntax *(implemented)*
 
 Defined as **pure sugar for `await Task.whenAll([a, b])`**, generalized: any
 `Task<T>[]`/`Task[]` value passed to `await` is treated as `whenAll` of that
-collection.
+collection. Array literal syntax (`[expr, ...]`) is parsed in `ParsePrimary()`
+and `await` on an `ArrayValue` is routed to `EvalWhenAll` — both are fully
+implemented end-to-end.
 
 This was chosen over an alternative "awaiting one starts all pending operations"
 rule, which was rejected for introducing non-local "action at a distance"
