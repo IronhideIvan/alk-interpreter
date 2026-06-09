@@ -26,6 +26,15 @@ namespace ALKScript.Interpreter.Common
   public interface IProgramRuntime
   {
     /// <summary>
+    /// Host implementation for <c>native async</c> function declarations.
+    /// Set before calling any Run method; each <c>await</c> on a
+    /// <see cref="PendingOperationValue"/> dispatches through this binder to
+    /// start the host-side effect. Leave <c>null</c> if the program contains
+    /// no <c>native async</c> declarations.
+    /// </summary>
+    IAsyncOperationBinder? OperationBinder { get; set; }
+
+    /// <summary>
     /// Lexes and parses <paramref name="source"/> into a <see cref="ModuleGraph"/>
     /// without starting execution. Import declarations in the source are not
     /// supported in this mode — use <see cref="LoadFromFile"/> when the program

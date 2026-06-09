@@ -109,9 +109,12 @@ public class ExpressionTests : ParserTestBase
     // Saving/restoring (rather than just setting a flag) on entering each
     // body is what makes a non-"async" method nested inside an "async" one
     // correctly rejected — its own context governs, not its enclosing one's.
+    // 'load' is async with an 'await' inside it (satisfying the "async
+    // requires await" rule); the ParseException comes from 'helper', which is
+    // non-async yet contains an 'await' expression.
     Assert.Throws<ParseException>(() => Parse(
       "class Loader {\n" +
-      "  async function void load() {}\n" +
+      "  async function void load() { await fetchValue(); }\n" +
       "  function void helper() {\n" +
       "    await fetchValue();\n" +
       "  }\n" +

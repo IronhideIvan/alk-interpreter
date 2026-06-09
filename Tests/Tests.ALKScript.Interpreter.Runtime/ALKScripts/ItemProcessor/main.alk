@@ -1,11 +1,10 @@
 import { log } from "console";
-import { Buffer } from "io";
+import { Buffer, process } from "io";
 
-// Simulates an async processing step (e.g. a transformation that could be I/O-bound).
-// Being async means each call suspends the script and resumes on the next scheduler tick.
-async function string process(string name) {
-    return "[processed] " + name;
-}
+// 'process' is a native async function — the host drives the async work.
+// 'await process(item)' suspends the script at the top level (which is an
+// implicit async context) until the host completes the operation and returns
+// the result.
 
 var items = ["apple", "SKIP", "banana", "SKIP", "cherry", "STOP", "date"];
 var output = new Buffer();

@@ -88,7 +88,10 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // work alongside it (or "await" it later). That's the entire point of
     // "let t = asyncFn(); ...; await t;" being meaningfully different from
     // "await asyncFn();".
-    var recorded = Run($"{RecordDeclaration}\nasync function int compute() {{\n  return 21 * 2;\n}}\nasync function void main() {{\n  var t = compute();\n  record(t);\n  record(await t);\n}}\nmain();");
+    // 'compute' uses 'await 1' (identity await — valid per the "async requires
+    // await" rule; awaiting a non-task value is a no-op) so the function is
+    // legitimately async without needing a native async dependency.
+    var recorded = Run($"{RecordDeclaration}\nasync function int compute() {{\n  await 1;\n  return 21 * 2;\n}}\nasync function void main() {{\n  var t = compute();\n  record(t);\n  record(await t);\n}}\nmain();");
 
     Assert.Equal(2, recorded.Count);
     Assert.IsType<TaskValue>(recorded[0]);

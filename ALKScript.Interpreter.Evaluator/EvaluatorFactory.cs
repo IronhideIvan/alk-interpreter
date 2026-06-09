@@ -25,7 +25,8 @@ namespace ALKScript.Interpreter.Evaluator
     public IEvaluator Create(
       IScriptScheduler scheduler,
       ScriptNativeBindings bindings,
-      ScriptNativeMethodBindings methodBindings) =>
-      new ProgramEvaluator(bindings, methodBindings, _operationBinder, scheduler: scheduler);
+      ScriptNativeMethodBindings methodBindings,
+      IAsyncOperationBinder? operationBinder = null) =>
+      new ProgramEvaluator(bindings, methodBindings, operationBinder ?? _operationBinder, scheduler: scheduler);
   }
 }

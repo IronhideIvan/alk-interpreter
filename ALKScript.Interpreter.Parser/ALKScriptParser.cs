@@ -254,6 +254,7 @@ namespace ALKScript.Interpreter.Parser
 
       OverrideModifier overrideModifier = ParseOptionalOverrideModifier();
       bool isNative = _stream.Match(ALKScriptTokenType.Native);
+      ALKScriptToken? asyncKeyword = _stream.Check(ALKScriptTokenType.Async) ? _stream.Peek() : null;
       bool isAsync = _stream.Match(ALKScriptTokenType.Async);
 
       if (overrideModifier != OverrideModifier.None || isNative || isAsync || _stream.Check(ALKScriptTokenType.Function))
@@ -266,6 +267,7 @@ namespace ALKScript.Interpreter.Parser
         List<Parameter> parameters = ParseParameterList();
 
         BlockStmt? body;
+        bool asyncBodyHasAwait;
 
         using (_parsingContext.EnterFunctionBody(isAsync))
         {
@@ -281,6 +283,17 @@ namespace ALKScript.Interpreter.Parser
           {
             body = ParseBlock();
           }
+          asyncBodyHasAwait = _parsingContext.BodyHasAwait;
+        }
+
+        // 'async' on a non-native, non-abstract method requires at least one
+        // 'await' in its body — the same rule as free functions. Abstract methods
+        // are exempt because they defer the body (and thus the awaits) to the
+        // override; native methods are exempt because the host provides the body.
+        bool isAbstract = overrideModifier == OverrideModifier.Abstract;
+        if (isAsync && !isNative && !isAbstract && body != null && !asyncBodyHasAwait)
+        {
+          throw Error(asyncKeyword!, "'async' is only valid on methods whose body contains at least one 'await' expression. Remove 'async' or add an 'await' call.");
         }
 
         return new MethodDecl(accessModifier, overrideModifier, isNative, isAsync, typeParameters, returnType, methodName, parameters, body);
@@ -363,6 +376,7 @@ namespace ALKScript.Interpreter.Parser
     private FunctionDecl ParseFunctionDecl()
     {
       bool isNative = _stream.Match(ALKScriptTokenType.Native);
+      ALKScriptToken? asyncKeyword = _stream.Check(ALKScriptTokenType.Async) ? _stream.Peek() : null;
       bool isAsync = _stream.Match(ALKScriptTokenType.Async);
       _stream.Consume(ALKScriptTokenType.Function, "Expect 'function'.");
 
@@ -372,9 +386,21 @@ namespace ALKScript.Interpreter.Parser
       List<Parameter> parameters = ParseParameterList();
 
       BlockStmt? body;
+      bool asyncBodyHasAwait;
       using (_parsingContext.EnterFunctionBody(isAsync))
       {
         body = ParseFunctionOrMethodBody(isNative, "function");
+        asyncBodyHasAwait = _parsingContext.BodyHasAwait;
+      }
+
+      // 'async' on a non-native function is only meaningful when the body
+      // actually suspends on something — i.e. contains at least one 'await'.
+      // Native functions are exempt (the host provides the async implementation);
+      // a plain user-defined function that never awaits should not declare itself
+      // async, since it would complete synchronously anyway.
+      if (isAsync && !isNative && body != null && !asyncBodyHasAwait)
+      {
+        throw Error(asyncKeyword!, "'async' is only valid on functions whose body contains at least one 'await' expression. Remove 'async' or add an 'await' call.");
       }
 
       return new FunctionDecl(isNative, isAsync, typeParameters, returnType, name, parameters, body);
@@ -907,6 +933,7 @@ namespace ALKScript.Interpreter.Parser
           throw Error(keyword, "'await' is only valid inside an 'async' function or method.");
         }
 
+        _parsingContext.NoteAwait();
         Expr operand = ParseUnary();
         return new AwaitExpr(keyword, operand);
       }
@@ -1128,6 +1155,7 @@ namespace ALKScript.Interpreter.Parser
     private sealed class ParsingContext
     {
       private bool _inAsyncBody;
+      private bool _bodyHasAwait;
 
       /// <summary>
       /// Enters a function/method (or constructor, or the entry module's top
@@ -1137,12 +1165,34 @@ namespace ALKScript.Interpreter.Parser
       /// </summary>
       public IDisposable EnterFunctionBody(bool isAsync)
       {
-        bool previous = _inAsyncBody;
+        bool previousAsync = _inAsyncBody;
+        bool previousHasAwait = _bodyHasAwait;
         _inAsyncBody = isAsync;
-        return new Restorer(() => _inAsyncBody = previous);
+        _bodyHasAwait = false;
+        return new Restorer(() =>
+        {
+          _inAsyncBody = previousAsync;
+          _bodyHasAwait = previousHasAwait;
+        });
       }
 
       public bool InAsyncBody => _inAsyncBody;
+
+      /// <summary>
+      /// Whether the current body (since the most recent
+      /// <see cref="EnterFunctionBody"/>) contains at least one <c>await</c>
+      /// expression at its own scope — not inside a nested function body.
+      /// Captured just before exiting a body scope to validate the
+      /// "async requires await" rule.
+      /// </summary>
+      public bool BodyHasAwait => _bodyHasAwait;
+
+      /// <summary>
+      /// Records that the current body has encountered an <c>await</c>
+      /// expression. Called from <see cref="ALKScriptParser.ParseUnary"/> when
+      /// an <c>await</c> token is consumed.
+      /// </summary>
+      public void NoteAwait() => _bodyHasAwait = true;
 
       private sealed class Restorer : IDisposable
       {

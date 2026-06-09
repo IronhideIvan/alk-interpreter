@@ -1,7 +1,13 @@
 // Core module: provides a Buffer — a host-backed growable list of strings
-// that scripts can write to and read from via native methods.
+// that scripts can write to and read from via native methods — and an async
+// processing operation that the host drives (simulating an I/O-bound step).
 export native class Buffer {
     public native function void write(string item);
     public native function string read(int index);
     public native function int size();
 }
+
+// Async operation: transforms a name, simulating work the host performs
+// asynchronously (e.g. a network call, file read, or game-engine coroutine).
+// The result is only produced when the caller 'await's this call.
+export native async function string process(string name);

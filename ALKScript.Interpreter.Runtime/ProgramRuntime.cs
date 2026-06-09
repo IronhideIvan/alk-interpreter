@@ -56,6 +56,9 @@ namespace ALKScript.Interpreter.Runtime
     /// </summary>
     public ScriptNativeMethodBindings NativeMethodBindings { get; } = new ScriptNativeMethodBindings();
 
+    /// <inheritdoc/>
+    public IAsyncOperationBinder? OperationBinder { get; set; }
+
     /// <summary>
     /// Creates a runtime with the default pipeline: real filesystem module
     /// loading, no core modules, and a fresh <see cref="ScriptScheduler"/>.
@@ -100,7 +103,7 @@ namespace ALKScript.Interpreter.Runtime
 
     /// <inheritdoc/>
     public ScriptEvaluation RunFromGraph(ModuleGraph graph) =>
-      _factory.Create(_scheduler, NativeBindings, NativeMethodBindings).Evaluate(graph);
+      _factory.Create(_scheduler, NativeBindings, NativeMethodBindings, OperationBinder).Evaluate(graph);
 
     /// <inheritdoc/>
     public ScriptEvaluation RunFromSource(string source) => RunFromGraph(LoadFromSource(source));

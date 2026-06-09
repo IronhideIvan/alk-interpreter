@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using Tests.ALKScript.Interpreter.Runtime.Support;
 
@@ -142,6 +145,19 @@ public class EndToEndTests : RuntimeTestBase
     runtime.NativeMethodBindings["Buffer", "size"] = (instance, args) =>
       new IntValue(GetItems(instance).Count);
 
+    // OperationBinder resolves 'native async function process': it prepends a
+    // tag and completes synchronously, so the test doesn't need a real async
+    // host but still exercises the full await/scheduler path.
+    runtime.OperationBinder = new LambdaOperationBinder(op =>
+    {
+      if (op.Name == "process")
+      {
+        var name = ((StringValue)op.Arguments[0]).Value;
+        return Task.FromResult<ALKScriptValue>(new StringValue("[processed] " + name));
+      }
+      throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
+    });
+
     runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
 
     Assert.Equal(
@@ -154,5 +170,28 @@ public class EndToEndTests : RuntimeTestBase
         "--- Done ---",
       },
       logged);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /// <summary>
+  /// A minimal <see cref="IAsyncOperationBinder"/> backed by a lambda, so
+  /// end-to-end tests can inject simple, synchronously-completing operations
+  /// without standing up a full host binder implementation.
+  /// </summary>
+  private sealed class LambdaOperationBinder : IAsyncOperationBinder
+  {
+    private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+
+    public LambdaOperationBinder(Func<PendingOperation, Task<ALKScriptValue>> start)
+    {
+      _start = start;
+    }
+
+    public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
+
+    public void Discard(PendingOperation operation, Action<Exception> onFault) { }
+
+    public void OnOperationFaulted(PendingOperation operation, Exception fault) { }
   }
 }
