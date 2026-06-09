@@ -338,6 +338,67 @@ public class EndToEndTests : RuntimeTestBase
     Assert.True(evaluation.IsCompleted);
   }
 
+  // ── Field declaration initializers ───────────────────────────────────────
+
+  [Fact]
+  public void FieldDeclInit_InitializersRunBeforeConstructorBodyAndInheritanceOrderIsRespected()
+  {
+    // The program spans two modules:
+    //   main.alk      — entry point; creates Item and PremiumItem instances
+    //   inventory.alk — exports Item (base) and PremiumItem (derived)
+    //
+    // Features exercised:
+    //   - Field with a string initializer ("general") is set before the constructor body runs
+    //   - Field with a numeric initializer (0) is set before the constructor body runs
+    //   - Field without an initializer (note) is null until the constructor assigns it
+    //   - Constructor body captures the initialized values via getNote(), proving order
+    //   - Derived class inherits the base class field initializers (category="general")
+    //   - Derived class has its own field initializer (tier="premium")
+    //   - Constructor can overwrite an initializer value (bonus: 50 → 99)
+    //   - Mutable public fields can be updated after construction (stock: 0 → 10)
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"]      = ReadScript("FieldDeclInit", "main.alk"),
+        ["inventory.alk"] = ReadScript("FieldDeclInit", "inventory.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("FieldDeclInit", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        // Base Item: constructor snapshot proves initializers ran first
+        "label=Widget category=general stock=0",
+        // Public fields readable after construction
+        "general",
+        "0",
+        // Field is mutable after construction
+        "10",
+        // PremiumItem: base field initializer inherited
+        "general",
+        // PremiumItem: derived field initializer
+        "premium",
+        // PremiumItem: constructor overwrote derived initializer value (50 → 99)
+        "99",
+        "done",
+      },
+      logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

@@ -81,6 +81,14 @@ namespace ALKScript.Interpreter.Evaluator
           await ExecuteFor(forStmt, environment);
           break;
 
+        case ForeachStmt foreachStmt:
+          await ExecuteForeach(foreachStmt, environment);
+          break;
+
+        case DoWhileStmt doWhileStmt:
+          await ExecuteDoWhile(doWhileStmt, environment);
+          break;
+
         case BreakStmt breakStmt:
           _context.Signal = Signal.Break();
           break;
@@ -265,6 +273,83 @@ namespace ALKScript.Interpreter.Evaluator
           {
             return;
           }
+        }
+      }
+    }
+
+    private async Task ExecuteForeach(ForeachStmt statement, ScriptEnvironment environment)
+    {
+      var collectionValue = await _context.Eval(statement.Collection, environment);
+
+      if (_context.Signal != null)
+      {
+        return;
+      }
+
+      var array = collectionValue as ArrayValue
+        ?? throw new RuntimeException(statement.Keyword, $"'foreach' requires an array but got '{collectionValue.TypeName}'.");
+
+      foreach (var item in array.Items)
+      {
+        var loopEnvironment = new ScriptEnvironment(environment);
+        loopEnvironment.Define(statement.Variable.Lexeme, item);
+
+        await Execute(statement.Body, loopEnvironment);
+
+        if (_context.Signal != null)
+        {
+          if (_context.Signal.Value.Kind == SignalKind.Break)
+          {
+            _context.Signal = null;
+            return;
+          }
+
+          if (_context.Signal.Value.Kind == SignalKind.Continue)
+          {
+            _context.Signal = null;
+            continue;
+          }
+
+          return;
+        }
+      }
+    }
+
+    private async Task ExecuteDoWhile(DoWhileStmt statement, ScriptEnvironment environment)
+    {
+      while (true)
+      {
+        await Execute(statement.Body, environment);
+
+        if (_context.Signal != null)
+        {
+          if (_context.Signal.Value.Kind == SignalKind.Break)
+          {
+            _context.Signal = null;
+            return;
+          }
+
+          if (_context.Signal.Value.Kind == SignalKind.Continue)
+          {
+            _context.Signal = null;
+            // fall through to condition check
+          }
+          else
+          {
+            return;
+          }
+        }
+
+        var condition = await _context.Eval(statement.Condition, environment);
+
+        if (_context.Signal != null)
+        {
+          return;
+        }
+
+        if (!condition.IsTruthy)
+        {
+          return;
         }
       }
     }

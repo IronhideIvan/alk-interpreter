@@ -253,4 +253,100 @@ public class ExpressionTests : ParserTestBase
     Assert.Contains(op, ex.Message);
     Assert.Contains("assignable target", ex.Message);
   }
+
+  // ── Compound assignment ───────────────────────────────────────────────────
+
+  [Theory]
+  [InlineData("x += 1;",  ALKScriptTokenType.PlusEqual)]
+  [InlineData("x -= 1;",  ALKScriptTokenType.MinusEqual)]
+  [InlineData("x *= 2;",  ALKScriptTokenType.StarEqual)]
+  [InlineData("x /= 2;",  ALKScriptTokenType.SlashEqual)]
+  [InlineData("x %= 3;",  ALKScriptTokenType.PercentEqual)]
+  public void Parse_CompoundAssignment_ProducesCompoundAssignmentExprWithCorrectOperator(
+    string source, ALKScriptTokenType expectedOp)
+  {
+    var program = Parse(source);
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var compound = Assert.IsType<CompoundAssignmentExpr>(exprStmt.Expression);
+
+    Assert.Equal(expectedOp, compound.Operator.Type);
+    Assert.IsType<IdentifierExpr>(compound.Target);
+    Assert.IsType<LiteralExpr>(compound.Value);
+  }
+
+  // ── Ternary operator ─────────────────────────────────────────────────────
+
+  [Fact]
+  public void Parse_TernaryExpression_ProducesTernaryExprWithCorrectBranches()
+  {
+    var program = Parse("a ? b : c;");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var ternary = Assert.IsType<TernaryExpr>(exprStmt.Expression);
+
+    Assert.IsType<IdentifierExpr>(ternary.Condition);
+    Assert.IsType<IdentifierExpr>(ternary.ThenExpr);
+    Assert.IsType<IdentifierExpr>(ternary.ElseExpr);
+  }
+
+  [Fact]
+  public void Parse_TernaryExpression_IsRightAssociativeInBranches()
+  {
+    // "a ? b : c ? d : e" should parse as "a ? b : (c ? d : e)"
+    var program = Parse("a ? b : c ? d : e;");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var outer = Assert.IsType<TernaryExpr>(exprStmt.Expression);
+
+    Assert.IsType<IdentifierExpr>(outer.Condition);  // a
+    Assert.IsType<IdentifierExpr>(outer.ThenExpr);   // b
+    Assert.IsType<TernaryExpr>(outer.ElseExpr);      // c ? d : e
+  }
+
+  // ── Null coalescing (??) ─────────────────────────────────────────────────
+
+  [Fact]
+  public void Parse_NullCoalescing_ProducesBinaryExprWithQuestionQuestionOperator()
+  {
+    var program = Parse("x ?? y;");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var binary = Assert.IsType<BinaryExpr>(exprStmt.Expression);
+
+    Assert.Equal(ALKScriptTokenType.QuestionQuestion, binary.Operator.Type);
+    Assert.IsType<IdentifierExpr>(binary.Left);
+    Assert.IsType<IdentifierExpr>(binary.Right);
+  }
+
+  // ── Null-conditional (?.) ────────────────────────────────────────────────
+
+  [Fact]
+  public void Parse_NullConditionalGet_ProducesNullConditionalGetExpr()
+  {
+    var program = Parse("obj?.name;");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var nullCond = Assert.IsType<NullConditionalGetExpr>(exprStmt.Expression);
+
+    Assert.IsType<IdentifierExpr>(nullCond.Target);
+    Assert.Equal("name", nullCond.Name.Lexeme);
+  }
+
+  [Fact]
+  public void Parse_NullConditionalCall_WrapsCalleeInNullConditionalGetExpr()
+  {
+    // "obj?.greet()" — the callee should be a NullConditionalGetExpr, not a GetExpr.
+    var program = Parse("obj?.greet();");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var call = Assert.IsType<CallExpr>(exprStmt.Expression);
+    Assert.IsType<NullConditionalGetExpr>(call.Callee);
+  }
 }

@@ -24,6 +24,10 @@ namespace ALKScript.Interpreter.Evaluator
           return functionDecl.Name;
         case ClassDecl classDecl:
           return classDecl.Name;
+        case ForeachStmt foreachStmt:
+          return foreachStmt.Keyword;
+        case DoWhileStmt doWhileStmt:
+          return doWhileStmt.Keyword;
         default:
           return EndOfFile;
       }
@@ -61,6 +65,12 @@ namespace ALKScript.Interpreter.Evaluator
           return prefixUpdate.Operator;
         case PostfixUpdateExpr postfixUpdate:
           return postfixUpdate.Operator;
+        case CompoundAssignmentExpr compound:
+          return compound.Operator;
+        case TernaryExpr ternary:
+          return ternary.QuestionToken;
+        case NullConditionalGetExpr nullCondGet:
+          return nullCondGet.Name;
         default:
           return EndOfFile;
       }

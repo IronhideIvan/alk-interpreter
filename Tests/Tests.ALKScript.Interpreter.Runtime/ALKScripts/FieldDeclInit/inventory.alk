@@ -1,0 +1,37 @@
+// Exercises FieldDecl initializers.
+//
+// Item — base class with two initialized fields and one un-initialized field.
+// PremiumItem — derived class with its own initialized fields.
+//
+// By capturing initialized values inside the constructor we can prove from the
+// outside (via getNote()) that initializers ran *before* the constructor body.
+
+export class Item {
+    public string category = "general";
+    public int stock = 0;
+    public string note;          // no initializer — null until the constructor sets it
+
+    public new(string label) {
+        // At this point category and stock already carry their initializer values;
+        // note is still null (no initializer).  We snapshot them so the test can
+        // verify the order from the outside.
+        this.note = "label=" + label + " category=" + this.category + " stock=" + this.stock;
+    }
+
+    public function string getNote() { return this.note; }
+    public function string getCategory() { return this.category; }
+    public function int getStock() { return this.stock; }
+}
+
+export class PremiumItem extends Item {
+    public string tier = "premium";
+    public int bonus = 50;          // initial value overwritten by the constructor
+
+    public new(string label, int bonus) {
+        base(label);
+        this.bonus = bonus;
+    }
+
+    public function string getTier() { return this.tier; }
+    public function int getBonus() { return this.bonus; }
+}

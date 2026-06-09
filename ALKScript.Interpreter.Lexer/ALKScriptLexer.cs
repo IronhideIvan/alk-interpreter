@@ -12,6 +12,9 @@ namespace ALKScript.Interpreter.Lexer
       { "else", ALKScriptTokenType.Else },
       { "while", ALKScriptTokenType.While },
       { "for", ALKScriptTokenType.For },
+      { "foreach", ALKScriptTokenType.Foreach },
+      { "in", ALKScriptTokenType.In },
+      { "do", ALKScriptTokenType.Do },
       { "break", ALKScriptTokenType.Break },
       { "continue", ALKScriptTokenType.Continue },
       { "function", ALKScriptTokenType.Function },
@@ -100,11 +103,23 @@ namespace ALKScript.Interpreter.Lexer
         case ';': AddToken(ALKScriptTokenType.Semicolon); break;
         case ':': AddToken(ALKScriptTokenType.Colon); break;
         case '.': AddToken(ALKScriptTokenType.Dot); break;
-        case '?': AddToken(ALKScriptTokenType.Question); break;
-        case '+': AddToken(Match('+') ? ALKScriptTokenType.PlusPlus  : ALKScriptTokenType.Plus);  break;
-        case '-': AddToken(Match('-') ? ALKScriptTokenType.MinusMinus : ALKScriptTokenType.Minus); break;
-        case '*': AddToken(ALKScriptTokenType.Star); break;
-        case '%': AddToken(ALKScriptTokenType.Percent); break;
+        case '?':
+          if (Match('?')) AddToken(ALKScriptTokenType.QuestionQuestion);
+          else if (Match('.')) AddToken(ALKScriptTokenType.QuestionDot);
+          else AddToken(ALKScriptTokenType.Question);
+          break;
+        case '+':
+          if (Match('+')) AddToken(ALKScriptTokenType.PlusPlus);
+          else if (Match('=')) AddToken(ALKScriptTokenType.PlusEqual);
+          else AddToken(ALKScriptTokenType.Plus);
+          break;
+        case '-':
+          if (Match('-')) AddToken(ALKScriptTokenType.MinusMinus);
+          else if (Match('=')) AddToken(ALKScriptTokenType.MinusEqual);
+          else AddToken(ALKScriptTokenType.Minus);
+          break;
+        case '*': AddToken(Match('=') ? ALKScriptTokenType.StarEqual : ALKScriptTokenType.Star); break;
+        case '%': AddToken(Match('=') ? ALKScriptTokenType.PercentEqual : ALKScriptTokenType.Percent); break;
 
         case '/':
           if (Match('/'))
@@ -117,6 +132,10 @@ namespace ALKScript.Interpreter.Lexer
           else if (Match('*'))
           {
             ScanBlockComment();
+          }
+          else if (Match('='))
+          {
+            AddToken(ALKScriptTokenType.SlashEqual);
           }
           else
           {

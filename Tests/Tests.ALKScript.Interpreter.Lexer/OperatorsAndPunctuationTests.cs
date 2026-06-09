@@ -34,7 +34,13 @@ public class OperatorsAndPunctuationTests
   [InlineData(";", ALKScriptTokenType.Semicolon)]
   [InlineData(":", ALKScriptTokenType.Colon)]
   [InlineData(".", ALKScriptTokenType.Dot)]
-  [InlineData("?", ALKScriptTokenType.Question)]
+  [InlineData("?",  ALKScriptTokenType.Question)]
+  [InlineData("??", ALKScriptTokenType.QuestionQuestion)]
+  [InlineData("+=", ALKScriptTokenType.PlusEqual)]
+  [InlineData("-=", ALKScriptTokenType.MinusEqual)]
+  [InlineData("*=", ALKScriptTokenType.StarEqual)]
+  [InlineData("/=", ALKScriptTokenType.SlashEqual)]
+  [InlineData("%=", ALKScriptTokenType.PercentEqual)]
   public void Tokenize_OperatorOrPunctuation_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
     var lexer = new ALKScriptLexer();
@@ -97,5 +103,61 @@ public class OperatorsAndPunctuationTests
         ALKScriptTokenType.EndOfFile
       },
       tokens.ConvertAll(t => t.Type));
+  }
+
+  [Fact]
+  public void Tokenize_QuestionDot_ProducesQuestionDotToken()
+  {
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize("obj?.name").ToList();
+    Assert.Equal(ALKScriptTokenType.Identifier,   tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.QuestionDot,  tokens[1].Type);
+    Assert.Equal("?.",                            tokens[1].Lexeme);
+    Assert.Equal(ALKScriptTokenType.Identifier,   tokens[2].Type);
+  }
+
+  [Fact]
+  public void Tokenize_QuestionFollowedByIdentifier_ProducesSeparateQuestionAndIdentifier()
+  {
+    // "x? y" is nullable type annotation — '?' + ' ' + identifier — not '?.'.
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize("x? y").ToList();
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.Question,   tokens[1].Type);
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[2].Type);
+  }
+
+  [Theory]
+  [InlineData("foreach", ALKScriptTokenType.Foreach)]
+  [InlineData("in",      ALKScriptTokenType.In)]
+  [InlineData("do",      ALKScriptTokenType.Do)]
+  public void Tokenize_NewKeyword_ReturnsExpectedTokenType(string source, ALKScriptTokenType expected)
+  {
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize(source).ToList();
+    Assert.Equal(expected, tokens[0].Type);
+    Assert.Equal(source,   tokens[0].Lexeme);
+  }
+
+  [Fact]
+  public void Tokenize_CompoundAssignment_ProducesCorrectTokenTypes()
+  {
+    // "x += 1; x -= 1; x *= 2; x /= 2; x %= 3;"
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize("x += 1").ToList();
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.PlusEqual,  tokens[1].Type);
+    Assert.Equal("+=",                          tokens[1].Lexeme);
+    Assert.Equal(ALKScriptTokenType.Number,     tokens[2].Type);
+  }
+
+  [Fact]
+  public void Tokenize_SlashEqual_ProducesSlashEqualTokenNotSlashThenEqual()
+  {
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize("x /= 2").ToList();
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.SlashEqual, tokens[1].Type);
+    Assert.Equal("/=",                          tokens[1].Lexeme);
   }
 }

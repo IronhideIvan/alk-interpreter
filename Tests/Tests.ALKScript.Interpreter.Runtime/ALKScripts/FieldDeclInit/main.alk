@@ -1,0 +1,33 @@
+import { log } from "console";
+import { Item, PremiumItem } from "./inventory";
+
+// ── Base class: initializers run before the constructor body ──────────────────
+
+var item = new Item("Widget");
+
+// getNote() was captured inside the constructor, so it proves the initializers
+// (category="general", stock=0) were already in place when the constructor ran.
+log(item.getNote());          // "label=Widget category=general stock=0"
+
+// Public fields are readable after construction.
+log(item.getCategory());      // "general"
+log("" + item.getStock());    // "0"
+
+// Fields are mutable after construction.
+item.stock = 10;
+log("" + item.getStock());    // "10"
+
+// ── Derived class: base initializers + derived initializers both run ──────────
+
+var premium = new PremiumItem("Gadget", 99);
+
+// Base field initializer ran (inherited field keeps its initial value).
+log(premium.getCategory());   // "general"
+
+// Derived field initializer ran.
+log(premium.getTier());       // "premium"
+
+// Constructor overwrote the derived initializer value (50 → 99).
+log("" + premium.getBonus()); // "99"
+
+log("done");

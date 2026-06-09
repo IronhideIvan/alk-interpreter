@@ -222,4 +222,132 @@ public class ExpressionEvaluationTests : EvaluatorTestBase
   {
     Assert.ThrowsAny<Exception>(() => Run("var s = \"hello\"; s++;"));
   }
+
+  // ── Compound assignment ───────────────────────────────────────────────────
+
+  [Theory]
+  [InlineData("var x = 10; x += 3;",  13L)]
+  [InlineData("var x = 10; x -= 3;",   7L)]
+  [InlineData("var x = 10; x *= 3;",  30L)]
+  [InlineData("var x = 10; x /= 2;",   5L)]
+  [InlineData("var x = 10; x %= 3;",   1L)]
+  public void Evaluate_CompoundAssignment_UpdatesVariableCorrectly(string source, long expected)
+  {
+    var recorded = Run($"{RecordDeclaration} {source} record(x);");
+
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(expected, value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_CompoundAssignment_StringConcatenation_WorksWithPlusEqual()
+  {
+    var recorded = Run($"{RecordDeclaration} var s = \"hello\"; s += \" world\"; record(s);");
+
+    var value = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("hello world", value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_CompoundAssignment_OnArrayElement_MutatesInPlace()
+  {
+    var recorded = Run($"{RecordDeclaration} var arr = [1, 2, 3]; arr[1] += 10; record(arr[1]);");
+
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(12L, value.Value);
+  }
+
+  // ── Ternary operator ─────────────────────────────────────────────────────
+
+  [Fact]
+  public void Evaluate_TernaryOperator_ReturnsThenBranchWhenConditionTruthy()
+  {
+    var recorded = Run($"{RecordDeclaration} record(true ? \"yes\" : \"no\");");
+
+    var value = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("yes", value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_TernaryOperator_ReturnsElseBranchWhenConditionFalsy()
+  {
+    var recorded = Run($"{RecordDeclaration} record(false ? \"yes\" : \"no\");");
+
+    var value = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("no", value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_TernaryOperator_EvaluatesOnlyChosenBranch()
+  {
+    // Side-effects in the un-taken branch must not run.
+    var recorded = Run($"{RecordDeclaration}\nfunction string side() {{\n  record(\"side\");\n  return \"side\";\n}}\nrecord(true ? \"a\" : side());");
+
+    // Only "a" should be recorded — "side" must not appear.
+    var single = Assert.Single(recorded);
+    Assert.Equal("a", Assert.IsType<StringValue>(single).Value);
+  }
+
+  // ── Null coalescing (??) ─────────────────────────────────────────────────
+
+  [Fact]
+  public void Evaluate_NullCoalescing_ReturnsLeftOperandWhenNonNull()
+  {
+    var recorded = Run($"{RecordDeclaration} var x = 42; record(x ?? 99);");
+
+    Assert.Equal(42L, Assert.IsType<IntValue>(Assert.Single(recorded)).Value);
+  }
+
+  [Fact]
+  public void Evaluate_NullCoalescing_ReturnsFallbackWhenLeftIsNull()
+  {
+    var recorded = Run($"{RecordDeclaration} var x = null; record(x ?? 99);");
+
+    Assert.Equal(99L, Assert.IsType<IntValue>(Assert.Single(recorded)).Value);
+  }
+
+  [Fact]
+  public void Evaluate_NullCoalescing_DoesNotEvaluateRightSideWhenLeftIsNonNull()
+  {
+    // The right-hand side should never be evaluated when the left is non-null.
+    var recorded = Run($"{RecordDeclaration}\nfunction int side() {{\n  record(\"side\");\n  return 0;\n}}\nvar x = 1;\nrecord(x ?? side());");
+
+    // Only the "1" result should appear — "side" must not run.
+    var single = Assert.Single(recorded);
+    Assert.Equal(1L, Assert.IsType<IntValue>(single).Value);
+  }
+
+  // ── Null-conditional (?.) ────────────────────────────────────────────────
+
+  [Fact]
+  public void Evaluate_NullConditionalGet_ReturnsNullWhenTargetIsNull()
+  {
+    var recorded = Run($"{RecordDeclaration} var x = null; record(x?.name);");
+
+    Assert.IsType<NullValue>(Assert.Single(recorded));
+  }
+
+  [Fact]
+  public void Evaluate_NullConditionalGet_ReturnsMemberValueWhenTargetIsNonNull()
+  {
+    var recorded = Run(
+      $"{RecordDeclaration}\n" +
+      "class Box { public string value; public new(string v) { this.value = v; } }\n" +
+      "var b = new Box(\"hi\");\n" +
+      "record(b?.value);");
+
+    Assert.Equal("hi", Assert.IsType<StringValue>(Assert.Single(recorded)).Value);
+  }
+
+  [Fact]
+  public void Evaluate_NullConditionalCall_ReturnsNullWhenTargetIsNull()
+  {
+    var recorded = Run(
+      $"{RecordDeclaration}\n" +
+      "class Greeter { public function string greet() { return \"hello\"; } }\n" +
+      "var g = null;\n" +
+      "record(g?.greet());");
+
+    Assert.IsType<NullValue>(Assert.Single(recorded));
+  }
 }

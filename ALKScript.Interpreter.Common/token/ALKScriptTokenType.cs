@@ -12,6 +12,9 @@ namespace ALKScript.Interpreter.Common.Token
     Else,
     While,
     For,
+    Foreach,
+    In,
+    Do,
     Break,
     Continue,
     Function,
@@ -62,11 +65,16 @@ namespace ALKScript.Interpreter.Common.Token
     // Operators
     Plus,
     PlusPlus,
+    PlusEqual,
     Minus,
     MinusMinus,
+    MinusEqual,
     Star,
+    StarEqual,
     Slash,
+    SlashEqual,
     Percent,
+    PercentEqual,
     Equal,
     EqualEqual,
     Bang,
@@ -90,6 +98,8 @@ namespace ALKScript.Interpreter.Common.Token
     Colon,
     Dot,
     Question,
+    QuestionQuestion,
+    QuestionDot,
 
     EndOfFile
   }

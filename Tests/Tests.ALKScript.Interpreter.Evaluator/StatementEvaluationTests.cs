@@ -101,4 +101,79 @@ public class StatementEvaluationTests : EvaluatorTestBase
 
     Assert.Equal(new[] { "try", "finally" }, recorded.Select(v => Assert.IsType<StringValue>(v).Value));
   }
+
+  // ── foreach ───────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void Evaluate_ForeachStatement_IteratesOverEachElement()
+  {
+    var recorded = Run($"{RecordDeclaration} var items = [1, 2, 3]; foreach (var x in items) {{ record(x); }}");
+
+    Assert.Equal(3, recorded.Count);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
+    Assert.Equal(3L, Assert.IsType<IntValue>(recorded[2]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_ForeachStatement_EmptyArray_ProducesNoIterations()
+  {
+    var recorded = Run($"{RecordDeclaration} var items = []; foreach (var x in items) {{ record(x); }}");
+
+    Assert.Empty(recorded);
+  }
+
+  [Fact]
+  public void Evaluate_ForeachStatement_BreakExitsLoop()
+  {
+    var recorded = Run($"{RecordDeclaration} var items = [1, 2, 3, 4]; foreach (var x in items) {{ if (x == 3) {{ break; }} record(x); }}");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_ForeachStatement_ContinueSkipsCurrentIteration()
+  {
+    var recorded = Run($"{RecordDeclaration} var items = [1, 2, 3, 4]; foreach (var x in items) {{ if (x == 2) {{ continue; }} record(x); }}");
+
+    Assert.Equal(3, recorded.Count);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(3L, Assert.IsType<IntValue>(recorded[1]).Value);
+    Assert.Equal(4L, Assert.IsType<IntValue>(recorded[2]).Value);
+  }
+
+  // ── do-while ─────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void Evaluate_DoWhileStatement_ExecutesBodyAtLeastOnce()
+  {
+    // Even with a false condition the body runs once first.
+    var recorded = Run($"{RecordDeclaration} do {{ record(\"once\"); }} while (false);");
+
+    var value = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("once", value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_DoWhileStatement_RepeatsUntilConditionFalse()
+  {
+    var recorded = Run($"{RecordDeclaration} var i = 0; do {{ record(i); i = i + 1; }} while (i < 3);");
+
+    Assert.Equal(3, recorded.Count);
+    Assert.Equal(0L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[1]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[2]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_DoWhileStatement_BreakExitsLoopBeforeConditionCheck()
+  {
+    var recorded = Run($"{RecordDeclaration} var i = 0; do {{ if (i == 2) {{ break; }} record(i); i = i + 1; }} while (true);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(0L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
 }

@@ -94,6 +94,15 @@ namespace ALKScript.Interpreter.Evaluator
         case PostfixUpdateExpr postfixUpdate:
           return (await EvalUpdate(postfixUpdate.Operand, postfixUpdate.Operator, environment)).OldValue;
 
+        case CompoundAssignmentExpr compound:
+          return await EvalCompoundAssignment(compound, environment);
+
+        case TernaryExpr ternary:
+          return await EvalTernary(ternary, environment);
+
+        case NullConditionalGetExpr nullCondGet:
+          return await EvalNullConditionalGet(nullCondGet, environment);
+
         default:
           throw new RuntimeException(
             AstTokenLocator.Of(expression),
@@ -165,6 +174,11 @@ namespace ALKScript.Interpreter.Evaluator
           }
           var instance = target as InstanceValue
             ?? throw new RuntimeException(get.Name, $"Cannot set property '{get.Name.Lexeme}' on a value of type '{target.TypeName}'.");
+          var fieldMemberForWrite = instance.Class.FindMember(get.Name.Lexeme, out var fieldWriteDeclaringClass);
+          if (fieldMemberForWrite != null)
+          {
+            EnforceAccessModifier(fieldMemberForWrite, fieldWriteDeclaringClass, get.Name, environment);
+          }
           instance.Fields[get.Name.Lexeme] = value;
           return value;
 
@@ -261,6 +275,21 @@ namespace ALKScript.Interpreter.Evaluator
 
     private async Task<ALKScriptValue> EvalBinary(BinaryExpr expression, ScriptEnvironment environment)
     {
+      // Null-coalescing: left ?? right — return left if non-null, else right.
+      if (expression.Operator.Type == ALKScriptTokenType.QuestionQuestion)
+      {
+        var left = await Eval(expression.Left, environment);
+        if (_context.Signal != null)
+        {
+          return NullValue.Instance;
+        }
+        if (!(left is NullValue))
+        {
+          return left;
+        }
+        return await Eval(expression.Right, environment);
+      }
+
       // Short-circuiting logical operators evaluate their right-hand side lazily.
       if (expression.Operator.Type == ALKScriptTokenType.AmpAmp)
       {
@@ -363,6 +392,12 @@ namespace ALKScript.Interpreter.Evaluator
       var callee = await Eval(expression.Callee, environment);
 
       if (_context.Signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      // null-conditional short-circuit: obj?.method(...) → null when obj is null
+      if (callee is NullValue && expression.Callee is NullConditionalGetExpr)
       {
         return NullValue.Instance;
       }
@@ -631,43 +666,200 @@ namespace ALKScript.Interpreter.Evaluator
         return NullValue.Instance;
       }
 
+      return GetMember(target, expression.Name, environment);
+    }
+
+    private async Task<ALKScriptValue> EvalNullConditionalGet(NullConditionalGetExpr expression, ScriptEnvironment environment)
+    {
+      var target = await Eval(expression.Target, environment);
+
+      if (_context.Signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      // Short-circuit on null — the whole expression becomes null.
+      if (target is NullValue)
+      {
+        return NullValue.Instance;
+      }
+
+      return GetMember(target, expression.Name, environment);
+    }
+
+    private ALKScriptValue GetMember(ALKScriptValue target, ALKScriptToken name, ScriptEnvironment environment)
+    {
       switch (target)
       {
         case InstanceValue instance:
-          if (instance.Fields.TryGetValue(expression.Name.Lexeme, out var fieldValue))
+          if (instance.Fields.TryGetValue(name.Lexeme, out var fieldValue))
           {
+            // Enforce access modifier on field reads.
+            var fieldMember = instance.Class.FindMember(name.Lexeme, out var fieldDeclaringClass);
+            if (fieldMember != null)
+            {
+              EnforceAccessModifier(fieldMember, fieldDeclaringClass, name, environment);
+            }
             return fieldValue;
           }
 
-          var member = instance.Class.FindMember(expression.Name.Lexeme, out var declaringClass);
+          var member = instance.Class.FindMember(name.Lexeme, out var declaringClass);
           if (member is MethodDecl method)
           {
+            EnforceAccessModifier(member, declaringClass, name, environment);
             return _functionValueFactory.CreateMethod(method, declaringClass!, ClassEnvironments.For(instance.Class), instance);
           }
 
-          throw new RuntimeException(expression.Name, $"Undefined property '{expression.Name.Lexeme}' on '{target.TypeName}'.");
+          throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on '{target.TypeName}'.");
 
         case BaseValue baseValue:
-          var baseMember = baseValue.Superclass.FindMember(expression.Name.Lexeme, out var baseDeclaringClass);
+          var baseMember = baseValue.Superclass.FindMember(name.Lexeme, out var baseDeclaringClass);
           if (baseMember is MethodDecl baseMethod)
           {
             return _functionValueFactory.CreateMethod(baseMethod, baseDeclaringClass!, ClassEnvironments.For(baseValue.Superclass), baseValue.Instance);
           }
 
-          throw new RuntimeException(expression.Name, $"Undefined member '{expression.Name.Lexeme}' on base class.");
+          throw new RuntimeException(name, $"Undefined member '{name.Lexeme}' on base class.");
 
         case ClassValue classValue:
-          var staticMember = classValue.FindMember(expression.Name.Lexeme, out var staticDeclaringClass);
+          var staticMember = classValue.FindMember(name.Lexeme, out var staticDeclaringClass);
           if (staticMember is MethodDecl staticMethod)
           {
+            EnforceAccessModifier(staticMember, staticDeclaringClass, name, environment);
             return _functionValueFactory.CreateMethod(staticMethod, staticDeclaringClass!, ClassEnvironments.For(classValue), boundInstance: null);
           }
 
-          throw new RuntimeException(expression.Name, $"Undefined static member '{expression.Name.Lexeme}' on '{target.TypeName}'.");
+          throw new RuntimeException(name, $"Undefined static member '{name.Lexeme}' on '{target.TypeName}'.");
 
         default:
-          throw new RuntimeException(expression.Name, $"Cannot access property '{expression.Name.Lexeme}' on a value of type '{target.TypeName}'.");
+          throw new RuntimeException(name, $"Cannot access property '{name.Lexeme}' on a value of type '{target.TypeName}'.");
       }
+    }
+
+    /// <summary>
+    /// Enforces the access modifier of <paramref name="member"/> relative to the
+    /// currently executing class (<see cref="ScriptEnvironment.CurrentClass"/>).
+    /// Public members are always accessible; private members require the current
+    /// class to be exactly the declaring class; protected members require it to be
+    /// the declaring class or a subclass of it.
+    /// </summary>
+    private static void EnforceAccessModifier(
+      MemberDecl member, ClassValue? declaringClass, ALKScriptToken site, ScriptEnvironment environment)
+    {
+      if (member.AccessModifier == AccessModifier.Public) return;
+
+      var currentClass = environment.CurrentClass;
+
+      if (member.AccessModifier == AccessModifier.Private)
+      {
+        if (currentClass == null || currentClass != declaringClass)
+        {
+          throw new RuntimeException(site,
+            $"Cannot access private member '{site.Lexeme}' outside its declaring class.");
+        }
+      }
+      else if (member.AccessModifier == AccessModifier.Protected)
+      {
+        if (!IsSubclassOrSelf(currentClass, declaringClass!))
+        {
+          throw new RuntimeException(site,
+            $"Cannot access protected member '{site.Lexeme}' outside its declaring class or subclasses.");
+        }
+      }
+    }
+
+    private static bool IsSubclassOrSelf(ClassValue? candidate, ClassValue target)
+    {
+      for (ClassValue? c = candidate; c != null; c = c.Superclass)
+      {
+        if (c == target) return true;
+      }
+      return false;
+    }
+
+    private async Task<ALKScriptValue> EvalCompoundAssignment(CompoundAssignmentExpr expression, ScriptEnvironment environment)
+    {
+      switch (expression.Target)
+      {
+        case IdentifierExpr identifier:
+        {
+          var current = Names.LookUp(identifier.Name, environment);
+          var rhs = await Eval(expression.Value, environment);
+          if (_context.Signal != null) return NullValue.Instance;
+          var result = ApplyCompound(current, rhs, expression.Operator);
+          if (!environment.TryAssign(identifier.Name.Lexeme, result))
+            throw new RuntimeException(identifier.Name, $"Undefined name '{identifier.Name.Lexeme}'.");
+          return result;
+        }
+
+        case GetExpr get:
+        {
+          var target = await Eval(get.Target, environment);
+          if (_context.Signal != null) return NullValue.Instance;
+          var instance = target as InstanceValue
+            ?? throw new RuntimeException(get.Name, $"Cannot apply '{expression.Operator.Lexeme}' to a value of type '{target.TypeName}'.");
+          if (!instance.Fields.TryGetValue(get.Name.Lexeme, out var current))
+            throw new RuntimeException(get.Name, $"Undefined field '{get.Name.Lexeme}'.");
+          var rhs = await Eval(expression.Value, environment);
+          if (_context.Signal != null) return NullValue.Instance;
+          var result = ApplyCompound(current, rhs, expression.Operator);
+          instance.Fields[get.Name.Lexeme] = result;
+          return result;
+        }
+
+        case IndexExpr index:
+        {
+          var target = await Eval(index.Target, environment);
+          if (_context.Signal != null) return NullValue.Instance;
+          var array = target as ArrayValue
+            ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
+          var indexValue = await Eval(index.Index, environment);
+          if (_context.Signal != null) return NullValue.Instance;
+          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count);
+          var current = array.Items[position];
+          var rhs = await Eval(expression.Value, environment);
+          if (_context.Signal != null) return NullValue.Instance;
+          var result = ApplyCompound(current, rhs, expression.Operator);
+          array.Items[position] = result;
+          return result;
+        }
+
+        default:
+          throw new RuntimeException(expression.Operator, "Invalid assignment target for compound assignment.");
+      }
+    }
+
+    private static ALKScriptValue ApplyCompound(ALKScriptValue left, ALKScriptValue right, ALKScriptToken op)
+    {
+      switch (op.Type)
+      {
+        case ALKScriptTokenType.PlusEqual:
+          return Operators.Add(left, right, op);
+        case ALKScriptTokenType.MinusEqual:
+          return Operators.Arithmetic(left, right, op, (a, b) => a - b, (a, b) => a - b);
+        case ALKScriptTokenType.StarEqual:
+          return Operators.Arithmetic(left, right, op, (a, b) => a * b, (a, b) => a * b);
+        case ALKScriptTokenType.SlashEqual:
+          return Operators.Arithmetic(left, right, op, (a, b) => a / b, (a, b) => a / b);
+        case ALKScriptTokenType.PercentEqual:
+          return Operators.Arithmetic(left, right, op, (a, b) => a % b, (a, b) => a % b);
+        default:
+          throw new RuntimeException(op, $"Unsupported compound assignment operator '{op.Lexeme}'.");
+      }
+    }
+
+    private async Task<ALKScriptValue> EvalTernary(TernaryExpr expression, ScriptEnvironment environment)
+    {
+      var condition = await Eval(expression.Condition, environment);
+
+      if (_context.Signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      return condition.IsTruthy
+        ? await Eval(expression.ThenExpr, environment)
+        : await Eval(expression.ElseExpr, environment);
     }
 
     private async Task<ALKScriptValue> EvalIndex(IndexExpr expression, ScriptEnvironment environment)

@@ -616,6 +616,16 @@ namespace ALKScript.Interpreter.Parser
         return ParseContinueStatement();
       }
 
+      if (_stream.Match(ALKScriptTokenType.Foreach))
+      {
+        return ParseForeachStatement();
+      }
+
+      if (_stream.Match(ALKScriptTokenType.Do))
+      {
+        return ParseDoWhileStatement();
+      }
+
       if (_stream.Match(ALKScriptTokenType.Try))
       {
         return ParseTryStatement();
@@ -660,6 +670,31 @@ namespace ALKScript.Interpreter.Parser
       Stmt body = ParseStatement();
 
       return new WhileStmt(condition, body);
+    }
+
+    private Stmt ParseForeachStatement()
+    {
+      ALKScriptToken keyword = _stream.Previous();
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'foreach'.");
+      _stream.Consume(ALKScriptTokenType.Var, "Expect 'var' in foreach variable declaration.");
+      ALKScriptToken variable = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a variable name in foreach.");
+      _stream.Consume(ALKScriptTokenType.In, "Expect 'in' after variable name in foreach.");
+      Expr collection = ParseExpression();
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after foreach collection.");
+      Stmt body = ParseStatement();
+      return new ForeachStmt(keyword, variable, collection, body);
+    }
+
+    private Stmt ParseDoWhileStatement()
+    {
+      ALKScriptToken keyword = _stream.Previous();
+      Stmt body = ParseStatement();
+      _stream.Consume(ALKScriptTokenType.While, "Expect 'while' after 'do' body.");
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'while'.");
+      Expr condition = ParseExpression();
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after do-while condition.");
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after do-while statement.");
+      return new DoWhileStmt(keyword, body, condition);
     }
 
     private Stmt ParseForStatement()
@@ -813,7 +848,7 @@ namespace ALKScript.Interpreter.Parser
 
     private Expr ParseAssignment()
     {
-      Expr target = ParseLogicOr();
+      Expr target = ParseTernary();
 
       if (_stream.Match(ALKScriptTokenType.Equal))
       {
@@ -828,7 +863,53 @@ namespace ALKScript.Interpreter.Parser
         throw Error(equals, "Invalid assignment target.");
       }
 
+      if (_stream.Match(
+            ALKScriptTokenType.PlusEqual, ALKScriptTokenType.MinusEqual,
+            ALKScriptTokenType.StarEqual, ALKScriptTokenType.SlashEqual,
+            ALKScriptTokenType.PercentEqual))
+      {
+        ALKScriptToken op = _stream.Previous();
+        Expr value = ParseAssignment();
+
+        if (target is IdentifierExpr || target is GetExpr || target is IndexExpr)
+        {
+          return new CompoundAssignmentExpr(target, op, value);
+        }
+
+        throw Error(op, "Invalid assignment target for compound assignment.");
+      }
+
       return target;
+    }
+
+    private Expr ParseTernary()
+    {
+      Expr condition = ParseNullCoalescing();
+
+      if (_stream.Match(ALKScriptTokenType.Question))
+      {
+        ALKScriptToken question = _stream.Previous();
+        Expr thenExpr = ParseAssignment();
+        _stream.Consume(ALKScriptTokenType.Colon, "Expect ':' after ternary 'then' branch.");
+        Expr elseExpr = ParseAssignment();
+        return new TernaryExpr(condition, question, thenExpr, elseExpr);
+      }
+
+      return condition;
+    }
+
+    private Expr ParseNullCoalescing()
+    {
+      Expr expr = ParseLogicOr();
+
+      while (_stream.Match(ALKScriptTokenType.QuestionQuestion))
+      {
+        ALKScriptToken op = _stream.Previous();
+        Expr right = ParseLogicOr();
+        expr = new BinaryExpr(expr, op, right);
+      }
+
+      return expr;
     }
 
     private Expr ParseLogicOr()
@@ -964,6 +1045,11 @@ namespace ALKScript.Interpreter.Parser
         {
           ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property or method name after '.'.");
           expr = new GetExpr(expr, name);
+        }
+        else if (_stream.Match(ALKScriptTokenType.QuestionDot))
+        {
+          ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property or method name after '?.'.");
+          expr = new NullConditionalGetExpr(expr, name);
         }
         else if (_stream.Match(ALKScriptTokenType.LeftBracket))
         {

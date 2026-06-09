@@ -279,4 +279,35 @@ public class FunctionsAndControlFlowTests : ParserTestBase
     Assert.True(method.IsNative);
     Assert.True(method.IsAsync);
   }
+
+  // ── foreach ───────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void Parse_ForeachStatement_ProducesForeachStmtWithVariableAndCollection()
+  {
+    var program = Parse("foreach (var item in items) { }");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var forEach = Assert.IsType<ForeachStmt>(stmtDecl.Statement);
+
+    Assert.Equal("item",  forEach.Variable.Lexeme);
+    Assert.Equal("foreach", forEach.Keyword.Lexeme);
+    Assert.IsType<IdentifierExpr>(forEach.Collection);
+    Assert.IsType<BlockStmt>(forEach.Body);
+  }
+
+  // ── do-while ─────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void Parse_DoWhileStatement_ProducesDoWhileStmtWithBodyAndCondition()
+  {
+    var program = Parse("do { } while (true);");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var doWhile = Assert.IsType<DoWhileStmt>(stmtDecl.Statement);
+
+    Assert.Equal("do", doWhile.Keyword.Lexeme);
+    Assert.IsType<BlockStmt>(doWhile.Body);
+    Assert.IsType<LiteralExpr>(doWhile.Condition);
+  }
 }

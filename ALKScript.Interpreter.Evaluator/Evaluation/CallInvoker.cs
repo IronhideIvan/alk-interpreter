@@ -52,6 +52,12 @@ namespace ALKScript.Interpreter.Evaluator
     public async Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     {
       var instance = new InstanceValue(classValue);
+
+      // Initialize fields from the whole hierarchy, base class first, so that
+      // derived-class initializers can rely on base fields already being set.
+      await InitializeFields(classValue, instance);
+      if (_context.Signal != null) return NullValue.Instance;
+
       var constructor = FindConstructor(classValue);
 
       if (constructor != null)
@@ -62,6 +68,7 @@ namespace ALKScript.Interpreter.Evaluator
         }
 
         var constructorEnvironment = new ScriptEnvironment(ClassEnvironments.For(classValue));
+        constructorEnvironment.CurrentClass = classValue;
         constructorEnvironment.Define("this", instance);
         if (classValue.Superclass != null)
         {
@@ -90,6 +97,47 @@ namespace ALKScript.Interpreter.Evaluator
       return instance;
     }
 
+    /// <summary>
+    /// Initializes all <see cref="FieldDecl"/> members for <paramref name="classValue"/>
+    /// and its superclass chain (base-first), evaluating each declared initializer
+    /// expression or defaulting to <see cref="NullValue.Instance"/> when no
+    /// initializer is present.
+    /// </summary>
+    private async Task InitializeFields(ClassValue classValue, InstanceValue instance)
+    {
+      // Collect the hierarchy base-to-derived so base fields are initialized first.
+      var hierarchy = new List<ClassValue>();
+      for (ClassValue? c = classValue; c != null; c = c.Superclass)
+      {
+        hierarchy.Insert(0, c);
+      }
+
+      var initEnvironment = new ScriptEnvironment(ClassEnvironments.For(classValue));
+      initEnvironment.Define("this", instance);
+
+      foreach (var cls in hierarchy)
+      {
+        foreach (var member in cls.Declaration.Members)
+        {
+          if (member is FieldDecl field)
+          {
+            ALKScriptValue fieldValue;
+            if (field.Initializer != null)
+            {
+              fieldValue = await _context.Eval(field.Initializer, initEnvironment);
+              if (_context.Signal != null) return;
+            }
+            else
+            {
+              fieldValue = NullValue.Instance;
+            }
+
+            instance.Fields[field.Name.Lexeme] = fieldValue;
+          }
+        }
+      }
+    }
+
     private async Task<ALKScriptValue> Invoke(CallableValue callable, IReadOnlyList<ALKScriptValue> arguments)
     {
       switch (callable)
@@ -110,6 +158,7 @@ namespace ALKScript.Interpreter.Evaluator
     private Task<ALKScriptValue> InvokeFunction(FunctionValue function, IReadOnlyList<ALKScriptValue> arguments)
     {
       var callEnvironment = new ScriptEnvironment(function.Closure);
+      callEnvironment.CurrentClass = function.DeclaringClass;
 
       if (function.BoundInstance != null)
       {
@@ -182,6 +231,7 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       var env = new ScriptEnvironment(ClassEnvironments.For(superclass));
+      env.CurrentClass = superclass;
       env.Define("this", instance);
       if (superclass.Superclass != null)
       {
