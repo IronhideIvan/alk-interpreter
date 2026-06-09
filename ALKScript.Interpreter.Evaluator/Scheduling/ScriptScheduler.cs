@@ -22,7 +22,7 @@ namespace ALKScript.Interpreter.Evaluator.Scheduling
   /// once content has come to depend on incidental ordering, would be
   /// expensive and likely breaking."
   /// </summary>
-  public sealed class ScriptScheduler : IScriptScheduler
+  public sealed class ScriptScheduler : IScriptLoop
   {
     private readonly ConcurrentQueue<Action> _queue = new ConcurrentQueue<Action>();
     private readonly SemaphoreSlim _workAvailable = new SemaphoreSlim(0);

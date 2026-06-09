@@ -119,7 +119,7 @@ namespace ALKScript.Interpreter.Evaluator
     /// <summary>
     /// Starts evaluating <paramref name="graph"/> and returns an opaque
     /// <see cref="ScriptEvaluation"/> handle. Drive progress by calling
-    /// <see cref="IScriptScheduler.Pump"/> on each game-loop tick.
+    /// <see cref="IScriptLoop.Pump"/> on each game-loop tick.
     /// </summary>
     public ScriptEvaluation Evaluate(ModuleGraph graph) => new ScriptEvaluation(EvaluateCore(graph));
 
