@@ -63,6 +63,8 @@ internal sealed class FakeEvaluationContext : IEvaluationContext
   public Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     => Task.FromResult(ConstructImpl(classValue, arguments, site));
 
+  public IScriptScheduler? Scheduler => null;
+
   // Replay log stubs — no-op by default; override per-test if needed.
   public OperationLogEntry? TryReplayNext() => null;
   public void RecordEntry(OperationLogEntry entry) { }

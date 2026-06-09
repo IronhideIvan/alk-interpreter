@@ -6,6 +6,7 @@ using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
+using ALKScript.Interpreter.Evaluator.Scheduling;
 
 namespace ALKScript.Interpreter.Evaluator
 {
@@ -366,7 +367,7 @@ namespace ALKScript.Interpreter.Evaluator
     {
       try
       {
-        return await task;
+        return await task.ScheduledOn(_context.Scheduler);
       }
       catch (RuntimeException)
       {
@@ -404,7 +405,7 @@ namespace ALKScript.Interpreter.Evaluator
 
       try
       {
-        var result = await pending.Start();
+        var result = await pending.Start().ScheduledOn(_context.Scheduler);
         _context.RecordEntry(OperationLogEntry.FromResult(pending.Operation, result));
         return result;
       }
@@ -485,7 +486,7 @@ namespace ALKScript.Interpreter.Evaluator
 
         try
         {
-          var liveResults = await Task.WhenAll(taskList);
+          var liveResults = await Task.WhenAll(taskList).ScheduledOn(_context.Scheduler);
           for (int j = 0; j < indices.Count; j++)
           {
             int i = indices[j];

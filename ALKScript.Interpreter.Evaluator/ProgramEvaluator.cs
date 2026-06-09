@@ -25,6 +25,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// </summary>
   public class ProgramEvaluator : IEvaluator, IEvaluationContext
   {
+    private readonly IScriptScheduler? _scheduler;
     private readonly IFunctionValueFactory _functionValueFactory;
     private readonly IStatementExecutor _statements;
     private readonly IExpressionEvaluator _expressions;
@@ -84,8 +85,8 @@ namespace ALKScript.Interpreter.Evaluator
     /// at which point live execution resumes and new entries are appended.
     /// Omit (or pass <c>null</c>) for a fresh run with no prior log.
     /// </param>
-    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, Common.Evaluation.Scheduling.IAsyncOperationBinder? operationBinder = null, IReadOnlyList<OperationLogEntry>? replayLog = null)
-      : this(new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder))
+    public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, Common.Evaluation.Scheduling.IAsyncOperationBinder? operationBinder = null, IReadOnlyList<OperationLogEntry>? replayLog = null, IScriptScheduler? scheduler = null)
+      : this(new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder), scheduler)
     {
       if (replayLog != null) _log.AddRange(replayLog);
       _replayLength = _log.Count;
@@ -95,8 +96,8 @@ namespace ALKScript.Interpreter.Evaluator
     /// Creates an evaluator with an explicit <see cref="IFunctionValueFactory"/>,
     /// e.g. for testing or to supply a host-specific binding strategy.
     /// </summary>
-    public ProgramEvaluator(IFunctionValueFactory functionValueFactory)
-      : this(functionValueFactory, new EvaluationComponentFactory())
+    public ProgramEvaluator(IFunctionValueFactory functionValueFactory, IScriptScheduler? scheduler = null)
+      : this(functionValueFactory, new EvaluationComponentFactory(), scheduler)
     {
     }
 
@@ -106,15 +107,29 @@ namespace ALKScript.Interpreter.Evaluator
     /// component factory deals in the internal collaborator interfaces — but
     /// reachable from tests via <c>InternalsVisibleTo</c>.
     /// </summary>
-    internal ProgramEvaluator(IFunctionValueFactory functionValueFactory, IEvaluationComponentFactory componentFactory)
+    internal ProgramEvaluator(IFunctionValueFactory functionValueFactory, IEvaluationComponentFactory componentFactory, IScriptScheduler? scheduler = null)
     {
+      _scheduler = scheduler;
       _functionValueFactory = functionValueFactory;
       _statements = componentFactory.CreateStatementExecutor(this, functionValueFactory);
       _expressions = componentFactory.CreateExpressionEvaluator(this, functionValueFactory);
       _calls = componentFactory.CreateCallInvoker(this);
     }
 
-    public async Task Evaluate(ModuleGraph graph)
+    /// <summary>
+    /// Starts evaluating <paramref name="graph"/> and returns an opaque
+    /// <see cref="ScriptEvaluation"/> handle. Drive progress by calling
+    /// <see cref="IScriptScheduler.Pump"/> on each game-loop tick.
+    /// </summary>
+    public ScriptEvaluation Evaluate(ModuleGraph graph) => new ScriptEvaluation(EvaluateCore(graph));
+
+    // Explicit implementation of IEvaluator so the Task-returning member is
+    // not visible on ProgramEvaluator directly (which would invite the
+    // CS4014 "call not awaited" warning in host code). The public surface
+    // exposes only the ScriptEvaluation overload above.
+    Task IEvaluator.Evaluate(ModuleGraph graph) => EvaluateCore(graph);
+
+    private async Task EvaluateCore(ModuleGraph graph)
     {
       var globals = new ScriptEnvironment();
 
@@ -192,6 +207,8 @@ namespace ALKScript.Interpreter.Evaluator
     // IEvaluationContext — routes recursive calls between the collaborators
     // and exposes the pending-signal slot they coordinate on.
     // ---------------------------------------------------------------------
+
+    IScriptScheduler? IEvaluationContext.Scheduler => _scheduler;
 
     Signal? IEvaluationContext.Signal
     {

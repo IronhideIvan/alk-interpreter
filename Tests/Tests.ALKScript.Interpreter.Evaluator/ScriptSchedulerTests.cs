@@ -1,13 +1,5 @@
-// xUnit1031 warns against GetAwaiter().GetResult() in test methods and asks
-// for async tests instead. These tests are intentionally synchronous because
-// they manually install a custom SynchronizationContext and control it via
-// Pump() — making the test async would route the test's own continuations
-// through the installed context and interfere with what's under test.
-#pragma warning disable xUnit1031
-
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
@@ -22,16 +14,18 @@ namespace Tests.ALKScript.Interpreter.Evaluator;
 ///
 /// Key semantics under test:
 /// - <c>Pump()</c> takes a stable snapshot of the queue at the moment it is
-///   called and runs exactly those callbacks — continuations posted *during*
+///   called and runs exactly those callbacks — continuations posted <em>during</em>
 ///   a pump wait for the next call (decision #7: deterministic, stable ordering).
-/// - When a script suspends on <c>await</c>, its continuation is later
-///   <see cref="System.Threading.SynchronizationContext.Post"/>ed to the
-///   scheduler; the next <c>Pump()</c> call resumes it.
+/// - When a script suspends on <c>await</c>, its continuation is enqueued via
+///   <see cref="IScriptScheduler.Enqueue"/>; the next <c>Pump()</c> resumes it.
+/// - No <see cref="System.Threading.SynchronizationContext"/> installation is
+///   needed — the scheduler is passed directly to <see cref="ProgramEvaluator"/>
+///   and the evaluator's custom-awaitable wrappers route continuations to it.
 /// </summary>
 public class ScriptSchedulerTests : EvaluatorTestBase
 {
   // ---------------------------------------------------------------------------
-  // Pure scheduler behavior (no ALK script)
+  // Pure scheduler behaviour (no ALK script)
   // ---------------------------------------------------------------------------
 
   [Fact]
@@ -39,9 +33,7 @@ public class ScriptSchedulerTests : EvaluatorTestBase
   {
     var scheduler = new ScriptScheduler();
 
-    int ran = scheduler.Pump();
-
-    Assert.Equal(0, ran);
+    Assert.Equal(0, scheduler.Pump());
   }
 
   [Fact]
@@ -50,9 +42,9 @@ public class ScriptSchedulerTests : EvaluatorTestBase
     var scheduler = new ScriptScheduler();
     var log = new List<int>();
 
-    scheduler.Post(_ => log.Add(1), null);
-    scheduler.Post(_ => log.Add(2), null);
-    scheduler.Post(_ => log.Add(3), null);
+    scheduler.Enqueue(() => log.Add(1));
+    scheduler.Enqueue(() => log.Add(2));
+    scheduler.Enqueue(() => log.Add(3));
 
     int ran = scheduler.Pump();
 
@@ -61,20 +53,20 @@ public class ScriptSchedulerTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Pump_ContinuationQueuedDuringPump_IsNotRunUntilNextPump()
+  public void Pump_ContinuationEnqueuedDuringPump_IsNotRunUntilNextPump()
   {
     // Decision #7: Pump() snapshots the queue at call time. A callback that
-    // posts another callback while running must not cause that inner callback
-    // to execute in the same Pump() call — it waits for the next one.
+    // enqueues another callback while running must not cause that inner
+    // callback to execute in the same Pump() call — it waits for the next one.
     var scheduler = new ScriptScheduler();
     var log = new List<int>();
 
-    scheduler.Post(_ =>
+    scheduler.Enqueue(() =>
     {
       log.Add(1);
-      scheduler.Post(_ => log.Add(3), null); // queued mid-pump
-    }, null);
-    scheduler.Post(_ => log.Add(2), null);
+      scheduler.Enqueue(() => log.Add(3)); // enqueued mid-pump
+    });
+    scheduler.Enqueue(() => log.Add(2));
 
     int firstPump = scheduler.Pump();
     Assert.Equal(2, firstPump);
@@ -89,25 +81,15 @@ public class ScriptSchedulerTests : EvaluatorTestBase
   public void Pump_AfterAllCallbacksRun_ReturnsZeroOnSubsequentCall()
   {
     var scheduler = new ScriptScheduler();
-    scheduler.Post(_ => { }, null);
+    scheduler.Enqueue(() => { });
 
     scheduler.Pump();
-    int ran = scheduler.Pump();
 
-    Assert.Equal(0, ran);
+    Assert.Equal(0, scheduler.Pump());
   }
 
   // ---------------------------------------------------------------------------
   // ALK script: async / await
-  //
-  // Note on evalTask: when the script calls "main()" at the top level without
-  // "await", the top-level evaluation task completes immediately (the call
-  // returns a TaskValue which the top-level ignores). main()'s *body* runs
-  // asynchronously and may be suspended. We therefore use "recorded.Count"
-  // as the proxy for "has the script resumed?" rather than "evalTask.IsCompleted".
-  //
-  // The exception is the single-await test, which uses a top-level "await"
-  // directly (no "main()" wrapper) — there the evalTask itself suspends.
   // ---------------------------------------------------------------------------
 
   [Fact]
@@ -125,24 +107,22 @@ public class ScriptSchedulerTests : EvaluatorTestBase
       ["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; }
     };
 
-    // Top-level "await" — the evalTask itself parks on tcs.Task.
-    var graph = LoadGraph($"{RecordDeclaration}\nnative async function int fetch();\nrecord(await fetch());");
-    var evaluator = new ProgramEvaluator(bindings, operationBinder: binder);
+    // Top-level "await" — the Evaluate task parks on tcs.Task and returns an
+    // incomplete Task. We discard it here; driving it is the scheduler's job.
     var scheduler = new ScriptScheduler();
+    var graph = LoadGraph($"{RecordDeclaration}\nnative async function int fetch();\nrecord(await fetch());");
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
+    evaluator.Evaluate(graph); // starts evaluation; suspends at "await fetch()"
 
-    Task evalTask = RunUnderScheduler(scheduler, () => evaluator.Evaluate(graph));
-
-    Assert.False(evalTask.IsCompleted); // evalTask itself is suspended
     Assert.Empty(recorded);
-    Assert.Equal(0, scheduler.Pump()); // nothing queued yet
+    Assert.Equal(0, scheduler.Pump()); // nothing enqueued yet
 
-    // Complete the operation — posts the script's resume continuation.
+    // Complete the operation — the continuation is enqueued on the scheduler.
     tcs.SetResult(new IntValue(99));
 
-    // One pump resumes the script and calls record().
-    RunUnderScheduler(scheduler, () => { scheduler.Pump(); return Task.CompletedTask; });
+    int ran = scheduler.Pump(); // resumes the script; calls record()
+    Assert.True(ran >= 1);
 
-    evalTask.GetAwaiter().GetResult();
     Assert.Equal(99L, Assert.IsType<IntValue>(Assert.Single(recorded)).Value);
   }
 
@@ -150,9 +130,7 @@ public class ScriptSchedulerTests : EvaluatorTestBase
   public void Pump_AsyncAwaitScript_MultipleAwaitsSuspendAndResumeInTurnAcrossPumps()
   {
     // Each "await" inside an async function suspends independently.
-    // The host drives each resume by completing the pending operation and
-    // calling Pump(). Between pumps the recorded list stays unchanged —
-    // proving the script is truly parked and not racing the test thread.
+    // Completing the pending operation and calling Pump() drives each resume.
     var tcs1 = new TaskCompletionSource<ALKScriptValue>();
     var tcs2 = new TaskCompletionSource<ALKScriptValue>();
     int callCount = 0;
@@ -175,24 +153,22 @@ public class ScriptSchedulerTests : EvaluatorTestBase
       """;
 
     var scheduler = new ScriptScheduler();
-    var evaluator = new ProgramEvaluator(
-      new ScriptNativeBindings(bindings), operationBinder: binder);
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
+    evaluator.Evaluate(LoadGraph(source)); // runs until main() suspends at first await
 
-    RunUnderScheduler(scheduler, () => evaluator.Evaluate(LoadGraph(source)));
-
-    // main() is now suspended at its first "await fetch()".
+    // main() is suspended at its first "await fetch()".
     Assert.Empty(recorded);
 
     // Complete the first operation → resumes main() → records 10 → suspends at second await.
     tcs1.SetResult(new IntValue(10));
-    RunUnderScheduler(scheduler, () => { scheduler.Pump(); return Task.CompletedTask; });
+    scheduler.Pump();
 
     Assert.Single(recorded);
     Assert.Equal(10L, Assert.IsType<IntValue>(recorded[0]).Value);
 
     // Complete the second operation → resumes main() → records 20 → main() finishes.
     tcs2.SetResult(new IntValue(20));
-    RunUnderScheduler(scheduler, () => { scheduler.Pump(); return Task.CompletedTask; });
+    scheduler.Pump();
 
     Assert.Equal(2, recorded.Count);
     Assert.Equal(20L, Assert.IsType<IntValue>(recorded[1]).Value);
@@ -210,8 +186,7 @@ public class ScriptSchedulerTests : EvaluatorTestBase
     // with an array of their results in element order.
     var tcsA = new TaskCompletionSource<ALKScriptValue>();
     var tcsB = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new LambdaBinder(op =>
-      op.Name == "fetchA" ? tcsA.Task : tcsB.Task);
+    var binder = new LambdaBinder(op => op.Name == "fetchA" ? tcsA.Task : tcsB.Task);
 
     var recorded = new List<ALKScriptValue>();
     var bindings = new ScriptNativeBindings
@@ -232,19 +207,17 @@ public class ScriptSchedulerTests : EvaluatorTestBase
       """;
 
     var scheduler = new ScriptScheduler();
-    RunUnderScheduler(scheduler,
-      () => new ProgramEvaluator(bindings, operationBinder: binder).Evaluate(LoadGraph(source)));
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
+    evaluator.Evaluate(LoadGraph(source)); // suspends at "await [fetchA(), fetchB()]"
 
-    // main() is suspended at "await [fetchA(), fetchB()]".
     Assert.Empty(recorded);
 
-    // Complete both operations — Task.WhenAll settles and posts the continuation.
+    // Complete both operations — Task.WhenAll settles and enqueues the continuation.
     tcsA.SetResult(new IntValue(7));
     tcsB.SetResult(new IntValue(13));
 
-    // A single Pump() is enough: whenAll settled synchronously above and
-    // scheduled exactly one continuation (the script's resume point).
-    RunUnderScheduler(scheduler, () => { scheduler.Pump(); return Task.CompletedTask; });
+    // A single Pump() is enough: Task.WhenAll settled synchronously above.
+    scheduler.Pump();
 
     Assert.Equal(2, recorded.Count);
     Assert.Equal(7L, Assert.IsType<IntValue>(recorded[0]).Value);
@@ -258,8 +231,7 @@ public class ScriptSchedulerTests : EvaluatorTestBase
     // resume the script — it only resumes once all members have settled.
     var tcsA = new TaskCompletionSource<ALKScriptValue>();
     var tcsB = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new LambdaBinder(op =>
-      op.Name == "fetchA" ? tcsA.Task : tcsB.Task);
+    var binder = new LambdaBinder(op => op.Name == "fetchA" ? tcsA.Task : tcsB.Task);
 
     var recorded = new List<ALKScriptValue>();
     var bindings = new ScriptNativeBindings
@@ -280,18 +252,18 @@ public class ScriptSchedulerTests : EvaluatorTestBase
       """;
 
     var scheduler = new ScriptScheduler();
-    RunUnderScheduler(scheduler,
-      () => new ProgramEvaluator(bindings, operationBinder: binder).Evaluate(LoadGraph(source)));
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
+    evaluator.Evaluate(LoadGraph(source));
 
     // Only complete fetchA — whenAll is still waiting for fetchB.
     tcsA.SetResult(new IntValue(5));
-    RunUnderScheduler(scheduler, () => { scheduler.Pump(); return Task.CompletedTask; });
+    scheduler.Pump();
 
     Assert.Empty(recorded); // script has not resumed yet
 
     // Complete fetchB — whenAll settles, one pump resumes the script.
     tcsB.SetResult(new IntValue(6));
-    RunUnderScheduler(scheduler, () => { scheduler.Pump(); return Task.CompletedTask; });
+    scheduler.Pump();
 
     Assert.Equal(2, recorded.Count);
     Assert.Equal(5L, Assert.IsType<IntValue>(recorded[0]).Value);
@@ -299,29 +271,134 @@ public class ScriptSchedulerTests : EvaluatorTestBase
   }
 
   // ---------------------------------------------------------------------------
-  // Test infrastructure
+  // RunUntilComplete
   // ---------------------------------------------------------------------------
 
-  /// <summary>
-  /// Installs <paramref name="scheduler"/> as <see cref="SynchronizationContext.Current"/>,
-  /// invokes <paramref name="action"/>, then restores the previous context.
-  /// The scheduler must be current whenever a script's <c>await</c> suspension
-  /// point is hit, so that the continuation is captured on this scheduler
-  /// rather than the default thread-pool context.
-  /// </summary>
-  private static Task RunUnderScheduler(ScriptScheduler scheduler, Func<Task> action)
+  [Fact]
+  public void RunUntilComplete_SimpleScript_RunsToCompletion()
   {
-    var previous = SynchronizationContext.Current;
-    SynchronizationContext.SetSynchronizationContext(scheduler);
-    try
+    // A script with no async operations completes in one synchronous pass.
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
     {
-      return action();
-    }
-    finally
-    {
-      SynchronizationContext.SetSynchronizationContext(previous);
-    }
+      ["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; }
+    };
+
+    var scheduler = new ScriptScheduler();
+    var evaluator = new ProgramEvaluator(bindings, scheduler: scheduler);
+    scheduler.RunUntilComplete(evaluator.Evaluate(LoadGraph($"{RecordDeclaration}record(42);")));
+
+    Assert.Equal(42L, Assert.IsType<IntValue>(Assert.Single(recorded)).Value);
   }
+
+  [Fact]
+  public void RunUntilComplete_AsyncScript_DrivesSchedulerUntilScriptFinishes()
+  {
+    // RunUntilComplete pumps continuations internally — the caller does not
+    // need to drive Pump() manually.
+    var tcs = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new LambdaBinder(_ => tcs.Task);
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; }
+    };
+
+    const string source = """
+      native function void record(Object v);
+      native async function int fetch();
+      record(await fetch());
+      """;
+
+    var scheduler = new ScriptScheduler();
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
+    var evaluation = evaluator.Evaluate(LoadGraph(source));
+
+    // Complete the operation on a background thread while RunUntilComplete is
+    // blocking — it must wake up, pump the continuation, and then return.
+#pragma warning disable xUnit1051 // CancellationToken not needed: fire-and-forget background delay
+    Task.Run(async () =>
+    {
+      await Task.Delay(10);
+      tcs.SetResult(new IntValue(7));
+    });
+#pragma warning restore xUnit1051
+
+    scheduler.RunUntilComplete(evaluation);
+
+    Assert.Equal(7L, Assert.IsType<IntValue>(Assert.Single(recorded)).Value);
+  }
+
+  [Fact]
+  public void RunUntilComplete_FireAndForgetAsync_DrainsRemainingContinuations()
+  {
+    // A script that calls an async function without awaiting it (fire-and-
+    // forget) causes the top-level Evaluate task to complete while the async
+    // function's continuations are still pending. RunUntilComplete must drain
+    // those continuations before returning.
+    var tcs = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new LambdaBinder(_ => tcs.Task);
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; }
+    };
+
+    const string source = """
+      native function void record(Object v);
+      native async function int fetch();
+      async function void main() {
+        record(await fetch());
+      }
+      main();
+      """;
+
+    var scheduler = new ScriptScheduler();
+    var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
+    var evaluation = evaluator.Evaluate(LoadGraph(source));
+
+    // The top-level Evaluate task is already complete (main() was fire-and-
+    // forget), but main() itself is suspended on tcs.Task. Completing the TCS
+    // now — before calling RunUntilComplete — enqueues main()'s continuation
+    // synchronously (ExecuteSynchronously guarantee). RunUntilComplete will
+    // find it in the queue and drain it even though the top-level task is done.
+    tcs.SetResult(new IntValue(99));
+
+    scheduler.RunUntilComplete(evaluation);
+
+    Assert.Equal(99L, Assert.IsType<IntValue>(Assert.Single(recorded)).Value);
+  }
+
+  [Fact]
+  public void RunUntilComplete_FaultedScript_RethrowsException()
+  {
+    // An uncaught exception in script code should propagate out of
+    // RunUntilComplete, unwrapped from its Task container, so the host
+    // receives it as a plain exception rather than an AggregateException.
+    var bindings = new ScriptNativeBindings
+    {
+      ["boom"] = _ => throw new InvalidOperationException("script faulted")
+    };
+
+    const string source = """
+      native function void boom();
+      boom();
+      """;
+
+    var scheduler = new ScriptScheduler();
+    var evaluator = new ProgramEvaluator(bindings, scheduler: scheduler);
+
+    var ex = Assert.Throws<InvalidOperationException>(
+      () => scheduler.RunUntilComplete(evaluator.Evaluate(LoadGraph(source))));
+
+    Assert.Equal("script faulted", ex.Message);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test infrastructure
+  // ---------------------------------------------------------------------------
 
   private sealed class LambdaBinder : IAsyncOperationBinder
   {

@@ -51,6 +51,17 @@ namespace ALKScript.Interpreter.Common.Evaluation
     Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site);
 
     /// <summary>
+    /// The scheduler continuations are routed through, or <c>null</c> when no
+    /// scheduler was provided (continuations fall back to the default
+    /// <see cref="System.Threading.Tasks.TaskAwaiter"/> behaviour). Used by the
+    /// evaluator's <c>ScheduledOn</c> custom-awaitable wrappers so that every
+    /// externally-sourced <see cref="System.Threading.Tasks.Task"/> the
+    /// evaluator awaits posts its continuation here rather than through the
+    /// ambient <see cref="System.Threading.SynchronizationContext"/>.
+    /// </summary>
+    IScriptScheduler? Scheduler { get; }
+
+    /// <summary>
     /// Consumes and returns the next entry from the replay log, or <c>null</c>
     /// if the log is exhausted (live mode). Called at each <c>await</c> on a
     /// <see cref="PendingOperationValue"/> — the positional log contract.
