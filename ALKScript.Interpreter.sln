@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Evalu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Runtime", "ALKScript.Interpreter.Runtime\ALKScript.Interpreter.Runtime.csproj", "{8410B590-167E-4CB6-83B8-716047354E25}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.ALKScript.Interpreter.Runtime", "Tests\Tests.ALKScript.Interpreter.Runtime\Tests.ALKScript.Interpreter.Runtime.csproj", "{18E31C32-E252-4226-9B17-659256B12813}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.ALKScript.Interpreter.Evaluator", "Tests\Tests.ALKScript.Interpreter.Evaluator\Tests.ALKScript.Interpreter.Evaluator.csproj", "{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4}"
 EndProject
 Global
@@ -141,6 +143,18 @@ Global
 		{8410B590-167E-4CB6-83B8-716047354E25}.Release|x64.Build.0 = Release|Any CPU
 		{8410B590-167E-4CB6-83B8-716047354E25}.Release|x86.ActiveCfg = Release|Any CPU
 		{8410B590-167E-4CB6-83B8-716047354E25}.Release|x86.Build.0 = Release|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Debug|x64.Build.0 = Debug|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Debug|x86.Build.0 = Debug|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Release|Any CPU.Build.0 = Release|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Release|x64.ActiveCfg = Release|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Release|x64.Build.0 = Release|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Release|x86.ActiveCfg = Release|Any CPU
+		{18E31C32-E252-4226-9B17-659256B12813}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -149,5 +163,6 @@ Global
 		{E83CD3F9-497D-4D4C-AA7E-AB4F5AF4623B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{5DEA035F-898F-4164-BCCE-C1EF832A2F4F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{2F914A7C-9A06-44D0-B20B-FD587D5CDAE4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{18E31C32-E252-4226-9B17-659256B12813} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
