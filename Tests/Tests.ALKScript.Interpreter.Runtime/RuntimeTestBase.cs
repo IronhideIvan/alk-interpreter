@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using ALKScript.Interpreter.Common;
-using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator;
@@ -89,13 +88,7 @@ public abstract class RuntimeTestBase
     var capturedRecorded = new List<ALKScriptValue>();
     recorded = capturedRecorded;
 
-    var bindings = new ScriptNativeBindings(extraBindings ?? new ScriptNativeBindings())
-    {
-      ["record"] = args => { capturedRecorded.Add(args[0]); return NullValue.Instance; }
-    };
-
     var scheduler = new ScriptScheduler();
-    var evaluator = new ProgramEvaluator(bindings, scheduler: scheduler);
 
     var loader = new ProgramLoader(
       new ALKScriptLexer(),
@@ -104,6 +97,18 @@ public abstract class RuntimeTestBase
       new FakeCoreModuleProvider(coreModules ?? new Dictionary<string, string>()),
       preludes);
 
-    return new ProgramRuntime(loader, evaluator, scheduler);
+    var runtime = new ProgramRuntime(loader, scheduler, scheduler, new EvaluatorFactory());
+
+    runtime.NativeBindings["record"] = args => { capturedRecorded.Add(args[0]); return NullValue.Instance; };
+
+    if (extraBindings != null)
+    {
+      foreach (var binding in extraBindings)
+      {
+        runtime.NativeBindings[binding.Key] = binding.Value;
+      }
+    }
+
+    return runtime;
   }
 }
