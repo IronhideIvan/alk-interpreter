@@ -123,12 +123,6 @@ namespace ALKScript.Interpreter.Evaluator
     /// </summary>
     public ScriptEvaluation Evaluate(ModuleGraph graph) => new ScriptEvaluation(EvaluateCore(graph));
 
-    // Explicit implementation of IEvaluator so the Task-returning member is
-    // not visible on ProgramEvaluator directly (which would invite the
-    // CS4014 "call not awaited" warning in host code). The public surface
-    // exposes only the ScriptEvaluation overload above.
-    Task IEvaluator.Evaluate(ModuleGraph graph) => EvaluateCore(graph);
-
     private async Task EvaluateCore(ModuleGraph graph)
     {
       var globals = new ScriptEnvironment();

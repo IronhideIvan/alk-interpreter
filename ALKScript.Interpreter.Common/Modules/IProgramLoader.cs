@@ -14,5 +14,14 @@ namespace ALKScript.Interpreter.Common.Modules
     /// its target module does not export.
     /// </summary>
     ModuleGraph Load(string entryFilePath);
+
+    /// <summary>
+    /// Parses <paramref name="source"/> as the entry module and assembles a
+    /// module graph from it, applying the same global prelude and core-module
+    /// resolution as <see cref="Load"/>. Relative-path imports are not
+    /// supported (there is no base directory to resolve against) and will
+    /// throw; core-module imports resolve normally.
+    /// </summary>
+    ModuleGraph LoadFromSource(string source);
   }
 }

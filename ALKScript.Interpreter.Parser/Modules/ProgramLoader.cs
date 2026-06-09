@@ -80,6 +80,36 @@ namespace ALKScript.Interpreter.Parser.Modules
     }
 
     /// <summary>
+    /// Parses <paramref name="source"/> as the entry module, applies the same
+    /// global prelude and core-module resolution as <see cref="Load"/>, and
+    /// returns the assembled graph. Relative-path imports are rejected because
+    /// there is no base directory to resolve against.
+    /// </summary>
+    public ModuleGraph LoadFromSource(string source)
+    {
+      IReadOnlyList<ProgramNode> globalPreludes = CompilePreludes();
+
+      var modules = new Dictionary<string, LoadedModule>();
+
+      ProgramNode program = _parser.ParseTokens(_lexer.Tokenize(source));
+      var entry = new LoadedModule("<source>", ModuleKind.File, program);
+
+      foreach (ImportDecl import in program.Imports)
+      {
+        string specifier = import.Source.Lexeme;
+
+        if (IsRelativeFilePathSpecifier(specifier))
+        {
+          throw new ModuleLoadException(import.Source, "Relative-path imports are not supported when running from source.");
+        }
+
+        ResolveCoreModule(import, specifier, modules);
+      }
+
+      return new ModuleGraph(entry, modules, globalPreludes);
+    }
+
+    /// <summary>
     /// Compiles every source supplied by the injected <see cref="IGlobalPreludeProvider"/>
     /// through the same lex -&gt; parse pipeline used for file and core modules
     /// — keeping that mechanism centralized here rather than duplicated in (or

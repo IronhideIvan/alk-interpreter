@@ -26,5 +26,13 @@ namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
     internal Task Task { get; }
 
     internal ScriptEvaluation(Task task) => Task = task;
+
+    /// <summary>
+    /// <c>true</c> once the script has run to completion (or faulted/been
+    /// cancelled). A game-loop host can check this after each
+    /// <see cref="IScriptLoop.Pump"/> call to detect that no further work
+    /// remains.
+    /// </summary>
+    public bool IsCompleted => Task.IsCompleted;
   }
 }

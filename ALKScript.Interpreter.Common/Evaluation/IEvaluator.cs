@@ -1,4 +1,4 @@
-using System.Threading.Tasks;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Modules;
 
 namespace ALKScript.Interpreter.Common.Evaluation
@@ -10,12 +10,12 @@ namespace ALKScript.Interpreter.Common.Evaluation
   public interface IEvaluator
   {
     /// <summary>
-    /// Evaluates <paramref name="graph"/>, starting from its entry module.
-    /// Returns a <see cref="Task"/> because evaluation may suspend mid-script
-    /// (e.g. on an <c>await</c> of a host operation) and resume later — the
-    /// task completes once the script has finished running to completion (or
-    /// unwound via an uncaught "throw"/external "cancel").
+    /// Starts evaluating <paramref name="graph"/> and returns an opaque
+    /// <see cref="ScriptEvaluation"/> handle. Drive progress by calling
+    /// <see cref="IScriptLoop.Pump"/> on each game-loop tick, or pass the
+    /// handle to <see cref="IScriptLoop.RunUntilComplete"/> to block until
+    /// the script finishes.
     /// </summary>
-    Task Evaluate(ModuleGraph graph);
+    ScriptEvaluation Evaluate(ModuleGraph graph);
   }
 }
