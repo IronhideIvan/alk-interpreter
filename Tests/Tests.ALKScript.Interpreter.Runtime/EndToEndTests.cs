@@ -16,8 +16,8 @@ public class EndToEndTests : RuntimeTestBase
     Path.GetDirectoryName(typeof(EndToEndTests).Assembly.Location)!,
     "ALKScripts");
 
-  private static string ReadScript(string relativePath) =>
-    File.ReadAllText(Path.Combine(ScriptsDir, relativePath));
+  private static string ReadScript(string testFolder, string relativePath) =>
+    File.ReadAllText(Path.Combine(ScriptsDir, testFolder, relativePath));
 
   // ── Animal Showcase ───────────────────────────────────────────────────────
 
@@ -45,12 +45,12 @@ public class EndToEndTests : RuntimeTestBase
     var runtime = CreateRuntimeForEvaluation(
       files: new Dictionary<string, string>
       {
-        ["main.alk"]    = ReadScript("main.alk"),
-        ["animals.alk"] = ReadScript("animals.alk"),
+        ["main.alk"]    = ReadScript("AnimalShowcase", "main.alk"),
+        ["animals.alk"] = ReadScript("AnimalShowcase", "animals.alk"),
       },
       coreModules: new Dictionary<string, string>
       {
-        ["console"] = ReadScript("console.alk"),
+        ["console"] = ReadScript("AnimalShowcase", "console.alk"),
       });
 
     runtime.NativeBindings["log"] = args =>
