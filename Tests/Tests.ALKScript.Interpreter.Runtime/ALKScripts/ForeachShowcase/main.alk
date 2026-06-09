@@ -1,0 +1,38 @@
+import { log } from "console";
+
+// ── foreach over a numeric array ───────────────────────────────────────────
+//
+// Sums every value, but uses 'continue' to skip negative numbers and 'break'
+// to stop as soon as the running total exceeds 100.
+
+var numbers = [10, 20, -5, 30, 40, -1, 50, 60];
+var total = 0;
+
+foreach (var n in numbers) {
+    if (n < 0) { continue; }
+    total = total + n;
+    if (total > 100) { break; }
+}
+
+log("total=" + total);
+
+// ── foreach over a string array ────────────────────────────────────────────
+
+var fruits = ["apple", "banana", "cherry"];
+
+foreach (var fruit in fruits) {
+    log("fruit: " + fruit);
+}
+
+// ── foreach over an empty array ────────────────────────────────────────────
+
+var empty = [];
+var count = 0;
+
+foreach (var item in empty) {
+    count = count + 1;
+}
+
+log("empty-count=" + count);
+
+log("done");

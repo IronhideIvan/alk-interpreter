@@ -399,6 +399,56 @@ public class EndToEndTests : RuntimeTestBase
       logged);
   }
 
+  // ── Foreach over arrays ───────────────────────────────────────────────────
+
+  [Fact]
+  public void ForeachShowcase_LoopsOverArraysWithBreakAndContinue_ProducesExpectedOutput()
+  {
+    // The program is a single-module script that:
+    //   - sums a numeric array with 'foreach', skipping negatives via
+    //     'continue' and stopping early via 'break' once the running total
+    //     exceeds 100
+    //   - iterates a string array with 'foreach', logging each element
+    //   - iterates an empty array with 'foreach', confirming the body never runs
+    //
+    // Features exercised:
+    //   - foreach (var x in collection) { ... } over array literals
+    //   - break and continue inside a foreach body
+    //   - foreach over an empty array
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ForeachShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ForeachShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "total=150",
+        "fruit: apple",
+        "fruit: banana",
+        "fruit: cherry",
+        "empty-count=0",
+        "done",
+      },
+      logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>
