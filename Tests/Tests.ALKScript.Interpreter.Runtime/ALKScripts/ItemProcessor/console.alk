@@ -1,0 +1,2 @@
+// Core module: exposes a native console logging function to scripts.
+export native function void log(string message);

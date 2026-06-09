@@ -1,0 +1,7 @@
+// Core module: provides a Buffer — a host-backed growable list of strings
+// that scripts can write to and read from via native methods.
+export native class Buffer {
+    public native function void write(string item);
+    public native function string read(int index);
+    public native function int size();
+}

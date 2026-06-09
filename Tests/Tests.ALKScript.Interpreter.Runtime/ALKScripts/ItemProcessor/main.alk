@@ -1,0 +1,30 @@
+import { log } from "console";
+import { Buffer } from "io";
+
+// Simulates an async processing step (e.g. a transformation that could be I/O-bound).
+// Being async means each call suspends the script and resumes on the next scheduler tick.
+async function string process(string name) {
+    return "[processed] " + name;
+}
+
+var items = ["apple", "SKIP", "banana", "SKIP", "cherry", "STOP", "date"];
+var output = new Buffer();
+
+// for loop: continue skips items flagged "SKIP"; break exits early on "STOP".
+for (var i = 0; i < 7; i = i + 1) {
+    var item = items[i];
+    if (item == "STOP") { break; }
+    if (item == "SKIP") { continue; }
+    var result = await process(item);
+    output.write(result);
+}
+
+// Drain the buffer — demonstrates the native class's instance state persists
+// across calls and is correctly shared between write() and read()/size().
+log("--- Results ---");
+var j = 0;
+while (j < output.size()) {
+    log(output.read(j));
+    j = j + 1;
+}
+log("--- Done ---");
