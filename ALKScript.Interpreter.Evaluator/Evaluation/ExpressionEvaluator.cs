@@ -88,6 +88,12 @@ namespace ALKScript.Interpreter.Evaluator
         case AwaitExpr awaitExpr:
           return await EvalAwait(awaitExpr, environment);
 
+        case PrefixUpdateExpr prefixUpdate:
+          return (await EvalUpdate(prefixUpdate.Operand, prefixUpdate.Operator, environment)).NewValue;
+
+        case PostfixUpdateExpr postfixUpdate:
+          return (await EvalUpdate(postfixUpdate.Operand, postfixUpdate.Operator, environment)).OldValue;
+
         default:
           throw new RuntimeException(
             AstTokenLocator.Of(expression),
@@ -181,6 +187,75 @@ namespace ALKScript.Interpreter.Evaluator
 
         default:
           throw new RuntimeException(AstTokenLocator.Of(expression.Target), "Invalid assignment target.");
+      }
+    }
+
+    /// <summary>
+    /// Reads the current value of <paramref name="operand"/>, steps it by ±1,
+    /// writes the new value back in place, and returns both values so callers
+    /// can choose the pre-update (postfix) or post-update (prefix) result.
+    /// Sub-expressions inside <see cref="GetExpr"/> and <see cref="IndexExpr"/>
+    /// targets are evaluated exactly once, avoiding double side-effects.
+    /// </summary>
+    private async Task<(ALKScriptValue OldValue, ALKScriptValue NewValue)> EvalUpdate(
+      Expr operand, ALKScriptToken op, ScriptEnvironment environment)
+    {
+      switch (operand)
+      {
+        case IdentifierExpr identifier:
+        {
+          var old = Names.LookUp(identifier.Name, environment);
+          var next = Step(old, op);
+          if (!environment.TryAssign(identifier.Name.Lexeme, next))
+            throw new RuntimeException(identifier.Name, $"Undefined name '{identifier.Name.Lexeme}'.");
+          return (old, next);
+        }
+
+        case GetExpr get:
+        {
+          var target = await Eval(get.Target, environment);
+          if (_context.Signal != null)
+            return (NullValue.Instance, NullValue.Instance);
+          var instance = target as InstanceValue
+            ?? throw new RuntimeException(get.Name, $"Cannot apply '{op.Lexeme}' to a value of type '{target.TypeName}'.");
+          if (!instance.Fields.TryGetValue(get.Name.Lexeme, out var old))
+            throw new RuntimeException(get.Name, $"Undefined field '{get.Name.Lexeme}'.");
+          var next = Step(old, op);
+          instance.Fields[get.Name.Lexeme] = next;
+          return (old, next);
+        }
+
+        case IndexExpr index:
+        {
+          var target = await Eval(index.Target, environment);
+          if (_context.Signal != null)
+            return (NullValue.Instance, NullValue.Instance);
+          var array = target as ArrayValue
+            ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
+          var indexValue = await Eval(index.Index, environment);
+          if (_context.Signal != null)
+            return (NullValue.Instance, NullValue.Instance);
+          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count);
+          var old = array.Items[position];
+          var next = Step(old, op);
+          array.Items[position] = next;
+          return (old, next);
+        }
+
+        default:
+          throw new RuntimeException(op, $"'{op.Lexeme}' requires a variable, field, or array element.");
+      }
+    }
+
+    private static ALKScriptValue Step(ALKScriptValue value, ALKScriptToken op)
+    {
+      bool increment = op.Type == ALKScriptTokenType.PlusPlus;
+      switch (value)
+      {
+        case IntValue i:   return new IntValue(i.Value + (increment ? 1L : -1L));
+        case FloatValue f: return new FloatValue(f.Value + (increment ? 1.0 : -1.0));
+        default:
+          throw new RuntimeException(op, $"'{op.Lexeme}' cannot be applied to a value of type '{value.TypeName}'.");
       }
     }
 

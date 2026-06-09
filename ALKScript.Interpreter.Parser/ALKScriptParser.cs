@@ -917,6 +917,15 @@ namespace ALKScript.Interpreter.Parser
 
     private Expr ParseUnary()
     {
+      if (_stream.Match(ALKScriptTokenType.PlusPlus, ALKScriptTokenType.MinusMinus))
+      {
+        ALKScriptToken op = _stream.Previous();
+        Expr operand = ParseUnary();
+        if (!(operand is IdentifierExpr || operand is GetExpr || operand is IndexExpr))
+          throw Error(op, $"'{op.Lexeme}' requires an assignable target (variable, field, or array element).");
+        return new PrefixUpdateExpr(op, operand);
+      }
+
       if (_stream.Match(ALKScriptTokenType.Bang, ALKScriptTokenType.Minus))
       {
         ALKScriptToken op = _stream.Previous();
@@ -966,6 +975,14 @@ namespace ALKScript.Interpreter.Parser
         {
           break;
         }
+      }
+
+      if (_stream.Match(ALKScriptTokenType.PlusPlus, ALKScriptTokenType.MinusMinus))
+      {
+        ALKScriptToken op = _stream.Previous();
+        if (!(expr is IdentifierExpr || expr is GetExpr || expr is IndexExpr))
+          throw Error(op, $"'{op.Lexeme}' requires an assignable target (variable, field, or array element).");
+        return new PostfixUpdateExpr(expr, op);
       }
 
       return expr;

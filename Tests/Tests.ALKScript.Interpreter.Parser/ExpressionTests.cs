@@ -182,4 +182,75 @@ public class ExpressionTests : ParserTestBase
     var baseGet = Assert.IsType<GetExpr>(baseCall.Callee);
     Assert.IsType<BaseExpr>(baseGet.Target);
   }
+
+  // ── Prefix / postfix update expressions ──────────────────────────────────
+
+  [Theory]
+  [InlineData("++x;",  ALKScriptTokenType.PlusPlus)]
+  [InlineData("--x;",  ALKScriptTokenType.MinusMinus)]
+  public void Parse_PrefixUpdate_ProducesPrefixUpdateExprWithCorrectOperator(string source, ALKScriptTokenType expectedOp)
+  {
+    var program = Parse(source);
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var prefix = Assert.IsType<PrefixUpdateExpr>(exprStmt.Expression);
+
+    Assert.Equal(expectedOp, prefix.Operator.Type);
+    Assert.IsType<IdentifierExpr>(prefix.Operand);
+  }
+
+  [Theory]
+  [InlineData("x++;",  ALKScriptTokenType.PlusPlus)]
+  [InlineData("x--;",  ALKScriptTokenType.MinusMinus)]
+  public void Parse_PostfixUpdate_ProducesPostfixUpdateExprWithCorrectOperator(string source, ALKScriptTokenType expectedOp)
+  {
+    var program = Parse(source);
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var postfix = Assert.IsType<PostfixUpdateExpr>(exprStmt.Expression);
+
+    Assert.Equal(expectedOp, postfix.Operator.Type);
+    Assert.IsType<IdentifierExpr>(postfix.Operand);
+  }
+
+  [Fact]
+  public void Parse_PostfixUpdate_OnMemberAccess_BindsToWholeChain()
+  {
+    // "obj.count++" should parse as (obj.count)++ — the postfix binds
+    // to the fully resolved chain, not just "count".
+    var program = Parse("obj.count++;");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var postfix = Assert.IsType<PostfixUpdateExpr>(exprStmt.Expression);
+
+    Assert.Equal(ALKScriptTokenType.PlusPlus, postfix.Operator.Type);
+    var get = Assert.IsType<GetExpr>(postfix.Operand);
+    Assert.Equal("count", get.Name.Lexeme);
+  }
+
+  [Fact]
+  public void Parse_PrefixUpdate_OnIndexExpression_IsValid()
+  {
+    var program = Parse("++arr[0];");
+
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(program.Declarations));
+    var exprStmt = Assert.IsType<ExpressionStmt>(stmtDecl.Statement);
+    var prefix = Assert.IsType<PrefixUpdateExpr>(exprStmt.Expression);
+
+    Assert.IsType<IndexExpr>(prefix.Operand);
+  }
+
+  [Theory]
+  [InlineData("1++;",    "++")]
+  [InlineData("(a+b)++;","++")]
+  [InlineData("--1;",    "--")]
+  public void Parse_UpdateOnNonAssignableTarget_ThrowsParseException(string source, string op)
+  {
+    var ex = Assert.Throws<ParseException>(() => Parse(source));
+    Assert.Contains(op, ex.Message);
+    Assert.Contains("assignable target", ex.Message);
+  }
 }

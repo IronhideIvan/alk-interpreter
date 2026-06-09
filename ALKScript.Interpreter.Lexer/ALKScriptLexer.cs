@@ -101,8 +101,8 @@ namespace ALKScript.Interpreter.Lexer
         case ':': AddToken(ALKScriptTokenType.Colon); break;
         case '.': AddToken(ALKScriptTokenType.Dot); break;
         case '?': AddToken(ALKScriptTokenType.Question); break;
-        case '+': AddToken(ALKScriptTokenType.Plus); break;
-        case '-': AddToken(ALKScriptTokenType.Minus); break;
+        case '+': AddToken(Match('+') ? ALKScriptTokenType.PlusPlus  : ALKScriptTokenType.Plus);  break;
+        case '-': AddToken(Match('-') ? ALKScriptTokenType.MinusMinus : ALKScriptTokenType.Minus); break;
         case '*': AddToken(ALKScriptTokenType.Star); break;
         case '%': AddToken(ALKScriptTokenType.Percent); break;
 

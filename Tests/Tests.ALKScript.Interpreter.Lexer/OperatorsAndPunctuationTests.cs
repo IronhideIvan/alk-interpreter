@@ -7,8 +7,10 @@ namespace Tests.ALKScript.Interpreter.Lexer;
 public class OperatorsAndPunctuationTests
 {
   [Theory]
-  [InlineData("+", ALKScriptTokenType.Plus)]
-  [InlineData("-", ALKScriptTokenType.Minus)]
+  [InlineData("+",  ALKScriptTokenType.Plus)]
+  [InlineData("++", ALKScriptTokenType.PlusPlus)]
+  [InlineData("-",  ALKScriptTokenType.Minus)]
+  [InlineData("--", ALKScriptTokenType.MinusMinus)]
   [InlineData("*", ALKScriptTokenType.Star)]
   [InlineData("/", ALKScriptTokenType.Slash)]
   [InlineData("%", ALKScriptTokenType.Percent)]
@@ -41,6 +43,39 @@ public class OperatorsAndPunctuationTests
 
     Assert.Equal(expectedType, tokens[0].Type);
     Assert.Equal(source, tokens[0].Lexeme);
+  }
+
+  [Fact]
+  public void Tokenize_PlusFollowedByPlus_ProducesPlusPlusNotTwoPluses()
+  {
+    // "x++" must lex as Identifier + PlusPlus, not Identifier + Plus + Plus.
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize("x++").ToList();
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.PlusPlus,   tokens[1].Type);
+    Assert.Equal("++", tokens[1].Lexeme);
+  }
+
+  [Fact]
+  public void Tokenize_MinusFollowedByMinus_ProducesMinusMinusNotTwoMinuses()
+  {
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize("x--").ToList();
+    Assert.Equal(ALKScriptTokenType.Identifier,  tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.MinusMinus,  tokens[1].Type);
+    Assert.Equal("--", tokens[1].Lexeme);
+  }
+
+  [Fact]
+  public void Tokenize_PlusSpacedFromPlus_ProducesTwoSeparatePlusTokens()
+  {
+    // "x + +y" must NOT lex the two '+' characters as '++'.
+    var lexer = new ALKScriptLexer();
+    var tokens = lexer.Tokenize("x + +y").ToList();
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[0].Type);
+    Assert.Equal(ALKScriptTokenType.Plus,       tokens[1].Type);
+    Assert.Equal(ALKScriptTokenType.Plus,       tokens[2].Type);
+    Assert.Equal(ALKScriptTokenType.Identifier, tokens[3].Type);
   }
 
   [Fact]

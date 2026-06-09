@@ -57,6 +57,10 @@ namespace ALKScript.Interpreter.Evaluator
           return newExpr.Keyword;
         case AwaitExpr awaitExpr:
           return awaitExpr.Keyword;
+        case PrefixUpdateExpr prefixUpdate:
+          return prefixUpdate.Operator;
+        case PostfixUpdateExpr postfixUpdate:
+          return postfixUpdate.Operator;
         default:
           return EndOfFile;
       }

@@ -61,7 +61,9 @@ namespace ALKScript.Interpreter.Common.Token
 
     // Operators
     Plus,
+    PlusPlus,
     Minus,
+    MinusMinus,
     Star,
     Slash,
     Percent,

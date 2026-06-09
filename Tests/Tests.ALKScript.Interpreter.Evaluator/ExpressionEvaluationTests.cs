@@ -127,4 +127,99 @@ public class ExpressionEvaluationTests : EvaluatorTestBase
 
     Assert.IsType<NullValue>(Assert.Single(recorded));
   }
+
+  // ── Prefix / postfix increment and decrement ──────────────────────────────
+
+  [Fact]
+  public void Evaluate_PostfixIncrement_ReturnsOldValueAndMutatesVariable()
+  {
+    // "x++" must yield the value *before* the increment.
+    var recorded = Run($"{RecordDeclaration} var x = 5; record(x++); record(x);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(5L, Assert.IsType<IntValue>(recorded[0]).Value); // expression result
+    Assert.Equal(6L, Assert.IsType<IntValue>(recorded[1]).Value); // updated variable
+  }
+
+  [Fact]
+  public void Evaluate_PostfixDecrement_ReturnsOldValueAndMutatesVariable()
+  {
+    var recorded = Run($"{RecordDeclaration} var x = 5; record(x--); record(x);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(5L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(4L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_PrefixIncrement_ReturnsNewValueAndMutatesVariable()
+  {
+    // "++x" must yield the value *after* the increment.
+    var recorded = Run($"{RecordDeclaration} var x = 5; record(++x); record(x);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(6L, Assert.IsType<IntValue>(recorded[0]).Value); // expression result
+    Assert.Equal(6L, Assert.IsType<IntValue>(recorded[1]).Value); // updated variable
+  }
+
+  [Fact]
+  public void Evaluate_PrefixDecrement_ReturnsNewValueAndMutatesVariable()
+  {
+    var recorded = Run($"{RecordDeclaration} var x = 5; record(--x); record(x);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(4L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(4L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_PostfixIncrement_OnFloatVariable_StepsByOne()
+  {
+    var recorded = Run($"{RecordDeclaration} var x = 1.5; record(x++); record(x);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(1.5, Assert.IsType<FloatValue>(recorded[0]).Value);
+    Assert.Equal(2.5, Assert.IsType<FloatValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_PrefixIncrement_OnArrayElement_MutatesElementInPlace()
+  {
+    // "++arr[1]" updates the element at index 1 and returns the new value.
+    var recorded = Run($"{RecordDeclaration} var arr = [10, 20, 30]; record(++arr[1]); record(arr[1]);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(21L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(21L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_PostfixDecrement_OnArrayElement_ReturnsOldValueAndMutatesInPlace()
+  {
+    var recorded = Run($"{RecordDeclaration} var arr = [10, 20, 30]; record(arr[2]--); record(arr[2]);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(30L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(29L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_PostfixIncrement_InForLoopCondition_WorksAsExpected()
+  {
+    // Common idiom: "i++" as the for-loop increment expression.
+    // Equivalent to the "i = i + 1" form used in the existing end-to-end tests.
+    var recorded = Run(
+      $"{RecordDeclaration} for (var i = 0; i < 3; i++) {{ record(i); }}");
+
+    Assert.Equal(3, recorded.Count);
+    Assert.Equal(0L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[1]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[2]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_IncrementOnNonNumericValue_ThrowsRuntimeException()
+  {
+    Assert.ThrowsAny<Exception>(() => Run("var s = \"hello\"; s++;"));
+  }
 }
