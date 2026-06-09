@@ -580,6 +580,16 @@ namespace ALKScript.Interpreter.Parser
         return ParseReturnStatement();
       }
 
+      if (_stream.Match(ALKScriptTokenType.Break))
+      {
+        return ParseBreakStatement();
+      }
+
+      if (_stream.Match(ALKScriptTokenType.Continue))
+      {
+        return ParseContinueStatement();
+      }
+
       if (_stream.Match(ALKScriptTokenType.Try))
       {
         return ParseTryStatement();
@@ -681,6 +691,20 @@ namespace ALKScript.Interpreter.Parser
       _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after return statement.");
 
       return new ReturnStmt(keyword, value);
+    }
+
+    private Stmt ParseBreakStatement()
+    {
+      ALKScriptToken keyword = _stream.Previous();
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after 'break'.");
+      return new BreakStmt(keyword);
+    }
+
+    private Stmt ParseContinueStatement()
+    {
+      ALKScriptToken keyword = _stream.Previous();
+      _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after 'continue'.");
+      return new ContinueStmt(keyword);
     }
 
     private Stmt ParseThrowStatement()

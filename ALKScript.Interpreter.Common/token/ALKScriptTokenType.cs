@@ -12,6 +12,8 @@ namespace ALKScript.Interpreter.Common.Token
     Else,
     While,
     For,
+    Break,
+    Continue,
     Function,
     Native,
     Return,

@@ -81,6 +81,14 @@ namespace ALKScript.Interpreter.Evaluator
           await ExecuteFor(forStmt, environment);
           break;
 
+        case BreakStmt breakStmt:
+          _context.Signal = Signal.Break();
+          break;
+
+        case ContinueStmt continueStmt:
+          _context.Signal = Signal.Continue();
+          break;
+
         case ReturnStmt returnStmt:
           await ExecuteReturn(returnStmt, environment);
           break;
@@ -183,6 +191,18 @@ namespace ALKScript.Interpreter.Evaluator
 
         if (_context.Signal != null)
         {
+          if (_context.Signal.Value.Kind == SignalKind.Break)
+          {
+            _context.Signal = null;
+            return;
+          }
+
+          if (_context.Signal.Value.Kind == SignalKind.Continue)
+          {
+            _context.Signal = null;
+            continue;
+          }
+
           return;
         }
       }
@@ -223,7 +243,18 @@ namespace ALKScript.Interpreter.Evaluator
 
         if (_context.Signal != null)
         {
-          return;
+          if (_context.Signal.Value.Kind == SignalKind.Break)
+          {
+            _context.Signal = null;
+            return;
+          }
+
+          if (_context.Signal.Value.Kind != SignalKind.Continue)
+          {
+            return;
+          }
+
+          _context.Signal = null; // continue — fall through to increment
         }
 
         if (statement.Increment != null)

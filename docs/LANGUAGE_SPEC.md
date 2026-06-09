@@ -24,7 +24,7 @@ digits, or underscores: `[a-zA-Z_][a-zA-Z0-9_]*`.
 Reserved words that cannot be used as identifiers:
 
 ```
-if  else  while  for  function  return  var  true  false  null
+if  else  while  for  break  continue  function  return  var  true  false  null
 int  long  float  string  bool  void
 async  await
 try  catch  finally  throw
@@ -222,6 +222,8 @@ statement      = exprStatement
                | whileStatement
                | forStatement
                | returnStatement
+               | breakStatement
+               | continueStatement
                | tryStatement
                | throwStatement
                | block ;
@@ -236,7 +238,15 @@ forStatement   = "for" "(" ( variableDecl | exprStatement | ";" )
                            expression? ";"
                            expression? ")" statement ;
 
-returnStatement = "return" expression? ";" ;
+returnStatement  = "return" expression? ";" ;
+
+breakStatement   = "break" ";" ;
+                   (* only valid inside the body of a "while" or "for" loop;
+                      using it outside a loop is a compile-time error *)
+
+continueStatement = "continue" ";" ;
+                   (* only valid inside the body of a "while" or "for" loop;
+                      using it outside a loop is a compile-time error *)
 
 tryStatement   = "try" block catchClause* finallyClause? ;
                  (* at least one catchClause or a finallyClause must be present *)
@@ -391,6 +401,49 @@ while (x < 10) {
 
 for (var i = 0; i < 10; i = i + 1) {
   // ...
+}
+```
+
+#### `break` and `continue`
+
+`break` exits the nearest enclosing `while` or `for` loop immediately, transferring control to the statement that follows it. `continue` skips the remainder of the current loop body and jumps to the loop's next iteration — re-evaluating the condition for `while`, or executing the update expression and re-evaluating the condition for `for`.
+
+```
+for (var i = 0; i < 10; i = i + 1) {
+  if (i == 3) {
+    continue;        // skip the rest of this iteration; i becomes 4
+  }
+  if (i == 7) {
+    break;           // exit the loop entirely
+  }
+  print(i);          // prints 0 1 2 4 5 6
+}
+```
+
+Both statements are **only valid inside a loop body** — using either one outside a `while` or `for` loop is a compile-time error. They are scoped to the *nearest* enclosing loop, so a `break` or `continue` inside a nested loop does not affect the outer loop:
+
+```
+for (var i = 0; i < 3; i = i + 1) {
+  for (var j = 0; j < 3; j = j + 1) {
+    if (j == 1) {
+      break;         // exits the inner loop only; i continues normally
+    }
+    print(i + "," + j);
+  }
+}
+```
+
+When a `break` or `continue` is executed inside a `try` block that has a `finally` clause, the `finally` block runs before the loop is exited or the next iteration begins:
+
+```
+for (var i = 0; i < 3; i = i + 1) {
+  try {
+    if (i == 1) {
+      break;
+    }
+  } finally {
+    cleanup();       // called for every iteration that entered the try, including i == 1
+  }
 }
 ```
 

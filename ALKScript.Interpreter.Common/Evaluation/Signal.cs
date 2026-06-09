@@ -26,6 +26,10 @@ namespace ALKScript.Interpreter.Common.Evaluation
 
     public static Signal Thrown(ALKScriptValue value) => new Signal(SignalKind.Thrown, value);
 
+    public static Signal Break() => new Signal(SignalKind.Break, NullValue.Instance);
+
+    public static Signal Continue() => new Signal(SignalKind.Continue, NullValue.Instance);
+
     /// <summary>
     /// Creates a "Cancelled" signal — an uncatchable unwind of the entire
     /// script raised in response to an external stop request. It carries no

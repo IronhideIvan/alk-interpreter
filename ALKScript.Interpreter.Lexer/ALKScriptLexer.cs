@@ -12,6 +12,8 @@ namespace ALKScript.Interpreter.Lexer
       { "else", ALKScriptTokenType.Else },
       { "while", ALKScriptTokenType.While },
       { "for", ALKScriptTokenType.For },
+      { "break", ALKScriptTokenType.Break },
+      { "continue", ALKScriptTokenType.Continue },
       { "function", ALKScriptTokenType.Function },
       { "native", ALKScriptTokenType.Native },
       { "return", ALKScriptTokenType.Return },
