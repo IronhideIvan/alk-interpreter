@@ -1,0 +1,16 @@
+import { log } from "console";
+import { Sensor } from "sensor";
+
+var sensor = new Sensor();
+
+// This log runs synchronously before the first await — visible immediately
+// after RunFromFile returns, before any Pump call.
+log("starting");
+
+var a = await sensor.read();
+log("reading-1: " + a);
+
+var b = await sensor.read();
+log("reading-2: " + b);
+
+log("done");

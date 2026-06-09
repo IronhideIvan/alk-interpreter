@@ -1,0 +1,4 @@
+// A sensor whose readings arrive asynchronously (the host drives the I/O).
+export native class Sensor {
+    public native async function int read();
+}

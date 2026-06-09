@@ -172,6 +172,172 @@ public class EndToEndTests : RuntimeTestBase
       logged);
   }
 
+  // ── Async Fetcher ─────────────────────────────────────────────────────────
+
+  [Fact]
+  public async Task AsyncFetcher_NativeAsyncMethodOnClassInstance_ProducesExpectedOutput()
+  {
+    // The program spans two core modules:
+    //   network.alk   — declares a native class HttpClient with a
+    //                   'public native async function string get(string url)'
+    //   console.alk   — declares 'native function void log(string message)'
+    //
+    // main.alk creates one HttpClient instance and awaits get() three times
+    // inside a for loop, logging each resolved response.
+    //
+    // This test focuses on the 'native async method on a class instance' path:
+    //   - The host registers the binding via NativeMethodBindings["HttpClient","get"].
+    //   - The binding returns a TaskValue wrapping Task.FromResult (synchronously
+    //     completing, so the test is deterministic without a real scheduler).
+    //   - The script suspends on each 'await client.get(url)', letting the
+    //     scheduler settle the task and resume with the string result.
+    //   - The same instance is reused across all three calls, confirming that
+    //     the bound 'this' is threaded through correctly for every invocation.
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("AsyncFetcher", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("AsyncFetcher", "console.alk"),
+        ["network"] = ReadScript("AsyncFetcher", "network.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    // Each call returns a genuinely pending Task (Task.Run + Task.Delay) so
+    // the script truly suspends on each 'await client.get(url)' and the
+    // scheduler must pump multiple times before each continuation arrives from
+    // the background thread — mirroring a real environment where the host is
+    // performing slow I/O.  The result is still deterministic: the three URLs
+    // are awaited in sequence, so their responses land in insertion order.
+    runtime.NativeMethodBindings["HttpClient", "get"] = (instance, args) =>
+    {
+      var url = ((StringValue)args[0]).Value;
+      return new TaskValue(Task.Run(async () =>
+      {
+        await Task.Delay(10);
+        return (ALKScriptValue)new StringValue("[200] " + url);
+      }));
+    };
+
+    // Drive the script via Pump() — one call per simulated game tick — rather
+    // than RunUntilComplete.  Between ticks we yield the thread briefly so the
+    // background Task.Delay completions can post their continuations onto the
+    // scheduler queue; Pump() then picks them up on the next tick.  This is
+    // exactly how a real game host would integrate the script runtime.
+    var evaluation = runtime.RunFromFile("main.alk");
+    while (!evaluation.IsCompleted)
+    {
+      runtime.Pump();
+      await Task.Delay(5, TestContext.Current.CancellationToken);
+    }
+    runtime.Pump(); // drain any continuations queued in the final tick
+
+    Assert.Equal(
+      new[]
+      {
+        "[200] api/users",
+        "[200] api/posts",
+        "[200] api/comments",
+        "--- Done ---",
+      },
+      logged);
+  }
+
+  // ── Pump Ordering ─────────────────────────────────────────────────────────
+
+  [Fact]
+  public void PumpOrdering_ScriptSuspendsAtEachAwait_LogsIncrementallyAcrossPumps()
+  {
+    // Verifies that execution genuinely stops at each 'await' and only
+    // advances when the host calls Pump() — the core contract for game-loop
+    // integration.
+    //
+    // Each 'sensor.read()' binding captures its own TaskCompletionSource so
+    // the test controls exactly when each async operation settles, with no
+    // timing dependency.  Because ScheduledTask uses ExecuteSynchronously on
+    // its ContinueWith, calling TCS.SetResult enqueues the script continuation
+    // synchronously before SetResult returns — so by the time Pump() is called
+    // the continuation is already in the queue and runs deterministically.
+    //
+    // Checkpoint 0 — after RunFromFile, before any Pump:
+    //   The synchronous prefix of the script (log("starting")) has already run
+    //   on the calling thread.  The first 'await sensor.read()' has suspended
+    //   evaluation; nothing beyond it has executed yet.
+    //
+    // Checkpoint 1 — after settling read #1 and one Pump:
+    //   The continuation resumes, logs "reading-1: 42", then suspends again at
+    //   the second 'await sensor.read()'.  Exactly one new log line appears.
+    //
+    // Checkpoint 2 — after settling read #2 and one Pump:
+    //   The script runs to completion: "reading-2: 99" and "done" are logged in
+    //   the same pump and evaluation.IsCompleted flips to true.
+
+    var logged = new List<string>();
+    var pendingReads = new List<TaskCompletionSource<ALKScriptValue>>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("PumpOrdering", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("PumpOrdering", "console.alk"),
+        ["sensor"]  = ReadScript("PumpOrdering", "sensor.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.NativeMethodBindings["Sensor", "read"] = (instance, args) =>
+    {
+      var tcs = new TaskCompletionSource<ALKScriptValue>();
+      pendingReads.Add(tcs);
+      return new TaskValue(tcs.Task);
+    };
+
+    // ── Checkpoint 0 ──────────────────────────────────────────────────────
+    // RunFromFile starts the evaluator, which runs synchronously until the
+    // first 'await sensor.read()' suspends it.  The pre-await log("starting")
+    // has already executed on this thread; nothing after the first await has.
+    var evaluation = runtime.RunFromFile("main.alk");
+
+    Assert.Equal(new[] { "starting" }, logged);
+    Assert.False(evaluation.IsCompleted);
+
+    // ── Checkpoint 1 ──────────────────────────────────────────────────────
+    // Settle read #1: the TCS continuation is synchronously enqueued onto the
+    // scheduler before SetResult returns.  Pump() drains it: the script logs
+    // "reading-1: 42", then suspends again at the second await.
+    pendingReads[0].SetResult(new IntValue(42));
+    runtime.Pump();
+
+    Assert.Equal(new[] { "starting", "reading-1: 42" }, logged);
+    Assert.False(evaluation.IsCompleted);
+
+    // ── Checkpoint 2 ──────────────────────────────────────────────────────
+    // Settle read #2: the script now runs to the end in one Pump — logging
+    // "reading-2: 99" and "done" with no further awaits in between.
+    pendingReads[1].SetResult(new IntValue(99));
+    runtime.Pump();
+
+    Assert.Equal(new[] { "starting", "reading-1: 42", "reading-2: 99", "done" }, logged);
+    Assert.True(evaluation.IsCompleted);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

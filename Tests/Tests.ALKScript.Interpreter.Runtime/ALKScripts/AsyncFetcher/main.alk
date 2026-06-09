@@ -1,0 +1,18 @@
+import { log } from "console";
+import { HttpClient } from "network";
+
+// 'client.get(url)' is a native async method: calling it returns a TaskValue
+// immediately (the host hasn't started the I/O yet). 'await' suspends the
+// top-level program until the host-provided Task<ALKScriptValue> settles, then
+// resumes with the resolved string value.
+
+var client = new HttpClient();
+
+var endpoints = ["api/users", "api/posts", "api/comments"];
+
+for (var i = 0; i < 3; i = i + 1) {
+    var response = await client.get(endpoints[i]);
+    log(response);
+}
+
+log("--- Done ---");
