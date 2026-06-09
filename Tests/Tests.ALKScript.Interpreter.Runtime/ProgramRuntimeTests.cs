@@ -89,10 +89,10 @@ public class ProgramRuntimeTests : RuntimeTestBase
   [Fact]
   public void RunFromSource_EvaluationIsCompleted_AfterRunUntilComplete()
   {
-    var (runtime, scheduler) = CreateRuntimeForEvaluation();
+    var runtime = CreateRuntimeForEvaluation();
 
     ScriptEvaluation evaluation = runtime.RunFromSource($"{RecordDeclaration}var x = 1;");
-    scheduler.RunUntilComplete(evaluation);
+    runtime.RunUntilComplete(evaluation);
 
     Assert.True(evaluation.IsCompleted);
   }

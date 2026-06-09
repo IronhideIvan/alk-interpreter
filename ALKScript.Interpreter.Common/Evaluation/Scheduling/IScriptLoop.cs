@@ -1,16 +1,17 @@
 namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
 {
   /// <summary>
-  /// The host-facing scheduling contract: extends <see cref="IScriptScheduler"/>
-  /// with the ability to drive the continuation queue. The evaluator only ever
-  /// sees <see cref="IScriptScheduler"/>; hosts depend on <see cref="IScriptLoop"/>
-  /// so they can pump or block-run scripts without the evaluator having access
-  /// to those operations.
+  /// The host-facing loop contract: drives the continuation queue assembled by
+  /// an <see cref="IScriptScheduler"/>. The evaluator only ever sees
+  /// <see cref="IScriptScheduler"/> (enqueuing continuations); hosts depend on
+  /// <see cref="IScriptLoop"/> (draining them). Keeping the two interfaces
+  /// separate means a host cannot accidentally enqueue arbitrary continuations
+  /// into the evaluator's internal scheduler.
   ///
   /// A host that integrates its own job system implements this interface rather
   /// than subclassing the concrete <c>ScriptScheduler</c>.
   /// </summary>
-  public interface IScriptLoop : IScriptScheduler
+  public interface IScriptLoop
   {
     /// <summary>
     /// Runs every continuation that was queued at the moment this call began —
