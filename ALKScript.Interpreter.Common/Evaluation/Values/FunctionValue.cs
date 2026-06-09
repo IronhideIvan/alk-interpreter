@@ -18,11 +18,19 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     /// </summary>
     public InstanceValue? BoundInstance { get; }
 
-    public FunctionValue(FunctionDecl declaration, ScriptEnvironment closure, InstanceValue? boundInstance = null)
+    /// <summary>
+    /// For methods, the class that declared this method — used to resolve
+    /// <c>base</c> inside the method body (as the superclass of the declaring
+    /// class). Null for free-standing functions.
+    /// </summary>
+    public ClassValue? DeclaringClass { get; }
+
+    public FunctionValue(FunctionDecl declaration, ScriptEnvironment closure, InstanceValue? boundInstance = null, ClassValue? declaringClass = null)
     {
       Declaration = declaration;
       Closure = closure;
       BoundInstance = boundInstance;
+      DeclaringClass = declaringClass;
     }
 
     public override int Arity => Declaration.Parameters.Count;
@@ -32,6 +40,6 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     public override string ToString() => $"<function {Declaration.Name.Lexeme}>";
 
     /// <summary>Returns a copy of this function bound to <paramref name="instance"/>, for method dispatch.</summary>
-    public FunctionValue BindTo(InstanceValue instance) => new FunctionValue(Declaration, Closure, instance);
+    public FunctionValue BindTo(InstanceValue instance) => new FunctionValue(Declaration, Closure, instance, DeclaringClass);
   }
 }

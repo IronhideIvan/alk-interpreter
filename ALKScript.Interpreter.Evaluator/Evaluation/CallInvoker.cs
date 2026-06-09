@@ -33,6 +33,10 @@ namespace ALKScript.Interpreter.Evaluator
         case ClassValue classValue:
           return await Construct(classValue, arguments, site);
 
+        case BaseValue baseValue:
+          await CallSuperConstructor(baseValue.Superclass, baseValue.Instance, arguments, site);
+          return NullValue.Instance;
+
         case CallableValue callable:
           if (arguments.Count != callable.Arity)
           {
@@ -59,6 +63,10 @@ namespace ALKScript.Interpreter.Evaluator
 
         var constructorEnvironment = new ScriptEnvironment(ClassEnvironments.For(classValue));
         constructorEnvironment.Define("this", instance);
+        if (classValue.Superclass != null)
+        {
+          constructorEnvironment.Define("base", new BaseValue(classValue.Superclass, instance));
+        }
 
         for (int i = 0; i < constructor.Parameters.Count; i++)
         {
@@ -106,6 +114,10 @@ namespace ALKScript.Interpreter.Evaluator
       if (function.BoundInstance != null)
       {
         callEnvironment.Define("this", function.BoundInstance);
+        if (function.DeclaringClass?.Superclass != null)
+        {
+          callEnvironment.Define("base", new BaseValue(function.DeclaringClass.Superclass, function.BoundInstance));
+        }
       }
 
       for (int i = 0; i < function.Declaration.Parameters.Count; i++)
@@ -149,6 +161,44 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       return NullValue.Instance;
+    }
+
+    private async Task CallSuperConstructor(ClassValue superclass, InstanceValue instance, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    {
+      var constructor = FindConstructor(superclass);
+
+      if (constructor == null)
+      {
+        if (arguments.Count != 0)
+        {
+          throw new RuntimeException(site, $"Expected 0 argument(s) but got {arguments.Count}.");
+        }
+        return;
+      }
+
+      if (arguments.Count != constructor.Parameters.Count)
+      {
+        throw new RuntimeException(site, $"Expected {constructor.Parameters.Count} argument(s) but got {arguments.Count}.");
+      }
+
+      var env = new ScriptEnvironment(ClassEnvironments.For(superclass));
+      env.Define("this", instance);
+      if (superclass.Superclass != null)
+      {
+        env.Define("base", new BaseValue(superclass.Superclass, instance));
+      }
+
+      for (int i = 0; i < constructor.Parameters.Count; i++)
+      {
+        env.Define(constructor.Parameters[i].Name, arguments[i]);
+      }
+
+      await _context.ExecuteBlock(constructor.Body.Statements, env);
+
+      if (_context.Signal is { Kind: SignalKind.Return })
+      {
+        _context.Signal = null;
+      }
     }
 
     private static ConstructorDecl? FindConstructor(ClassValue classValue)

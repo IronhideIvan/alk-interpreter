@@ -72,7 +72,7 @@ namespace ALKScript.Interpreter.Evaluator
     {
       if (!declaration.IsNative)
       {
-        return new FunctionValue(MethodAsFunctionDecl(declaration), closure, boundInstance);
+        return new FunctionValue(MethodAsFunctionDecl(declaration), closure, boundInstance, declaringClass);
       }
 
       string className = declaringClass.Declaration.Name.Lexeme;

@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="ALKScripts\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\ALKScript.Interpreter.Lexer\ALKScript.Interpreter.Lexer.csproj" />
     <ProjectReference Include="..\..\ALKScript.Interpreter.Parser\ALKScript.Interpreter.Parser.csproj" />
     <ProjectReference Include="..\..\ALKScript.Interpreter.Evaluator\ALKScript.Interpreter.Evaluator.csproj" />

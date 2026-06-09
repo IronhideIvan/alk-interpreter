@@ -1,0 +1,23 @@
+import { log } from "console";
+import { Animal, Dog, Cat, GuideDog } from "./animals";
+
+// Accepts any Animal — exercises polymorphic dispatch through virtual speak().
+function void announce(Animal animal) {
+    log("[" + animal.getName() + "] " + animal.speak());
+}
+
+log("--- Animal Showcase ---");
+
+var rex     = new Dog("Rex");
+var whiskers = new Cat("Whiskers");
+var buddy   = new GuideDog("Buddy", "Alice");
+
+announce(rex);
+announce(whiskers);
+announce(buddy);
+
+// Direct call on a concrete type — verifies that speak() also works without
+// going through the polymorphic helper.
+log("Direct: " + buddy.speak());
+
+log("--- Done ---");

@@ -147,7 +147,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
     Assert.Equal("world", value.Value);
   }
 
-  [Fact(Skip = "Import declarations are not yet evaluated — StatementExecutor has no ImportDecl case")]
+  [Fact]
   public void RunFromSource_WithCoreModuleImport_ImportsResolveFromProvider()
   {
     // "math" is supplied by the ICoreModuleProvider; the entry source imports
@@ -163,7 +163,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
     Assert.Equal(14L, value.Value);
   }
 
-  [Fact(Skip = "Import declarations are not yet evaluated — StatementExecutor has no ImportDecl case")]
+  [Fact]
   public void RunFromSource_WithPreludeNamedModule_IsImportableAsCoreModule()
   {
     // A GlobalPreludeSource.Module() entry is importable as a core module just
@@ -214,7 +214,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
     Assert.Equal(42L, value.Value);
   }
 
-  [Fact(Skip = "Import declarations are not yet evaluated — StatementExecutor has no ImportDecl case")]
+  [Fact]
   public void RunFromFile_MultiModuleProgram_ResolvesFileImports()
   {
     // The entry module imports an exported function from a sibling file; the

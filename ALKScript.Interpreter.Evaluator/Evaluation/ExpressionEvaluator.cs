@@ -572,6 +572,15 @@ namespace ALKScript.Interpreter.Evaluator
 
           throw new RuntimeException(expression.Name, $"Undefined property '{expression.Name.Lexeme}' on '{target.TypeName}'.");
 
+        case BaseValue baseValue:
+          var baseMember = baseValue.Superclass.FindMember(expression.Name.Lexeme, out var baseDeclaringClass);
+          if (baseMember is MethodDecl baseMethod)
+          {
+            return _functionValueFactory.CreateMethod(baseMethod, baseDeclaringClass!, ClassEnvironments.For(baseValue.Superclass), baseValue.Instance);
+          }
+
+          throw new RuntimeException(expression.Name, $"Undefined member '{expression.Name.Lexeme}' on base class.");
+
         case ClassValue classValue:
           var staticMember = classValue.FindMember(expression.Name.Lexeme, out var staticDeclaringClass);
           if (staticMember is MethodDecl staticMethod)

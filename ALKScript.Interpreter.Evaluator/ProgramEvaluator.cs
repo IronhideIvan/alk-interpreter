@@ -129,10 +129,10 @@ namespace ALKScript.Interpreter.Evaluator
 
       // Seed the runtime-supplied global prelude(s) first: ordinary top-level
       // declarations executed into the root environment, in order, so their
-      // bindings are true globals — visible to (and shadowable by) the entry
-      // module without any "import" or per-script "native function"
-      // re-declaration. These were compiled once by the loader (see
-      // ModuleGraph.GlobalPreludes), so there's nothing to parse here.
+      // bindings are true globals — visible to (and shadowable by) every module
+      // without any "import" or per-script "native function" re-declaration.
+      // These were compiled once by the loader (see ModuleGraph.GlobalPreludes),
+      // so there's nothing to parse here.
       foreach (var program in graph.GlobalPreludes)
       {
         foreach (var declaration in program.Declarations)
@@ -153,15 +153,11 @@ namespace ALKScript.Interpreter.Evaluator
 
       _signal = null;
 
-      foreach (var declaration in graph.EntryModule.Program.Declarations)
-      {
-        await _statements.Execute(declaration, globals);
-
-        if (_signal != null)
-        {
-          break;
-        }
-      }
+      // Execute the entry module. Imported modules are executed on demand,
+      // depth-first, with each module's environment cached so shared
+      // dependencies are only executed once.
+      var moduleEnvs = new Dictionary<string, ScriptEnvironment>();
+      await ExecuteModule(graph.EntryModule, graph, globals, moduleEnvs);
 
       // Fire-and-forget any async native operations that were called but never
       // awaited — the "Discard" path (see IAsyncOperationBinder.Discard and
@@ -182,6 +178,85 @@ namespace ALKScript.Interpreter.Evaluator
 
       // A stray top-level "return" simply ends the module's execution.
       _signal = null;
+    }
+
+    /// <summary>
+    /// Executes <paramref name="module"/> in its own environment, first
+    /// recursively executing any modules it imports (each only once), then
+    /// binding the imported names into the module's environment, and finally
+    /// running the module's own top-level declarations. Does nothing if the
+    /// module has already been executed (its identifier is in
+    /// <paramref name="moduleEnvs"/>).
+    /// </summary>
+    private async Task ExecuteModule(
+      LoadedModule module,
+      ModuleGraph graph,
+      ScriptEnvironment globals,
+      Dictionary<string, ScriptEnvironment> moduleEnvs)
+    {
+      if (moduleEnvs.ContainsKey(module.Identifier))
+      {
+        return;
+      }
+
+      // Cache the environment before executing imports to handle diamond-shaped
+      // dependency graphs: if A imports B and C, and B also imports C, the second
+      // visit to C (via B) sees the cached env rather than re-executing C.
+      var env = new ScriptEnvironment(globals);
+      moduleEnvs[module.Identifier] = env;
+
+      foreach (var import in module.Program.Imports)
+      {
+        string resolvedId = module.ImportResolutions[import.Source.Lexeme];
+        LoadedModule dependency = graph.Modules[resolvedId];
+
+        await ExecuteModule(dependency, graph, globals, moduleEnvs);
+
+        if (_signal != null)
+        {
+          return;
+        }
+
+        BindImport(import, moduleEnvs[resolvedId], env);
+      }
+
+      foreach (var declaration in module.Program.Declarations)
+      {
+        await _statements.Execute(declaration, env);
+
+        if (_signal != null)
+        {
+          return;
+        }
+      }
+    }
+
+    /// <summary>
+    /// Binds the names brought in by <paramref name="import"/> from
+    /// <paramref name="sourceEnv"/> into <paramref name="targetEnv"/>.
+    /// </summary>
+    private static void BindImport(ImportDecl import, ScriptEnvironment sourceEnv, ScriptEnvironment targetEnv)
+    {
+      switch (import.Clause)
+      {
+        case NamedImportsClause namedImports:
+          foreach (var specifier in namedImports.Specifiers)
+          {
+            string exportedName = specifier.Name.Lexeme;
+            string localName = specifier.Alias?.Lexeme ?? exportedName;
+
+            if (!sourceEnv.TryGet(exportedName, out ALKScriptValue value))
+            {
+              throw new RuntimeException(specifier.Name, $"Module does not export '{exportedName}'.");
+            }
+
+            targetEnv.Define(localName, value);
+          }
+          break;
+
+        case NamespaceImportClause namespaceImport:
+          throw new RuntimeException(namespaceImport.Alias, "Namespace imports ('* as N') are not yet supported.");
+      }
     }
 
     // ---------------------------------------------------------------------

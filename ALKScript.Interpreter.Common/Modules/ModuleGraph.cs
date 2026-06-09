@@ -19,6 +19,9 @@ namespace ALKScript.Interpreter.Common.Modules
   /// </summary>
   public class LoadedModule
   {
+    private static readonly IReadOnlyDictionary<string, string> EmptyResolutions =
+      new Dictionary<string, string>();
+
     /// <summary>
     /// The module's identity within the graph: a fully-qualified, normalized
     /// file path for <see cref="ModuleKind.File"/> modules, or the bare
@@ -30,11 +33,22 @@ namespace ALKScript.Interpreter.Common.Modules
 
     public ProgramNode Program { get; }
 
-    public LoadedModule(string identifier, ModuleKind kind, ProgramNode program)
+    /// <summary>
+    /// Maps each raw import specifier that appears in this module's source
+    /// (e.g. <c>"./animals"</c> or <c>"console"</c>) to the resolved module
+    /// identifier used as the key in <see cref="ModuleGraph.Modules"/>
+    /// (e.g. <c>"animals.alk"</c> or <c>"console"</c>). Populated by the
+    /// loader as it resolves imports; empty for modules with no imports.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ImportResolutions { get; }
+
+    public LoadedModule(string identifier, ModuleKind kind, ProgramNode program,
+      IReadOnlyDictionary<string, string>? importResolutions = null)
     {
       Identifier = identifier;
       Kind = kind;
       Program = program;
+      ImportResolutions = importResolutions ?? EmptyResolutions;
     }
   }
 

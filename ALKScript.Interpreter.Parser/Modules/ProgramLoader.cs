@@ -92,7 +92,9 @@ namespace ALKScript.Interpreter.Parser.Modules
       var modules = new Dictionary<string, LoadedModule>();
 
       ProgramNode program = _parser.ParseTokens(_lexer.Tokenize(source));
-      var entry = new LoadedModule("<source>", ModuleKind.File, program);
+
+      var importResolutions = new Dictionary<string, string>();
+      var entry = new LoadedModule("<source>", ModuleKind.File, program, importResolutions);
 
       foreach (ImportDecl import in program.Imports)
       {
@@ -104,6 +106,7 @@ namespace ALKScript.Interpreter.Parser.Modules
         }
 
         ResolveCoreModule(import, specifier, modules);
+        importResolutions[specifier] = specifier; // core modules: identifier == specifier
       }
 
       return new ModuleGraph(entry, modules, globalPreludes);
@@ -159,11 +162,12 @@ namespace ALKScript.Interpreter.Parser.Modules
       string source = _fileReader.ReadFile(path);
       ProgramNode program = _parser.ParseTokens(_lexer.Tokenize(source));
 
-      var module = new LoadedModule(path, ModuleKind.File, program);
-
       // Memoize before walking imports so that diamond-shaped graphs resolve
       // the shared module to the same instance, and so the loading stack
       // below can detect cycles that pass back through this module.
+      var importResolutions = new Dictionary<string, string>();
+      var module = new LoadedModule(path, ModuleKind.File, program, importResolutions);
+
       modules[path] = module;
       loadingStack.Add(path);
 
@@ -171,7 +175,7 @@ namespace ALKScript.Interpreter.Parser.Modules
       {
         foreach (ImportDecl import in program.Imports)
         {
-          ResolveImport(path, import, modules, loadingStack);
+          ResolveImport(path, import, modules, loadingStack, importResolutions);
         }
       }
       finally
@@ -182,13 +186,14 @@ namespace ALKScript.Interpreter.Parser.Modules
       return module;
     }
 
-    private void ResolveImport(string importingFilePath, ImportDecl import, Dictionary<string, LoadedModule> modules, HashSet<string> loadingStack)
+    private void ResolveImport(string importingFilePath, ImportDecl import, Dictionary<string, LoadedModule> modules, HashSet<string> loadingStack, Dictionary<string, string> importResolutions)
     {
       string specifier = import.Source.Lexeme;
 
       if (!IsRelativeFilePathSpecifier(specifier))
       {
         ResolveCoreModule(import, specifier, modules);
+        importResolutions[specifier] = specifier; // core modules: identifier == specifier
         return;
       }
 
@@ -205,6 +210,7 @@ namespace ALKScript.Interpreter.Parser.Modules
       }
 
       LoadedModule target = LoadFileModule(resolvedPath, modules, loadingStack);
+      importResolutions[specifier] = resolvedPath;
 
       ValidateNamedImports(import, specifier, target.Program);
     }
