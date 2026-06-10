@@ -1,0 +1,14 @@
+import { log } from "console";
+
+// "finally" still runs for an uncaught exception, but the exception
+// propagates past the "try" statement — and, with no enclosing handler,
+// becomes a RuntimeException at the top level.
+
+try {
+    log("try: before throw");
+    throw "boom";
+} finally {
+    log("finally: still runs");
+}
+
+log("unreachable");

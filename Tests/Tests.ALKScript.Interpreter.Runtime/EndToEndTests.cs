@@ -1090,6 +1090,79 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Empty(logged);
   }
 
+  // ── try / catch / finally ────────────────────────────────────────────────────
+
+  [Fact]
+  public void TryCatchFinallyShowcase_CatchHandlesThrow_FinallyAlwaysRuns()
+  {
+    // Features exercised:
+    //   - "catch (T name)" binds the thrown value and handles it, skipping
+    //     the rest of the "try" block
+    //   - "finally" runs whether or not the "try" block threw
+    //   - a "throw" inside a called function is caught by the caller's "try"
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("TryCatchFinallyShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("TryCatchFinallyShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "try: before throw",
+        "catch: boom",
+        "finally: after catch",
+        "try: no throw",
+        "finally: no throw",
+        "catch: kaboom",
+        "finally: after function throw",
+        "done",
+      },
+      logged);
+  }
+
+  [Fact]
+  public void TryCatchFinallyShowcase_UncaughtThrow_RunsFinallyThenThrowsRuntimeException()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("TryCatchFinallyShowcase", "uncaught.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("TryCatchFinallyShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Uncaught exception: boom", exception.Message);
+    Assert.Equal(new[] { "try: before throw", "finally: still runs" }, logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

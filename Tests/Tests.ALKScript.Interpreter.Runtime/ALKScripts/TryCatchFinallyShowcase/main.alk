@@ -1,0 +1,37 @@
+import { log } from "console";
+
+// ── try / catch / finally ───────────────────────────────────────────────────
+
+// "catch" runs when the "try" block throws, with the thrown value bound to
+// the catch parameter; "finally" always runs afterwards.
+try {
+    log("try: before throw");
+    throw "boom";
+    log("try: after throw");
+} catch (string message) {
+    log(`catch: ${message}`);
+} finally {
+    log("finally: after catch");
+}
+
+// "finally" also runs when the "try" block completes without throwing.
+try {
+    log("try: no throw");
+} finally {
+    log("finally: no throw");
+}
+
+// A function call inside "try" can throw; the catch still runs.
+function void explode() {
+    throw "kaboom";
+}
+
+try {
+    explode();
+} catch (string message) {
+    log(`catch: ${message}`);
+} finally {
+    log("finally: after function throw");
+}
+
+log("done");

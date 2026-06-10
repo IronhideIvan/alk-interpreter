@@ -1,0 +1,1 @@
+export native function void log(string message);
