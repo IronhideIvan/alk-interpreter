@@ -1,0 +1,55 @@
+import { log } from "console";
+
+// ── Nullable type enforcement ───────────────────────────────────────────────
+//
+// A type without a trailing "?" is non-nullable: assigning, passing, or
+// returning "null" for it is a RuntimeException. A type with a trailing "?"
+// (e.g. "string?") may hold "null".
+
+class Box {
+    public string? label = null;
+    public int value;
+
+    public new(int value) {
+        this.value = value;
+    }
+
+    public function int? tryDouble(int? input) {
+        if (input == null) {
+            return null;
+        }
+        return input * 2;
+    }
+}
+
+// ── declarations ────────────────────────────────────────────────────────────
+
+string? name = null;
+log(`name == null = ${name == null}`);
+
+string greeting = "hello";
+log(`greeting = ${greeting}`);
+
+// ── assignment ──────────────────────────────────────────────────────────────
+
+name = "set";
+log(`name = ${name}`);
+
+name = null;
+log(`name == null = ${name == null}`);
+
+// ── fields ───────────────────────────────────────────────────────────────────
+
+var box = new Box(5);
+log(`box.label == null = ${box.label == null}`);
+box.label = "box";
+log(`box.label = ${box.label}`);
+box.label = null;
+log(`box.label == null = ${box.label == null}`);
+
+// ── parameters and return values ────────────────────────────────────────────
+
+log(`box.tryDouble(3) = ${box.tryDouble(3)}`);
+log(`box.tryDouble(null) == null = ${box.tryDouble(null) == null}`);
+
+log("done");

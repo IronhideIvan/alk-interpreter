@@ -1,0 +1,12 @@
+import { log } from "console";
+
+// Passing "null" as an argument for a parameter declared with a non-nullable
+// type is a RuntimeException at the call site.
+
+function int double(int input) {
+    return input * 2;
+}
+
+double(null);
+
+log("unreachable");

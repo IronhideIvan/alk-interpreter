@@ -154,9 +154,11 @@ namespace ALKScript.Interpreter.Evaluator
         {
           return;
         }
+
+        Nullability.EnsureAssignable(declaration.Type, value, declaration.Name, $"variable '{declaration.Name.Lexeme}'");
       }
 
-      environment.Define(declaration.Name.Lexeme, value);
+      environment.Define(declaration.Name.Lexeme, value, declaration.Type);
     }
 
     private void ExecuteClassDecl(ClassDecl declaration, ScriptEnvironment environment)
@@ -518,6 +520,12 @@ namespace ALKScript.Interpreter.Evaluator
         if (_context.Signal != null)
         {
           return;
+        }
+
+        var returnType = environment.CurrentFunctionReturnType;
+        if (returnType != null && returnType.Name != "void")
+        {
+          Nullability.EnsureAssignable(returnType, value, statement.Keyword, "the return value");
         }
       }
 

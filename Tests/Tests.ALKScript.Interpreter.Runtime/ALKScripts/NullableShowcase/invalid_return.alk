@@ -1,0 +1,12 @@
+import { log } from "console";
+
+// Returning "null" from a function declared with a non-nullable return type
+// is a RuntimeException at the "return" statement.
+
+function string greet() {
+    return null;
+}
+
+greet();
+
+log("unreachable");

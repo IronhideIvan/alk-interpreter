@@ -1,0 +1,8 @@
+import { log } from "console";
+
+// "string" (without "?") is non-nullable: initializing it with "null" is a
+// RuntimeException as soon as the declaration is executed.
+
+string name = null;
+
+log("unreachable");

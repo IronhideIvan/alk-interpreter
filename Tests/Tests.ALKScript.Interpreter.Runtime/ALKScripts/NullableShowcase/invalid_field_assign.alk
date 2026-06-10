@@ -1,0 +1,13 @@
+import { log } from "console";
+
+// Assigning "null" to a field declared with a non-nullable type is a
+// RuntimeException, even from outside the class.
+
+class Box {
+    public string label = "box";
+}
+
+var box = new Box();
+box.label = null;
+
+log("unreachable");

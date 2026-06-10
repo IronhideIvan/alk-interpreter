@@ -194,6 +194,8 @@ namespace ALKScript.Interpreter.Evaluator
       switch (expression.Target)
       {
         case IdentifierExpr identifier:
+          environment.TryGetDeclaredType(identifier.Name.Lexeme, out var declaredType);
+          Nullability.EnsureAssignable(declaredType, value, identifier.Name, $"variable '{identifier.Name.Lexeme}'");
           if (!environment.TryAssign(identifier.Name.Lexeme, value))
           {
             throw new RuntimeException(identifier.Name, $"Undefined name '{identifier.Name.Lexeme}'.");
@@ -212,6 +214,11 @@ namespace ALKScript.Interpreter.Evaluator
           if (fieldMemberForWrite != null)
           {
             EnforceAccessModifier(fieldMemberForWrite, fieldWriteDeclaringClass, get.Name, environment);
+
+            if (fieldMemberForWrite is FieldDecl fieldDecl)
+            {
+              Nullability.EnsureAssignable(fieldDecl.Type, value, get.Name, $"field '{get.Name.Lexeme}'");
+            }
           }
           instance.Fields[get.Name.Lexeme] = value;
           return value;

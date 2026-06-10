@@ -910,6 +910,86 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Empty(logged);
   }
 
+  // ── Nullable type enforcement ───────────────────────────────────────────────
+
+  [Fact]
+  public void NullableShowcase_NullableTypes_PermitNullEverywhere()
+  {
+    // Features exercised:
+    //   - "string?" locals, fields, parameters and return types may hold "null"
+    //   - non-nullable types ("string", "int") work as before when never null
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("NullableShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("NullableShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "name == null = true",
+        "greeting = hello",
+        "name = set",
+        "name == null = true",
+        "box.label == null = true",
+        "box.label = box",
+        "box.label == null = true",
+        "box.tryDouble(3) = 6",
+        "box.tryDouble(null) == null = true",
+        "done",
+      },
+      logged);
+  }
+
+  [Theory]
+  [InlineData("invalid_variable.alk", "variable 'name'")]
+  [InlineData("invalid_assignment.alk", "variable 'name'")]
+  [InlineData("invalid_field_init.alk", "field 'label'")]
+  [InlineData("invalid_field_assign.alk", "field 'label'")]
+  [InlineData("invalid_parameter.alk", "parameter 'input'")]
+  [InlineData("invalid_return.alk", "the return value")]
+  public void NullableShowcase_AssigningNullToNonNullableType_ThrowsRuntimeException(string fileName, string expectedDescription)
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("NullableShowcase", fileName),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("NullableShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign 'null' to", exception.Message);
+    Assert.Contains(expectedDescription, exception.Message);
+    Assert.Empty(logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

@@ -1,0 +1,12 @@
+import { log } from "console";
+
+// A field declared with a non-nullable type and an explicit "null"
+// initializer is a RuntimeException as soon as the instance is constructed.
+
+class Box {
+    public string label = null;
+}
+
+var box = new Box();
+
+log("unreachable");

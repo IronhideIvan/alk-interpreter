@@ -1,0 +1,9 @@
+import { log } from "console";
+
+// Assigning "null" to a variable declared with a non-nullable type is a
+// RuntimeException, even after it already holds a value.
+
+string name = "hello";
+name = null;
+
+log("unreachable");

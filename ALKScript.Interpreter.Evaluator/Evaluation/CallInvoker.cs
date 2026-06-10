@@ -42,7 +42,7 @@ namespace ALKScript.Interpreter.Evaluator
           {
             throw new RuntimeException(site, $"Expected {callable.Arity} argument(s) but got {arguments.Count}.");
           }
-          return await Invoke(callable, arguments);
+          return await Invoke(callable, arguments, site);
 
         default:
           throw new RuntimeException(site, $"Cannot call a value of type '{callee.TypeName}'.");
@@ -77,7 +77,9 @@ namespace ALKScript.Interpreter.Evaluator
 
         for (int i = 0; i < constructor.Parameters.Count; i++)
         {
-          constructorEnvironment.Define(constructor.Parameters[i].Name, arguments[i]);
+          var parameter = constructor.Parameters[i];
+          Nullability.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'");
+          constructorEnvironment.Define(parameter.Name, arguments[i], parameter.Type);
         }
 
         await _context.ExecuteBlock(constructor.Body.Statements, constructorEnvironment);
@@ -126,6 +128,8 @@ namespace ALKScript.Interpreter.Evaluator
             {
               fieldValue = await _context.Eval(field.Initializer, initEnvironment);
               if (_context.Signal != null) return;
+
+              Nullability.EnsureAssignable(field.Type, fieldValue, field.Name, $"field '{field.Name.Lexeme}'");
             }
             else
             {
@@ -138,7 +142,7 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private async Task<ALKScriptValue> Invoke(CallableValue callable, IReadOnlyList<ALKScriptValue> arguments)
+    private async Task<ALKScriptValue> Invoke(CallableValue callable, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     {
       switch (callable)
       {
@@ -146,7 +150,7 @@ namespace ALKScript.Interpreter.Evaluator
           return nativeFunction.Implementation(arguments);
 
         case FunctionValue function:
-          return await InvokeFunction(function, arguments);
+          return await InvokeFunction(function, arguments, site);
 
         default:
           throw new RuntimeException(
@@ -155,10 +159,11 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    private Task<ALKScriptValue> InvokeFunction(FunctionValue function, IReadOnlyList<ALKScriptValue> arguments)
+    private Task<ALKScriptValue> InvokeFunction(FunctionValue function, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     {
       var callEnvironment = new ScriptEnvironment(function.Closure);
       callEnvironment.CurrentClass = function.DeclaringClass;
+      callEnvironment.CurrentFunctionReturnType = function.Declaration.ReturnType;
 
       if (function.BoundInstance != null)
       {
@@ -171,7 +176,9 @@ namespace ALKScript.Interpreter.Evaluator
 
       for (int i = 0; i < function.Declaration.Parameters.Count; i++)
       {
-        callEnvironment.Define(function.Declaration.Parameters[i].Name, arguments[i]);
+        var parameter = function.Declaration.Parameters[i];
+        Nullability.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'");
+        callEnvironment.Define(parameter.Name, arguments[i], parameter.Type);
       }
 
       // A non-"async" function/method runs its body to completion before
@@ -240,7 +247,9 @@ namespace ALKScript.Interpreter.Evaluator
 
       for (int i = 0; i < constructor.Parameters.Count; i++)
       {
-        env.Define(constructor.Parameters[i].Name, arguments[i]);
+        var parameter = constructor.Parameters[i];
+        Nullability.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'");
+        env.Define(parameter.Name, arguments[i], parameter.Type);
       }
 
       await _context.ExecuteBlock(constructor.Body.Statements, env);

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 
 namespace ALKScript.Interpreter.Common.Evaluation
@@ -12,7 +13,9 @@ namespace ALKScript.Interpreter.Common.Evaluation
   {
     private readonly ScriptEnvironment? _enclosing;
     private readonly Dictionary<string, ALKScriptValue> _values = new Dictionary<string, ALKScriptValue>();
+    private readonly Dictionary<string, TypeNode?> _types = new Dictionary<string, TypeNode?>();
     private ClassValue? _currentClass;
+    private TypeNode? _currentFunctionReturnType;
 
     public ScriptEnvironment(ScriptEnvironment? enclosing = null)
     {
@@ -38,10 +41,56 @@ namespace ALKScript.Interpreter.Common.Evaluation
       set => _currentClass = value;
     }
 
-    /// <summary>Binds <paramref name="name"/> to <paramref name="value"/> in this scope, shadowing any enclosing binding.</summary>
-    public void Define(string name, ALKScriptValue value)
+    /// <summary>
+    /// The return type of the function/method whose body is currently
+    /// executing, used by <c>return</c>-statement nullability checks. Set on
+    /// the innermost <c>callEnvironment</c> when invoking a function; walked
+    /// up the scope chain like <see cref="CurrentClass"/> so nested blocks and
+    /// closures resolve to their own enclosing function, not an outer one.
+    /// </summary>
+    public TypeNode? CurrentFunctionReturnType
+    {
+      get
+      {
+        for (ScriptEnvironment? scope = this; scope != null; scope = scope._enclosing)
+        {
+          if (scope._currentFunctionReturnType != null) return scope._currentFunctionReturnType;
+        }
+        return null;
+      }
+      set => _currentFunctionReturnType = value;
+    }
+
+    /// <summary>
+    /// Binds <paramref name="name"/> to <paramref name="value"/> in this scope,
+    /// shadowing any enclosing binding. <paramref name="declaredType"/> records
+    /// the variable's/parameter's/field's annotated type (null for "var" or
+    /// other untyped bindings), used by nullability checks on later assignment.
+    /// </summary>
+    public void Define(string name, ALKScriptValue value, TypeNode? declaredType = null)
     {
       _values[name] = value;
+      _types[name] = declaredType;
+    }
+
+    /// <summary>
+    /// Looks up the declared type bound to <paramref name="name"/> via
+    /// <see cref="Define"/>, in this scope or, failing that, any enclosing
+    /// scope. Returns null (with <paramref name="type"/> set to null) when the
+    /// name is undefined or was declared without an explicit type.
+    /// </summary>
+    public bool TryGetDeclaredType(string name, out TypeNode? type)
+    {
+      for (ScriptEnvironment? scope = this; scope != null; scope = scope._enclosing)
+      {
+        if (scope._types.TryGetValue(name, out type))
+        {
+          return true;
+        }
+      }
+
+      type = null;
+      return false;
     }
 
     /// <summary>
