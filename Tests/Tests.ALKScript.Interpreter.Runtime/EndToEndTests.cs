@@ -506,6 +506,70 @@ public class EndToEndTests : RuntimeTestBase
       logged);
   }
 
+  // ── Array methods ────────────────────────────────────────────────────────
+
+  [Fact]
+  public void ArrayMethodsShowcase_PushPopRemoveJoinSliceAndLength_ProducesExpectedOutput()
+  {
+    // The program is a single-module script that exercises every member of
+    // the built-in array API in sequence on a shared array, then on arrays
+    // derived from it:
+    //   - 'length' as a property
+    //   - 'push' (mutates, returns the new length)
+    //   - 'pop' (mutates, returns the removed last element)
+    //   - 'remove' (mutates, returns the removed element at an index)
+    //   - 'join' (pure, returns a new array combining two arrays)
+    //   - 'slice' (pure, returns a new sub-array)
+    //
+    // Features exercised:
+    //   - array.length
+    //   - array.push(value), array.pop(), array.remove(index)
+    //   - array.join(other), array.slice(start, count)
+    //   - 'join' and 'slice' do not mutate their receivers
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ArrayMethodsShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ArrayMethodsShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "length=3",
+        "push-returned=4",
+        "after-push-length=4",
+        "items[3]=4",
+        "popped=4",
+        "after-pop-length=3",
+        "removed=1",
+        "after-remove-length=2",
+        "items[0]=2",
+        "combined.length=4",
+        "items.length=2",
+        "middle.length=2",
+        "middle[0]=3",
+        "middle[1]=10",
+        "combined.length=4",
+        "done",
+      },
+      logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

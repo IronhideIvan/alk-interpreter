@@ -150,6 +150,76 @@ public class ExpressionTests : ParserTestBase
     Assert.Equal(0, indexLiteral.Value);
   }
 
+  // ── Array API member/method expressions ────────────────────────────────────
+  //
+  // The array API (length, push, pop, remove, join, slice) introduces no new
+  // grammar — each call parses as an ordinary CallExpr whose callee is a
+  // GetExpr on the array expression. These tests pin down that shape for
+  // every member of the API so a future grammar change can't silently alter
+  // how they parse.
+
+  [Theory]
+  [InlineData("items.push(4);", "push", 1)]
+  [InlineData("items.pop();", "pop", 0)]
+  [InlineData("items.remove(0);", "remove", 1)]
+  [InlineData("items.join(other);", "join", 1)]
+  [InlineData("items.slice(1, 2);", "slice", 2)]
+  public void Parse_ArrayApiMethodCall_ProducesCallExprWithGetExprCallee(
+    string source, string methodName, int argumentCount)
+  {
+    var program = Parse(source);
+
+    var call = Assert.IsType<CallExpr>(SingleExpressionStatement(program));
+    var callee = Assert.IsType<GetExpr>(call.Callee);
+
+    Assert.Equal(methodName, callee.Name.Lexeme);
+    Assert.IsType<IdentifierExpr>(callee.Target);
+    Assert.Equal(argumentCount, call.Arguments.Count);
+  }
+
+  [Fact]
+  public void Parse_ArrayLength_ProducesGetExprWithoutCall()
+  {
+    // 'length' is a property, not a method — it must NOT be parsed as a call.
+    var program = Parse("items.length;");
+
+    var get = Assert.IsType<GetExpr>(SingleExpressionStatement(program));
+    Assert.Equal("length", get.Name.Lexeme);
+    Assert.IsType<IdentifierExpr>(get.Target);
+  }
+
+  [Fact]
+  public void Parse_ChainedArrayApiCalls_NestCalleeTargets()
+  {
+    // "items.slice(1, 2).join(more)" — the outer call's callee targets the
+    // inner call, mirroring any other method-chaining expression.
+    var program = Parse("items.slice(1, 2).join(more);");
+
+    var outerCall = Assert.IsType<CallExpr>(SingleExpressionStatement(program));
+    var outerCallee = Assert.IsType<GetExpr>(outerCall.Callee);
+    Assert.Equal("join", outerCallee.Name.Lexeme);
+
+    var innerCall = Assert.IsType<CallExpr>(outerCallee.Target);
+    var innerCallee = Assert.IsType<GetExpr>(innerCall.Callee);
+    Assert.Equal("slice", innerCallee.Name.Lexeme);
+    Assert.Equal(2, innerCall.Arguments.Count);
+  }
+
+  [Fact]
+  public void Parse_ArrayPushReturnValueLengthAccess_ChainsGetExprOverCallExpr()
+  {
+    // "items.push(4).length" — accessing a property on the result of a call.
+    var program = Parse("items.push(4).length;");
+
+    var get = Assert.IsType<GetExpr>(SingleExpressionStatement(program));
+    Assert.Equal("length", get.Name.Lexeme);
+
+    var call = Assert.IsType<CallExpr>(get.Target);
+    var callee = Assert.IsType<GetExpr>(call.Callee);
+    Assert.Equal("push", callee.Name.Lexeme);
+    Assert.Single(call.Arguments);
+  }
+
   [Fact]
   public void Parse_NewExpression_ProducesNewExpr()
   {

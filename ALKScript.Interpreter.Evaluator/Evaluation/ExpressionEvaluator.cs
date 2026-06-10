@@ -731,6 +731,9 @@ namespace ALKScript.Interpreter.Evaluator
 
           throw new RuntimeException(name, $"Undefined static member '{name.Lexeme}' on '{target.TypeName}'.");
 
+        case ArrayValue array:
+          return GetArrayMember(array, name);
+
         default:
           throw new RuntimeException(name, $"Cannot access property '{name.Lexeme}' on a value of type '{target.TypeName}'.");
       }
@@ -899,6 +902,94 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       return (int)index;
+    }
+
+    /// <summary>
+    /// Resolves built-in array members: the <c>length</c> property and the
+    /// <c>push</c>/<c>pop</c>/<c>join</c>/<c>slice</c>/<c>remove</c> native
+    /// methods. <c>push</c>, <c>pop</c>, and <c>remove</c> mutate
+    /// <paramref name="array"/> in place; <c>join</c> and <c>slice</c> return
+    /// new arrays without modifying the receiver.
+    /// </summary>
+    private static ALKScriptValue GetArrayMember(ArrayValue array, ALKScriptToken name)
+    {
+      switch (name.Lexeme)
+      {
+        case "length":
+          return new IntValue(array.Items.Count);
+
+        case "push":
+          return new NativeFunctionValue("push", 1, arguments =>
+          {
+            array.Items.Add(arguments[0]);
+            return new IntValue(array.Items.Count);
+          });
+
+        case "pop":
+          return new NativeFunctionValue("pop", 0, arguments =>
+          {
+            if (array.Items.Count == 0)
+            {
+              throw new RuntimeException(name, "Cannot 'pop' from an empty array.");
+            }
+
+            int last = array.Items.Count - 1;
+            var value = array.Items[last];
+            array.Items.RemoveAt(last);
+            return value;
+          });
+
+        case "join":
+          return new NativeFunctionValue("join", 1, arguments =>
+          {
+            if (!(arguments[0] is ArrayValue other))
+            {
+              throw new RuntimeException(name, $"'join' expects an array argument but got '{arguments[0].TypeName}'.");
+            }
+
+            var combined = new List<ALKScriptValue>(array.Items.Count + other.Items.Count);
+            combined.AddRange(array.Items);
+            combined.AddRange(other.Items);
+            return new ArrayValue(combined);
+          });
+
+        case "slice":
+          return new NativeFunctionValue("slice", 2, arguments =>
+          {
+            int start = ExpectNonNegativeInt(arguments[0], name, "slice");
+            int count = ExpectNonNegativeInt(arguments[1], name, "slice");
+
+            if (start > array.Items.Count || start + count > array.Items.Count)
+            {
+              throw new RuntimeException(name, $"'slice' range [{start}, {start + count}) is out of bounds for an array of length {array.Items.Count}.");
+            }
+
+            return new ArrayValue(array.Items.GetRange(start, count));
+          });
+
+        case "remove":
+          return new NativeFunctionValue("remove", 1, arguments =>
+          {
+            int index = ExpectIndex(arguments[0], name, array.Items.Count);
+
+            var removed = array.Items[index];
+            array.Items.RemoveAt(index);
+            return removed;
+          });
+
+        default:
+          throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on '{array.TypeName}'.");
+      }
+    }
+
+    private static int ExpectNonNegativeInt(ALKScriptValue value, ALKScriptToken site, string memberName)
+    {
+      if (!(value is IntValue intValue) || intValue.Value < 0)
+      {
+        throw new RuntimeException(site, $"'{memberName}' expects non-negative int arguments but got '{value}'.");
+      }
+
+      return (int)intValue.Value;
     }
 
     private async Task<ALKScriptValue> EvalNew(NewExpr expression, ScriptEnvironment environment)

@@ -1,0 +1,43 @@
+import { log } from "console";
+
+// ── length ──────────────────────────────────────────────────────────────────
+
+var items = [1, 2, 3];
+log("length=" + items.length);
+
+// ── push: mutates in place, returns the new length ─────────────────────────
+
+var newLength = items.push(4);
+log("push-returned=" + newLength);
+log("after-push-length=" + items.length);
+log("items[3]=" + items[3]);
+
+// ── pop: mutates in place, returns the removed element ──────────────────────
+
+var popped = items.pop();
+log("popped=" + popped);
+log("after-pop-length=" + items.length);
+
+// ── remove: mutates in place, returns the removed element ──────────────────
+
+var removed = items.remove(0);
+log("removed=" + removed);
+log("after-remove-length=" + items.length);
+log("items[0]=" + items[0]);
+
+// ── join: returns a new array, leaves both operands unchanged ──────────────
+
+var more = [10, 20];
+var combined = items.join(more);
+log("combined.length=" + combined.length);
+log("items.length=" + items.length);
+
+// ── slice: returns a new array, leaves the receiver unchanged ──────────────
+
+var middle = combined.slice(1, 2);
+log("middle.length=" + middle.length);
+log("middle[0]=" + middle[0]);
+log("middle[1]=" + middle[1]);
+log("combined.length=" + combined.length);
+
+log("done");

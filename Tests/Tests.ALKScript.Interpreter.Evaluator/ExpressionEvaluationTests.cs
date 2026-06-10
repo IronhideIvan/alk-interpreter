@@ -1,4 +1,5 @@
 using ALKScript.Interpreter.Common.Evaluation.Values;
+using ALKScript.Interpreter.Evaluator;
 
 namespace Tests.ALKScript.Interpreter.Evaluator;
 
@@ -118,6 +119,131 @@ public class ExpressionEvaluationTests : EvaluatorTestBase
 
     var element = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(9L, element.Value);
+  }
+
+  // ── Array methods ──────────────────────────────────────────────────────────
+
+  [Fact]
+  public void Evaluate_ArrayLength_ReturnsItemCount()
+  {
+    var recorded = Run($"{RecordDeclaration}\nvar items = [1, 2, 3];\nrecord(items.length);");
+
+    Assert.Equal(3L, Assert.IsType<IntValue>(Assert.Single(recorded)).Value);
+  }
+
+  [Fact]
+  public void Evaluate_ArrayPush_AppendsElementAndReturnsNewLength()
+  {
+    var recorded = Run(
+      $"{RecordDeclaration}\n" +
+      "var items = [1, 2];\n" +
+      "record(items.push(3));\n" +
+      "record(items.length);\n" +
+      "record(items[2]);");
+
+    Assert.Equal(3, recorded.Count);
+    Assert.Equal(3L, Assert.IsType<IntValue>(recorded[0]).Value); // new length
+    Assert.Equal(3L, Assert.IsType<IntValue>(recorded[1]).Value); // items.length
+    Assert.Equal(3L, Assert.IsType<IntValue>(recorded[2]).Value); // items[2]
+  }
+
+  [Fact]
+  public void Evaluate_ArrayPop_RemovesAndReturnsLastElement()
+  {
+    var recorded = Run(
+      $"{RecordDeclaration}\n" +
+      "var items = [1, 2, 3];\n" +
+      "record(items.pop());\n" +
+      "record(items.length);");
+
+    Assert.Equal(2, recorded.Count);
+    Assert.Equal(3L, Assert.IsType<IntValue>(recorded[0]).Value); // popped value
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value); // remaining length
+  }
+
+  [Fact]
+  public void Evaluate_ArrayPop_OnEmptyArray_ThrowsRuntimeException()
+  {
+    var exception = Assert.Throws<RuntimeException>(() =>
+      Run($"{RecordDeclaration}\nvar items = [];\nitems.pop();"));
+
+    Assert.Contains("empty array", exception.Message);
+  }
+
+  [Fact]
+  public void Evaluate_ArrayJoin_ReturnsNewArrayWithCombinedElements()
+  {
+    var recorded = Run(
+      $"{RecordDeclaration}\n" +
+      "var a = [1, 2];\n" +
+      "var b = [3, 4];\n" +
+      "var c = a.join(b);\n" +
+      "record(c);\n" +
+      "record(a.length);\n" + // 'a' is unchanged
+      "record(c.length);");
+
+    Assert.Equal(3, recorded.Count);
+
+    var combined = Assert.IsType<ArrayValue>(recorded[0]);
+    Assert.Equal(new long[] { 1, 2, 3, 4 }, combined.Items.ConvertAll(item => ((IntValue)item).Value));
+
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
+    Assert.Equal(4L, Assert.IsType<IntValue>(recorded[2]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_ArraySlice_ReturnsNewArrayWithRange()
+  {
+    var recorded = Run(
+      $"{RecordDeclaration}\n" +
+      "var items = [10, 20, 30, 40, 50];\n" +
+      "var middle = items.slice(1, 3);\n" +
+      "record(middle);\n" +
+      "record(items.length);"); // 'items' is unchanged
+
+    Assert.Equal(2, recorded.Count);
+
+    var slice = Assert.IsType<ArrayValue>(recorded[0]);
+    Assert.Equal(new long[] { 20, 30, 40 }, slice.Items.ConvertAll(item => ((IntValue)item).Value));
+
+    Assert.Equal(5L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_ArraySlice_OutOfRange_ThrowsRuntimeException()
+  {
+    var exception = Assert.Throws<RuntimeException>(() =>
+      Run($"{RecordDeclaration}\nvar items = [1, 2, 3];\nitems.slice(2, 5);"));
+
+    Assert.Contains("out of bounds", exception.Message);
+  }
+
+  [Fact]
+  public void Evaluate_ArrayRemove_RemovesElementInPlaceAndReturnsIt()
+  {
+    var recorded = Run(
+      $"{RecordDeclaration}\n" +
+      "var items = [1, 2, 3];\n" +
+      "record(items.remove(1));\n" +
+      "record(items.length);\n" +
+      "record(items);");
+
+    Assert.Equal(3, recorded.Count);
+
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[0]).Value); // removed value
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value); // new length
+
+    var remaining = Assert.IsType<ArrayValue>(recorded[2]);
+    Assert.Equal(new long[] { 1, 3 }, remaining.Items.ConvertAll(item => ((IntValue)item).Value));
+  }
+
+  [Fact]
+  public void Evaluate_ArrayRemove_OutOfRange_ThrowsRuntimeException()
+  {
+    var exception = Assert.Throws<RuntimeException>(() =>
+      Run($"{RecordDeclaration}\nvar items = [1, 2, 3];\nitems.remove(5);"));
+
+    Assert.Contains("out of bounds", exception.Message);
   }
 
   [Fact]
