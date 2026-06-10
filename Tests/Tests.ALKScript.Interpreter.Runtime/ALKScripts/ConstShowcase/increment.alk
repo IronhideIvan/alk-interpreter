@@ -1,0 +1,7 @@
+import { log } from "console";
+
+const int count = 1;
+log("count=" + count);
+
+count++;
+log("unreachable");

@@ -29,7 +29,7 @@ The following words are reserved keywords and cannot be used as identifiers:
 ```
 if else while for foreach in do break continue
 switch case default
-function native return var true false null
+function native return var const true false null
 async await
 try catch finally throw
 int long float string bool void
@@ -267,14 +267,29 @@ All `import` declarations must appear before any other declaration.
 ### 4.1 Variable Declarations
 
 ```
-variableDecl = ( "var" | type ) identifier [ "=" expression ] ";" ;
+variableDecl = [ "const" ] ( "var" | type ) identifier [ "=" expression ] ";" ;
 ```
 
 ```
 var x = 5;
 int y = 10;
 string? name = null;
+
+const int max = 100;
+const var label = "fixed";
 ```
+
+- A `const` declaration **requires** an initializer; omitting it (`const int x;`)
+  is a parse-time error.
+- After initialization, the name cannot be the target of `=`, any compound
+  assignment (`+=`, `-=`, ...), or `++`/`--` — each is a runtime
+  (`RuntimeException`) error. This restriction applies to the *binding*
+  itself; it does not make the referenced value immutable, so
+  `const int[] items = [1, 2]; items.push(3);` and
+  `const var box = new Box(1); box.value = 2;` are both allowed.
+- `const` is a property of the local/top-level binding, not of the static
+  type — there is no `const`-qualified type syntax (e.g. no `const int[]`
+  meaning "array of const ints").
 
 ### 4.2 Function Declarations
 

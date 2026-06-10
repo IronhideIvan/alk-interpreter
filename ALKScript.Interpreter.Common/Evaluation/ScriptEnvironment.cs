@@ -14,6 +14,7 @@ namespace ALKScript.Interpreter.Common.Evaluation
     private readonly ScriptEnvironment? _enclosing;
     private readonly Dictionary<string, ALKScriptValue> _values = new Dictionary<string, ALKScriptValue>();
     private readonly Dictionary<string, TypeNode?> _types = new Dictionary<string, TypeNode?>();
+    private readonly HashSet<string> _consts = new HashSet<string>();
     private ClassValue? _currentClass;
     private TypeNode? _currentFunctionReturnType;
     private IReadOnlyDictionary<string, TypeNode>? _currentTypeArguments;
@@ -91,10 +92,37 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// the variable's/parameter's/field's annotated type (null for "var" or
     /// other untyped bindings), used by nullability checks on later assignment.
     /// </summary>
-    public void Define(string name, ALKScriptValue value, TypeNode? declaredType = null)
+    public void Define(string name, ALKScriptValue value, TypeNode? declaredType = null, bool isConst = false)
     {
       _values[name] = value;
       _types[name] = declaredType;
+
+      if (isConst)
+      {
+        _consts.Add(name);
+      }
+      else
+      {
+        _consts.Remove(name);
+      }
+    }
+
+    /// <summary>
+    /// True if <paramref name="name"/> was bound via <see cref="Define"/> with
+    /// <c>isConst: true</c>, in this scope or any enclosing scope. Used to
+    /// reject assignment to <c>const</c>-declared variables.
+    /// </summary>
+    public bool IsConst(string name)
+    {
+      for (ScriptEnvironment? scope = this; scope != null; scope = scope._enclosing)
+      {
+        if (scope._values.ContainsKey(name))
+        {
+          return scope._consts.Contains(name);
+        }
+      }
+
+      return false;
     }
 
     /// <summary>

@@ -24,6 +24,7 @@ namespace ALKScript.Interpreter.Lexer
       { "native", ALKScriptTokenType.Native },
       { "return", ALKScriptTokenType.Return },
       { "var", ALKScriptTokenType.Var },
+      { "const", ALKScriptTokenType.Const },
       { "true", ALKScriptTokenType.True },
       { "false", ALKScriptTokenType.False },
       { "null", ALKScriptTokenType.Null },

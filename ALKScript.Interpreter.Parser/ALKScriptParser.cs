@@ -605,15 +605,18 @@ namespace ALKScript.Interpreter.Parser
     }
 
     /// <summary>
-    /// Attempts to parse a variable declaration ("var" | type) IDENTIFIER
-    /// ("=" expression)? ";" starting at the current position. If the token
-    /// sequence does not match (e.g. it is actually an expression statement
-    /// such as a call or assignment), the parser position is restored and
-    /// false is returned.
+    /// Attempts to parse a variable declaration "const"? ("var" | type)
+    /// IDENTIFIER ("=" expression)? ";" starting at the current position. If
+    /// the token sequence does not match (e.g. it is actually an expression
+    /// statement such as a call or assignment), the parser position is
+    /// restored and false is returned. A leading "const" requires an
+    /// initializer (a parse-time error otherwise).
     /// </summary>
     private bool TryParseVariableDecl(out VariableDecl? declaration)
     {
       int checkpoint = _stream.Position;
+
+      bool isConst = _stream.Match(ALKScriptTokenType.Const);
 
       bool isVar = _stream.Match(ALKScriptTokenType.Var);
       TypeNode? type = null;
@@ -622,6 +625,7 @@ namespace ALKScript.Interpreter.Parser
       {
         if (!CanStartType())
         {
+          _stream.Position = checkpoint;
           declaration = null;
           return false;
         }
@@ -662,7 +666,12 @@ namespace ALKScript.Interpreter.Parser
 
       _stream.Advance();
 
-      declaration = new VariableDecl(type, name, initializer);
+      if (isConst && initializer == null)
+      {
+        throw Error(name, "A 'const' declaration requires an initializer.");
+      }
+
+      declaration = new VariableDecl(type, name, initializer, isConst);
       return true;
     }
 

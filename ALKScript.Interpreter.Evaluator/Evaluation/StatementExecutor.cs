@@ -163,7 +163,7 @@ namespace ALKScript.Interpreter.Evaluator
         TypeChecking.EnsureAssignable(declaration.Type, value, declaration.Name, $"variable '{declaration.Name.Lexeme}'", environment);
       }
 
-      environment.Define(declaration.Name.Lexeme, value, declaration.Type);
+      environment.Define(declaration.Name.Lexeme, value, declaration.Type, declaration.IsConst);
     }
 
     private async Task ExecuteClassDecl(ClassDecl declaration, ScriptEnvironment environment)

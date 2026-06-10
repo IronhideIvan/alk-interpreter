@@ -1,4 +1,5 @@
 using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Parser;
 
 namespace Tests.ALKScript.Interpreter.Parser;
 
@@ -91,5 +92,43 @@ public class VariableDeclarationTests : ParserTestBase
     var newExpr = Assert.IsType<NewExpr>(decl.Initializer);
     Assert.Equal("Array", newExpr.TypeName.Lexeme);
     Assert.Single(newExpr.TypeArguments);
+  }
+
+  [Fact]
+  public void Parse_ConstWithExplicitType_ProducesVariableDeclWithIsConstTrue()
+  {
+    var program = Parse("const int max = 100;");
+
+    var decl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
+    Assert.True(decl.IsConst);
+    Assert.NotNull(decl.Type);
+    Assert.Equal("int", decl.Type!.Name);
+    Assert.Equal("max", decl.Name.Lexeme);
+  }
+
+  [Fact]
+  public void Parse_ConstWithVar_ProducesVariableDeclWithIsConstTrueAndNullType()
+  {
+    var program = Parse("const var label = \"fixed\";");
+
+    var decl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
+    Assert.True(decl.IsConst);
+    Assert.Null(decl.Type);
+    Assert.Equal("label", decl.Name.Lexeme);
+  }
+
+  [Fact]
+  public void Parse_NonConstDeclaration_ProducesVariableDeclWithIsConstFalse()
+  {
+    var program = Parse("var num = 1;");
+
+    var decl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
+    Assert.False(decl.IsConst);
+  }
+
+  [Fact]
+  public void Parse_ConstWithoutInitializer_ThrowsParseException()
+  {
+    Assert.Throws<ParseException>(() => Parse("const int max;"));
   }
 }

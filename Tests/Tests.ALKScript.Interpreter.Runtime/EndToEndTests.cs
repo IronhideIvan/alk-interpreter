@@ -1234,6 +1234,103 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Empty(logged);
   }
 
+  // ── const declarations ───────────────────────────────────────────────────
+
+  [Fact]
+  public void ConstShowcase_ConstBindingsWithMutableValues_ProducesExpectedOutput()
+  {
+    // Features exercised:
+    //   - 'const' with an explicit type ('const int max = 100;')
+    //   - 'const var' (inferred type)
+    //   - the 'const' restriction applies to the binding, not the referenced
+    //     value: 'const int[] items = [...]' still allows 'items.push(...)'
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ConstShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ConstShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "max=100",
+        "label=fixed",
+        "items.length=3",
+        "items[2]=3",
+        "done",
+      },
+      logged);
+  }
+
+  [Fact]
+  public void ConstShowcase_AssigningToConstVariable_ThrowsRuntimeException()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ConstShowcase", "reassign.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ConstShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign to 'const' variable 'max'", exception.Message);
+    Assert.Equal(new[] { "max=100" }, logged);
+  }
+
+  [Fact]
+  public void ConstShowcase_IncrementingConstVariable_ThrowsRuntimeException()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ConstShowcase", "increment.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ConstShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign to 'const' variable 'count'", exception.Message);
+    Assert.Equal(new[] { "count=1" }, logged);
+  }
+
   // ── Nullable type enforcement ───────────────────────────────────────────────
 
   [Fact]

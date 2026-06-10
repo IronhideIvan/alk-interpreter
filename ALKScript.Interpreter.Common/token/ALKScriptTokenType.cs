@@ -24,6 +24,7 @@ namespace ALKScript.Interpreter.Common.Token
     Native,
     Return,
     Var,
+    Const,
     True,
     False,
     Null,

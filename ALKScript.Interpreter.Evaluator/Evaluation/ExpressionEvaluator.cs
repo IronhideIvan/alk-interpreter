@@ -197,6 +197,10 @@ namespace ALKScript.Interpreter.Evaluator
       switch (expression.Target)
       {
         case IdentifierExpr identifier:
+          if (environment.IsConst(identifier.Name.Lexeme))
+          {
+            throw new RuntimeException(identifier.Name, $"Cannot assign to 'const' variable '{identifier.Name.Lexeme}'.");
+          }
           environment.TryGetDeclaredType(identifier.Name.Lexeme, out var declaredType);
           TypeChecking.EnsureAssignable(declaredType, value, identifier.Name, $"variable '{identifier.Name.Lexeme}'", environment);
           if (!environment.TryAssign(identifier.Name.Lexeme, value))
@@ -276,6 +280,10 @@ namespace ALKScript.Interpreter.Evaluator
       {
         case IdentifierExpr identifier:
         {
+          if (environment.IsConst(identifier.Name.Lexeme))
+          {
+            throw new RuntimeException(identifier.Name, $"Cannot assign to 'const' variable '{identifier.Name.Lexeme}'.");
+          }
           var old = Names.LookUp(identifier.Name, environment);
           var next = Step(old, op);
           if (!environment.TryAssign(identifier.Name.Lexeme, next))
@@ -952,6 +960,10 @@ namespace ALKScript.Interpreter.Evaluator
       {
         case IdentifierExpr identifier:
         {
+          if (environment.IsConst(identifier.Name.Lexeme))
+          {
+            throw new RuntimeException(identifier.Name, $"Cannot assign to 'const' variable '{identifier.Name.Lexeme}'.");
+          }
           var current = Names.LookUp(identifier.Name, environment);
           var rhs = await Eval(expression.Value, environment);
           if (_context.Signal != null) return NullValue.Instance;

@@ -1,0 +1,7 @@
+import { log } from "console";
+
+const int max = 100;
+log("max=" + max);
+
+max = 200;
+log("unreachable");

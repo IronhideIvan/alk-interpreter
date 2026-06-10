@@ -1,0 +1,20 @@
+import { log } from "console";
+
+// ── const with an explicit type ─────────────────────────────────────────────
+
+const int max = 100;
+log("max=" + max);
+
+// ── const var (inferred type) ───────────────────────────────────────────────
+
+const var label = "fixed";
+log("label=" + label);
+
+// ── const binding does not make the referenced value immutable ─────────────
+
+const int[] items = [1, 2];
+items.push(3);
+log("items.length=" + items.length);
+log("items[2]=" + items[2]);
+
+log("done");
