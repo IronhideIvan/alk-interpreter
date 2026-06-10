@@ -1,0 +1,27 @@
+import { log } from "console";
+
+// ── readonly fields ─────────────────────────────────────────────────────
+//
+// A "readonly" field can only be assigned within its declaring class's
+// constructor (in addition to its own initializer).
+
+class Point {
+    public readonly int x;
+    public readonly int y;
+    public readonly string label = "point";
+
+    public new(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public function string describe() {
+        return this.label + "(" + this.x + ", " + this.y + ")";
+    }
+}
+
+var p = new Point(3, 4);
+log("x=" + p.x);
+log("y=" + p.y);
+log("label=" + p.label);
+log("describe=" + p.describe());

@@ -1,0 +1,15 @@
+import { log } from "console";
+
+class Point {
+    public readonly int x;
+
+    public new(int x) {
+        this.x = x;
+    }
+}
+
+var p = new Point(3);
+log("x=" + p.x);
+
+p.x = 99;
+log("unreachable");

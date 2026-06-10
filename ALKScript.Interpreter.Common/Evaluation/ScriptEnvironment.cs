@@ -18,6 +18,7 @@ namespace ALKScript.Interpreter.Common.Evaluation
     private ClassValue? _currentClass;
     private TypeNode? _currentFunctionReturnType;
     private IReadOnlyDictionary<string, TypeNode>? _currentTypeArguments;
+    private bool _isInConstructor;
 
     public ScriptEnvironment(ScriptEnvironment? enclosing = null)
     {
@@ -84,6 +85,26 @@ namespace ALKScript.Interpreter.Common.Evaluation
         return null;
       }
       set => _currentTypeArguments = value;
+    }
+
+    /// <summary>
+    /// Whether the currently executing code is (directly or via an enclosing
+    /// scope) inside a constructor body, used by <c>readonly</c> field
+    /// enforcement. Set on the constructor's call environment; walked up the
+    /// scope chain like <see cref="CurrentClass"/> so nested blocks/closures
+    /// inherit it.
+    /// </summary>
+    public bool IsInConstructor
+    {
+      get
+      {
+        for (ScriptEnvironment? scope = this; scope != null; scope = scope._enclosing)
+        {
+          if (scope._isInConstructor) return true;
+        }
+        return false;
+      }
+      set => _isInConstructor = value;
     }
 
     /// <summary>

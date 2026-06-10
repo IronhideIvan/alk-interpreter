@@ -1331,6 +1331,123 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Equal(new[] { "count=1" }, logged);
   }
 
+  // ── readonly fields ─────────────────────────────────────────────────────────
+
+  [Fact]
+  public void ReadonlyShowcase_AssigningInConstructor_ProducesExpectedOutput()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ReadonlyShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ReadonlyShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "x=3",
+        "y=4",
+        "label=point",
+        "describe=point(3, 4)",
+      },
+      logged);
+  }
+
+  [Fact]
+  public void ReadonlyShowcase_AssigningFromOwnMethodOutsideConstructor_ThrowsRuntimeException()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ReadonlyShowcase", "assignmethod.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ReadonlyShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign to readonly field 'x'", exception.Message);
+    Assert.Equal(new[] { "x=3" }, logged);
+  }
+
+  [Fact]
+  public void ReadonlyShowcase_AssigningFromOutsideClass_ThrowsRuntimeException()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ReadonlyShowcase", "assignexternal.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ReadonlyShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign to readonly field 'x'", exception.Message);
+    Assert.Equal(new[] { "x=3" }, logged);
+  }
+
+  [Fact]
+  public void ReadonlyShowcase_IncrementingOutsideConstructor_ThrowsRuntimeException()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("ReadonlyShowcase", "increment.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ReadonlyShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign to readonly field 'value'", exception.Message);
+    Assert.Equal(new[] { "value=0" }, logged);
+  }
+
   // ── Nullable type enforcement ───────────────────────────────────────────────
 
   [Fact]

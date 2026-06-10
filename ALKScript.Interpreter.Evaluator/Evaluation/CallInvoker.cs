@@ -70,6 +70,7 @@ namespace ALKScript.Interpreter.Evaluator
         var constructorEnvironment = new ScriptEnvironment(ClassEnvironments.For(classValue));
         constructorEnvironment.CurrentClass = classValue;
         constructorEnvironment.CurrentTypeArguments = instance.TypeArguments;
+        constructorEnvironment.IsInConstructor = true;
         constructorEnvironment.Define("this", instance);
         if (classValue.Superclass != null)
         {

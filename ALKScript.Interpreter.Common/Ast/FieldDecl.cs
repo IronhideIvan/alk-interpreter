@@ -3,7 +3,7 @@ using ALKScript.Interpreter.Common.Token;
 namespace ALKScript.Interpreter.Common.Ast
 {
   /// <summary>
-  /// A field declaration: accessModifier? "static"? ("var" | type) IDENTIFIER ("=" expression)? ";".
+  /// A field declaration: accessModifier? "static"? "readonly"? ("var" | type) IDENTIFIER ("=" expression)? ";".
   /// </summary>
   public class FieldDecl : MemberDecl
   {
@@ -20,13 +20,21 @@ namespace ALKScript.Interpreter.Common.Ast
     /// </summary>
     public bool IsStatic { get; }
 
-    public FieldDecl(AccessModifier accessModifier, TypeNode? type, ALKScriptToken name, Expr? initializer, bool isStatic = false)
+    /// <summary>
+    /// Whether this field can only be assigned from within the constructor of
+    /// the declaring class (in addition to its own initializer). Assignment
+    /// from anywhere else is a runtime error.
+    /// </summary>
+    public bool IsReadonly { get; }
+
+    public FieldDecl(AccessModifier accessModifier, TypeNode? type, ALKScriptToken name, Expr? initializer, bool isStatic = false, bool isReadonly = false)
       : base(accessModifier)
     {
       Type = type;
       Name = name;
       Initializer = initializer;
       IsStatic = isStatic;
+      IsReadonly = isReadonly;
     }
   }
 }

@@ -386,11 +386,24 @@ namespace ALKScript.Interpreter.Parser
       ALKScriptToken? staticKeyword = _stream.Check(ALKScriptTokenType.Static) ? _stream.Peek() : null;
       bool isStatic = _stream.Match(ALKScriptTokenType.Static);
 
+      ALKScriptToken? readonlyKeyword = _stream.Check(ALKScriptTokenType.Readonly) ? _stream.Peek() : null;
+      bool isReadonly = _stream.Match(ALKScriptTokenType.Readonly);
+
       OverrideModifier overrideModifier = ParseOptionalOverrideModifier();
 
       if (isStatic && overrideModifier != OverrideModifier.None)
       {
         throw Error(staticKeyword!, "'static' members cannot be 'virtual', 'abstract', or 'override'.");
+      }
+
+      if (isReadonly && (overrideModifier != OverrideModifier.None || _stream.Check(ALKScriptTokenType.Native) || _stream.Check(ALKScriptTokenType.Async) || _stream.Check(ALKScriptTokenType.Function)))
+      {
+        throw Error(readonlyKeyword!, "'readonly' is only valid on field declarations.");
+      }
+
+      if (isStatic && isReadonly)
+      {
+        throw Error(readonlyKeyword!, "'readonly' is not supported on 'static' fields.");
       }
 
       bool isNative = _stream.Match(ALKScriptTokenType.Native);
@@ -439,7 +452,7 @@ namespace ALKScript.Interpreter.Parser
         return new MethodDecl(accessModifier, overrideModifier, isNative, isAsync, typeParameters, returnType, methodName, parameters, body, isStatic);
       }
 
-      // Field: accessModifier? ("var" | type) IDENTIFIER ("=" expression)? ";"
+      // Field: accessModifier? "static"? "readonly"? ("var" | type) IDENTIFIER ("=" expression)? ";"
       TypeNode? fieldType = _stream.Match(ALKScriptTokenType.Var) ? null : ParseType();
       ALKScriptToken fieldName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a field name.");
 
@@ -452,7 +465,7 @@ namespace ALKScript.Interpreter.Parser
 
       _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after field declaration.");
 
-      return new FieldDecl(accessModifier, fieldType, fieldName, fieldInitializer, isStatic);
+      return new FieldDecl(accessModifier, fieldType, fieldName, fieldInitializer, isStatic, isReadonly);
     }
 
     private AccessModifier ParseOptionalAccessModifier()

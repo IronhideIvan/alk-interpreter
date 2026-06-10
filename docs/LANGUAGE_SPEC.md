@@ -35,7 +35,7 @@ try catch finally throw
 int long float string bool void
 class new this base extends
 public protected private virtual abstract override sealed
-interface implements enum static lambda
+interface implements enum static readonly lambda
 is
 import export from as
 ```
@@ -513,7 +513,7 @@ member = constructorDecl | fieldDecl | methodDecl ;
 
 constructorDecl = [ accessModifier ] "new" "(" [ paramList ] ")" block ;
 
-fieldDecl = [ accessModifier ] [ "static" ] ( "var" | type ) identifier
+fieldDecl = [ accessModifier ] [ "static" ] [ "readonly" ] ( "var" | type ) identifier
             [ "=" expression ] ";" ;
 
 methodDecl = [ accessModifier ] [ "static" ]
@@ -537,6 +537,11 @@ accessModifier = "public" | "protected" | "private" ;
 - A class containing any `native` member must itself be declared `native`.
 - A class declared `sealed` cannot be `extends`-ed; doing so is a runtime
   error.
+- A field declared `readonly` may only be assigned from within the
+  constructor of its declaring class (in addition to its own initializer
+  expression, if any). Assigning to a `readonly` field anywhere else —
+  including methods of the declaring class, subclasses, or external code —
+  is a runtime error. `readonly` cannot be combined with `static`.
 
 ```
 class Box {

@@ -230,6 +230,7 @@ namespace ALKScript.Interpreter.Evaluator
           if (fieldMemberForWrite != null)
           {
             EnforceAccessModifier(fieldMemberForWrite, fieldWriteDeclaringClass, get.Name, environment);
+            EnforceFieldWritable(fieldMemberForWrite, fieldWriteDeclaringClass, get.Name, environment);
 
             if (fieldMemberForWrite is FieldDecl fieldDecl)
             {
@@ -310,6 +311,8 @@ namespace ALKScript.Interpreter.Evaluator
             ?? throw new RuntimeException(get.Name, $"Cannot apply '{op.Lexeme}' to a value of type '{target.TypeName}'.");
           if (!instance.Fields.TryGetValue(get.Name.Lexeme, out var old))
             throw new RuntimeException(get.Name, $"Undefined field '{get.Name.Lexeme}'.");
+          var fieldMemberForUpdate = instance.Class.FindMember(get.Name.Lexeme, out var fieldUpdateDeclaringClass);
+          EnforceFieldWritable(fieldMemberForUpdate, fieldUpdateDeclaringClass, get.Name, environment);
           var next = Step(old, op);
           instance.Fields[get.Name.Lexeme] = next;
           return (old, next);
@@ -899,6 +902,21 @@ namespace ALKScript.Interpreter.Evaluator
     /// class to be exactly the declaring class; protected members require it to be
     /// the declaring class or a subclass of it.
     /// </summary>
+    /// <summary>
+    /// Enforces that a <c>readonly</c> field is only assigned from within the
+    /// constructor of its declaring class. No-op for fields that aren't
+    /// declared <c>readonly</c> (or aren't fields at all).
+    /// </summary>
+    private static void EnforceFieldWritable(MemberDecl? member, ClassValue? declaringClass, ALKScriptToken site, ScriptEnvironment environment)
+    {
+      if (member is not FieldDecl { IsReadonly: true }) return;
+
+      if (!(environment.IsInConstructor && environment.CurrentClass == declaringClass))
+      {
+        throw new RuntimeException(site, $"Cannot assign to readonly field '{site.Lexeme}' outside of '{declaringClass!.Declaration.Name.Lexeme}'s constructor.");
+      }
+    }
+
     private static void EnforceAccessModifier(
       MemberDecl member, ClassValue? declaringClass, ALKScriptToken site, ScriptEnvironment environment)
     {
@@ -993,6 +1011,8 @@ namespace ALKScript.Interpreter.Evaluator
             ?? throw new RuntimeException(get.Name, $"Cannot apply '{expression.Operator.Lexeme}' to a value of type '{target.TypeName}'.");
           if (!instance.Fields.TryGetValue(get.Name.Lexeme, out var current))
             throw new RuntimeException(get.Name, $"Undefined field '{get.Name.Lexeme}'.");
+          var fieldMemberForCompound = instance.Class.FindMember(get.Name.Lexeme, out var fieldCompoundDeclaringClass);
+          EnforceFieldWritable(fieldMemberForCompound, fieldCompoundDeclaringClass, get.Name, environment);
           var rhs = await Eval(expression.Value, environment);
           if (_context.Signal != null) return NullValue.Instance;
           var result = ApplyCompound(current, rhs, expression.Operator);

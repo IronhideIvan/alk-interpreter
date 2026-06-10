@@ -60,6 +60,7 @@ namespace ALKScript.Interpreter.Lexer
       { "implements", ALKScriptTokenType.Implements },
       { "enum", ALKScriptTokenType.Enum },
       { "static", ALKScriptTokenType.Static },
+      { "readonly", ALKScriptTokenType.Readonly },
       { "lambda", ALKScriptTokenType.Lambda },
 
       { "is", ALKScriptTokenType.Is },

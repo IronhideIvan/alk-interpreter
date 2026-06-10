@@ -1,0 +1,15 @@
+import { log } from "console";
+
+class Counter {
+    public readonly int value = 0;
+
+    public function void bump() {
+        this.value++;
+    }
+}
+
+var c = new Counter();
+log("value=" + c.value);
+
+c.bump();
+log("unreachable");

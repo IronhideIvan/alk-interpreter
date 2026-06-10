@@ -64,6 +64,7 @@ namespace ALKScript.Interpreter.Common.Token
     Implements,
     Enum,
     Static,
+    Readonly,
     Lambda,
 
     // Keywords - type testing/casting
