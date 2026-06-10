@@ -834,6 +834,9 @@ namespace ALKScript.Interpreter.Evaluator
         case ArrayValue array:
           return GetArrayMember(array, name);
 
+        case StringValue stringValue:
+          return GetStringMember(stringValue, name);
+
         case NamespaceValue namespaceValue:
           if (namespaceValue.Members.TryGetValue(name.Lexeme, out var namespaceMember))
           {
@@ -1225,6 +1228,98 @@ namespace ALKScript.Interpreter.Evaluator
         default:
           throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on '{array.TypeName}'.");
       }
+    }
+
+    /// <summary>
+    /// Resolves built-in string members: the <c>length</c> property and the
+    /// <c>toUpper</c>/<c>toLower</c>/<c>trim</c>/<c>substring</c>/<c>indexOf</c>/
+    /// <c>contains</c>/<c>startsWith</c>/<c>endsWith</c>/<c>split</c>/<c>replace</c>
+    /// native methods. Strings are immutable, so all of these return new
+    /// values without modifying <paramref name="value"/>.
+    /// </summary>
+    private static ALKScriptValue GetStringMember(StringValue value, ALKScriptToken name)
+    {
+      string self = value.Value;
+
+      switch (name.Lexeme)
+      {
+        case "length":
+          return new IntValue(self.Length);
+
+        case "toUpper":
+          return new NativeFunctionValue("toUpper", 0, arguments => new StringValue(self.ToUpperInvariant()));
+
+        case "toLower":
+          return new NativeFunctionValue("toLower", 0, arguments => new StringValue(self.ToLowerInvariant()));
+
+        case "trim":
+          return new NativeFunctionValue("trim", 0, arguments => new StringValue(self.Trim()));
+
+        case "substring":
+          return new NativeFunctionValue("substring", 2, arguments =>
+          {
+            int start = ExpectNonNegativeInt(arguments[0], name, "substring");
+            int count = ExpectNonNegativeInt(arguments[1], name, "substring");
+
+            if (start > self.Length || start + count > self.Length)
+            {
+              throw new RuntimeException(name, $"'substring' range [{start}, {start + count}) is out of bounds for a string of length {self.Length}.");
+            }
+
+            return new StringValue(self.Substring(start, count));
+          });
+
+        case "indexOf":
+          return new NativeFunctionValue("indexOf", 1, arguments =>
+            new IntValue(self.IndexOf(ExpectString(arguments[0], name, "indexOf"), StringComparison.Ordinal)));
+
+        case "contains":
+          return new NativeFunctionValue("contains", 1, arguments =>
+            self.IndexOf(ExpectString(arguments[0], name, "contains"), StringComparison.Ordinal) >= 0 ? BoolValue.True : BoolValue.False);
+
+        case "startsWith":
+          return new NativeFunctionValue("startsWith", 1, arguments =>
+            self.StartsWith(ExpectString(arguments[0], name, "startsWith"), StringComparison.Ordinal) ? BoolValue.True : BoolValue.False);
+
+        case "endsWith":
+          return new NativeFunctionValue("endsWith", 1, arguments =>
+            self.EndsWith(ExpectString(arguments[0], name, "endsWith"), StringComparison.Ordinal) ? BoolValue.True : BoolValue.False);
+
+        case "split":
+          return new NativeFunctionValue("split", 1, arguments =>
+          {
+            string separator = ExpectString(arguments[0], name, "split");
+            var parts = self.Split(new[] { separator }, StringSplitOptions.None);
+            var items = new List<ALKScriptValue>(parts.Length);
+            foreach (var part in parts)
+            {
+              items.Add(new StringValue(part));
+            }
+
+            return new ArrayValue(items);
+          });
+
+        case "replace":
+          return new NativeFunctionValue("replace", 2, arguments =>
+          {
+            string oldValue = ExpectString(arguments[0], name, "replace");
+            string newValue = ExpectString(arguments[1], name, "replace");
+            return new StringValue(self.Replace(oldValue, newValue));
+          });
+
+        default:
+          throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on '{value.TypeName}'.");
+      }
+    }
+
+    private static string ExpectString(ALKScriptValue value, ALKScriptToken site, string memberName)
+    {
+      if (!(value is StringValue stringValue))
+      {
+        throw new RuntimeException(site, $"'{memberName}' expects a string argument but got '{value.TypeName}'.");
+      }
+
+      return stringValue.Value;
     }
 
     private static int ExpectNonNegativeInt(ALKScriptValue value, ALKScriptToken site, string memberName)

@@ -86,11 +86,44 @@ is  as
 | `bool` | `true` / `false`. |
 | `void` | Only valid as a function/method/lambda return type, meaning "no value". |
 
+`string` values expose a small set of built-in members, accessed like
+`s.length`, `s.toUpper()`, etc. All of these return new values; strings are
+immutable and none of these mutate the receiver.
+
+| Member | Signature | Behavior |
+| --- | --- | --- |
+| `length` | property, `int` | Number of UTF-16 code units. |
+| `toUpper` | `() -> string` | Uppercased copy (invariant culture). |
+| `toLower` | `() -> string` | Lowercased copy (invariant culture). |
+| `trim` | `() -> string` | Removes leading/trailing whitespace. |
+| `substring` | `(int start, int count) -> string` | Returns the `count`-character substring starting at `start`. Runtime error if the range is out of bounds. |
+| `indexOf` | `(string) -> int` | Index of the first occurrence (ordinal comparison), or `-1` if not found. |
+| `contains` | `(string) -> bool` | Whether the substring occurs (ordinal comparison). |
+| `startsWith` | `(string) -> bool` | Ordinal comparison. |
+| `endsWith` | `(string) -> bool` | Ordinal comparison. |
+| `split` | `(string separator) -> string[]` | Splits on every occurrence of `separator` (no separator-collapsing). |
+| `replace` | `(string old, string new) -> string` | Replaces all occurrences of `old` with `new`. |
+
 ### 2.2 Arrays
 
 `T[]` is an array of `T`. Array literals are written `[expr, expr, ...]`.
 Arrays are accessed and assigned with `arr[index]`. Multi-dimensional arrays
 are written `T[][]`, etc. (each `[]` increments the type's array rank).
+
+Arrays expose a small set of built-in members, accessed like
+`arr.length`, `arr.push(x)`, etc.:
+
+| Member | Signature | Behavior |
+| --- | --- | --- |
+| `length` | property, `int` | Number of elements. |
+| `push` | `(T) -> int` | Appends an element in place; returns the new length. |
+| `pop` | `() -> T` | Removes and returns the last element in place; runtime error on an empty array. |
+| `join` | `(T[]) -> T[]` | Returns a new array containing this array's elements followed by `other`'s; does not mutate either operand. |
+| `slice` | `(int, int) -> T[]` | Returns a new array of `count` elements starting at `start`; does not mutate the receiver. Runtime error if the range is out of bounds. |
+| `remove` | `(int) -> T` | Removes and returns the element at `index` in place; runtime error if `index` is out of bounds. |
+
+These are not subject to the element-type checks described in §2.5 — element
+types are erased once values are inside an `ArrayValue`.
 
 ### 2.3 Nullable Types
 

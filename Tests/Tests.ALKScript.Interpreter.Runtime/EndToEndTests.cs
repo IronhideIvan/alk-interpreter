@@ -572,6 +572,75 @@ public class EndToEndTests : RuntimeTestBase
       logged);
   }
 
+  // ── String methods ───────────────────────────────────────────────────────
+
+  [Fact]
+  public void StringMethodsShowcase_CaseTrimSubstringSearchSplitAndReplace_ProducesExpectedOutput()
+  {
+    // The program is a single-module script that exercises every member of
+    // the built-in string API on a shared string:
+    //   - 'length' as a property
+    //   - 'toUpper' / 'toLower' (pure, return a new string)
+    //   - 'trim' (pure, removes leading/trailing whitespace)
+    //   - 'substring' (pure, returns a new sub-string)
+    //   - 'indexOf' / 'contains' / 'startsWith' / 'endsWith'
+    //   - 'split' (pure, returns a new string array)
+    //   - 'replace' (pure, returns a new string with all matches replaced)
+    //
+    // Features exercised:
+    //   - string.length
+    //   - string.toUpper(), string.toLower(), string.trim()
+    //   - string.substring(start, count)
+    //   - string.indexOf(value), string.contains(value),
+    //     string.startsWith(value), string.endsWith(value)
+    //   - string.split(separator)
+    //   - string.replace(old, new)
+    //   - none of these mutate the receiver
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("StringMethodsShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("StringMethodsShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "length=13",
+        "upper=HELLO, WORLD!",
+        "lower=hello, world!",
+        "trim=[spaced]",
+        "substring=World",
+        "indexOf=7",
+        "indexOf-missing=-1",
+        "contains=true",
+        "startsWith=true",
+        "endsWith=true",
+        "split.length=3",
+        "split[0]=a",
+        "split[1]=b",
+        "split[2]=c",
+        "replace=Hello, ALKScript!",
+        "original=Hello, World!",
+        "done",
+      },
+      logged);
+  }
+
   // ── Bitwise operators and string interpolation ──────────────────────────────
 
   [Fact]

@@ -1,0 +1,46 @@
+import { log } from "console";
+
+// ── length ──────────────────────────────────────────────────────────────────
+
+var greeting = "Hello, World!";
+log("length=" + greeting.length);
+
+// ── toUpper / toLower ───────────────────────────────────────────────────────
+
+log("upper=" + greeting.toUpper());
+log("lower=" + greeting.toLower());
+
+// ── trim ─────────────────────────────────────────────────────────────────────
+
+var padded = "  spaced  ";
+log("trim=[" + padded.trim() + "]");
+
+// ── substring ────────────────────────────────────────────────────────────────
+
+log("substring=" + greeting.substring(7, 5));
+
+// ── indexOf / contains / startsWith / endsWith ──────────────────────────────
+
+log("indexOf=" + greeting.indexOf("World"));
+log("indexOf-missing=" + greeting.indexOf("xyz"));
+log("contains=" + greeting.contains("World"));
+log("startsWith=" + greeting.startsWith("Hello"));
+log("endsWith=" + greeting.endsWith("!"));
+
+// ── split ────────────────────────────────────────────────────────────────────
+
+var parts = "a,b,c".split(",");
+log("split.length=" + parts.length);
+log("split[0]=" + parts[0]);
+log("split[1]=" + parts[1]);
+log("split[2]=" + parts[2]);
+
+// ── replace ──────────────────────────────────────────────────────────────────
+
+log("replace=" + greeting.replace("World", "ALKScript"));
+
+// ── strings are immutable: original value is unchanged ──────────────────────
+
+log("original=" + greeting);
+
+log("done");
