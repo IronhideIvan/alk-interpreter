@@ -121,6 +121,12 @@ Arrays expose a small set of built-in members, accessed like
 | `join` | `(T[]) -> T[]` | Returns a new array containing this array's elements followed by `other`'s; does not mutate either operand. |
 | `slice` | `(int, int) -> T[]` | Returns a new array of `count` elements starting at `start`; does not mutate the receiver. Runtime error if the range is out of bounds. |
 | `remove` | `(int) -> T` | Removes and returns the element at `index` in place; runtime error if `index` is out of bounds. |
+| `map` | `(lambda<R, T>) -> R[]` | Returns a new array containing the result of calling the given callback with each element in turn, in order; does not mutate the receiver. The callback may itself be `async`. |
+| `filter` | `(lambda<bool, T>) -> T[]` | Returns a new array containing only the elements for which the given callback returns `true`, preserving order; does not mutate the receiver. The callback may itself be `async`. Runtime error if the callback returns a non-`bool` value. |
+
+`map` and `filter` accept any single-argument callable — a `lambda<...>`
+expression, a named function/method reference, etc. — and invoke it once per
+element, awaiting the result if it is itself awaitable.
 
 These are not subject to the element-type checks described in §2.5 — element
 types are erased once values are inside an `ArrayValue`.

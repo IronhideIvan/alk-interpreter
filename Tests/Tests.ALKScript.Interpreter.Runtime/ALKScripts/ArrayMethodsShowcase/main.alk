@@ -40,4 +40,21 @@ log("middle[0]=" + middle[0]);
 log("middle[1]=" + middle[1]);
 log("combined.length=" + combined.length);
 
+// ── map: returns a new array, leaves the receiver unchanged ────────────────
+
+var numbers = [1, 2, 3, 4];
+var doubled = numbers.map(int (int n) => { return n * 2; });
+log("doubled.length=" + doubled.length);
+log("doubled[0]=" + doubled[0]);
+log("doubled[3]=" + doubled[3]);
+log("numbers[0]=" + numbers[0]);
+
+// ── filter: returns a new array, leaves the receiver unchanged ─────────────
+
+var evens = numbers.filter(bool (int n) => { return n % 2 == 0; });
+log("evens.length=" + evens.length);
+log("evens[0]=" + evens[0]);
+log("evens[1]=" + evens[1]);
+log("numbers.length=" + numbers.length);
+
 log("done");

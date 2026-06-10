@@ -542,17 +542,34 @@ namespace ALKScript.Interpreter.Evaluator
 
       switch (operand)
       {
+        case ArrayValue array:
+          return await EvalWhenAll(array.Items);
+
+        default:
+          return await AwaitIfNeeded(operand);
+      }
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="value"/> to its settled result if it is a
+    /// <see cref="TaskValue"/> or <see cref="PendingOperationValue"/> (the
+    /// shapes produced by calling an <c>async</c> callable), otherwise returns
+    /// it unchanged. Used both by <c>await</c> itself and by built-ins such as
+    /// <c>array.map</c>/<c>array.filter</c> that invoke a possibly-<c>async</c>
+    /// callback once per element and need its resolved result.
+    /// </summary>
+    private async Task<ALKScriptValue> AwaitIfNeeded(ALKScriptValue value)
+    {
+      switch (value)
+      {
         case TaskValue taskValue:
           return await AwaitTask(taskValue.Task);
 
         case PendingOperationValue pending:
           return await AwaitPending(pending);
 
-        case ArrayValue array:
-          return await EvalWhenAll(array.Items);
-
         default:
-          return operand;
+          return value;
       }
     }
 
@@ -1154,12 +1171,13 @@ namespace ALKScript.Interpreter.Evaluator
 
     /// <summary>
     /// Resolves built-in array members: the <c>length</c> property and the
-    /// <c>push</c>/<c>pop</c>/<c>join</c>/<c>slice</c>/<c>remove</c> native
-    /// methods. <c>push</c>, <c>pop</c>, and <c>remove</c> mutate
-    /// <paramref name="array"/> in place; <c>join</c> and <c>slice</c> return
-    /// new arrays without modifying the receiver.
+    /// <c>push</c>/<c>pop</c>/<c>join</c>/<c>slice</c>/<c>remove</c>/<c>map</c>/
+    /// <c>filter</c> native methods. <c>push</c>, <c>pop</c>, and <c>remove</c>
+    /// mutate <paramref name="array"/> in place; <c>join</c>, <c>slice</c>,
+    /// <c>map</c>, and <c>filter</c> return new arrays without modifying the
+    /// receiver.
     /// </summary>
-    private static ALKScriptValue GetArrayMember(ArrayValue array, ALKScriptToken name)
+    private ALKScriptValue GetArrayMember(ArrayValue array, ALKScriptToken name)
     {
       switch (name.Lexeme)
       {
@@ -1223,6 +1241,66 @@ namespace ALKScript.Interpreter.Evaluator
             var removed = array.Items[index];
             array.Items.RemoveAt(index);
             return removed;
+          });
+
+        case "map":
+          return new NativeAsyncFunctionValue("map", 1, async arguments =>
+          {
+            var callback = ExpectCallable(arguments[0], name, "map");
+
+            var results = new List<ALKScriptValue>(array.Items.Count);
+            foreach (var item in array.Items)
+            {
+              var mapped = await _context.Call(callback, new List<ALKScriptValue> { item }, name);
+              if (_context.Signal != null)
+              {
+                return NullValue.Instance;
+              }
+
+              mapped = await AwaitIfNeeded(mapped);
+              if (_context.Signal != null)
+              {
+                return NullValue.Instance;
+              }
+
+              results.Add(mapped);
+            }
+
+            return new ArrayValue(results);
+          });
+
+        case "filter":
+          return new NativeAsyncFunctionValue("filter", 1, async arguments =>
+          {
+            var callback = ExpectCallable(arguments[0], name, "filter");
+
+            var results = new List<ALKScriptValue>();
+            foreach (var item in array.Items)
+            {
+              var keep = await _context.Call(callback, new List<ALKScriptValue> { item }, name);
+              if (_context.Signal != null)
+              {
+                return NullValue.Instance;
+              }
+
+              keep = await AwaitIfNeeded(keep);
+              if (_context.Signal != null)
+              {
+                return NullValue.Instance;
+              }
+
+              if (!(keep is BoolValue boolValue))
+              {
+                throw new RuntimeException(name, $"'filter' callback must return a 'bool', but got '{keep.TypeName}'.");
+              }
+
+              if (boolValue.Value)
+              {
+                results.Add(item);
+              }
+            }
+
+            return new ArrayValue(results);
           });
 
         default:
@@ -1330,6 +1408,16 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       return (int)intValue.Value;
+    }
+
+    private static CallableValue ExpectCallable(ALKScriptValue value, ALKScriptToken site, string memberName)
+    {
+      if (!(value is CallableValue callable) || callable.Arity != 1)
+      {
+        throw new RuntimeException(site, $"'{memberName}' expects a callback of arity 1 but got '{value.TypeName}'.");
+      }
+
+      return callable;
     }
 
     private async Task<ALKScriptValue> EvalNew(NewExpr expression, ScriptEnvironment environment)

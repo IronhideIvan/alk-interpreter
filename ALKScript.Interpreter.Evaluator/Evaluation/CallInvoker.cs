@@ -151,6 +151,9 @@ namespace ALKScript.Interpreter.Evaluator
         case NativeFunctionValue nativeFunction:
           return nativeFunction.Implementation(arguments);
 
+        case NativeAsyncFunctionValue nativeAsyncFunction:
+          return await nativeAsyncFunction.Implementation(arguments);
+
         case FunctionValue function:
           return await InvokeFunction(function, arguments, site);
 

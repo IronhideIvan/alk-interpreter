@@ -156,6 +156,9 @@ namespace ALKScript.Interpreter.Evaluator
         case NativeFunctionValue native:
           return native.Arity == type.TypeArguments.Count - 1;
 
+        case NativeAsyncFunctionValue nativeAsync:
+          return nativeAsync.Arity == type.TypeArguments.Count - 1;
+
         default:
           return false;
       }

@@ -511,7 +511,7 @@ public class EndToEndTests : RuntimeTestBase
   // ── Array methods ────────────────────────────────────────────────────────
 
   [Fact]
-  public void ArrayMethodsShowcase_PushPopRemoveJoinSliceAndLength_ProducesExpectedOutput()
+  public void ArrayMethodsShowcase_PushPopRemoveJoinSliceMapFilterAndLength_ProducesExpectedOutput()
   {
     // The program is a single-module script that exercises every member of
     // the built-in array API in sequence on a shared array, then on arrays
@@ -522,12 +522,15 @@ public class EndToEndTests : RuntimeTestBase
     //   - 'remove' (mutates, returns the removed element at an index)
     //   - 'join' (pure, returns a new array combining two arrays)
     //   - 'slice' (pure, returns a new sub-array)
+    //   - 'map' (pure, returns a new array of transformed elements)
+    //   - 'filter' (pure, returns a new array of elements matching a predicate)
     //
     // Features exercised:
     //   - array.length
     //   - array.push(value), array.pop(), array.remove(index)
     //   - array.join(other), array.slice(start, count)
-    //   - 'join' and 'slice' do not mutate their receivers
+    //   - array.map(callback), array.filter(callback)
+    //   - 'join', 'slice', 'map', and 'filter' do not mutate their receivers
 
     var logged = new List<string>();
 
@@ -567,6 +570,14 @@ public class EndToEndTests : RuntimeTestBase
         "middle[0]=3",
         "middle[1]=10",
         "combined.length=4",
+        "doubled.length=4",
+        "doubled[0]=2",
+        "doubled[3]=8",
+        "numbers[0]=1",
+        "evens.length=2",
+        "evens[0]=2",
+        "evens[1]=4",
+        "numbers.length=4",
         "done",
       },
       logged);
@@ -895,6 +906,7 @@ public class EndToEndTests : RuntimeTestBase
     //   - lambdas passed as arguments to higher-order functions
     //   - lambdas capture the enclosing "this" inside instance methods
     //   - "async" lambdas awaited like ordinary async functions
+    //   - "array.map"/"array.filter" with lambda callbacks, including "async" ones
 
     var logged = new List<string>();
 
@@ -936,6 +948,9 @@ public class EndToEndTests : RuntimeTestBase
         "item = 3",
         "total = 10",
         "doubled = 10",
+        "doubledItems = [2, 4, 6]",
+        "evenItems = [2, 4]",
+        "asyncDoubled = [2, 4, 6]",
         "done",
       },
       logged);
