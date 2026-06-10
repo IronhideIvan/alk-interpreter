@@ -1,0 +1,52 @@
+import { log } from "console";
+
+// ── interfaces ──────────────────────────────────────────────────────────
+//
+// An interface declares method signatures only; a class that "implements"
+// it must provide a matching method (by name and parameter count) for each
+// one, either directly or via its superclass chain.
+
+interface IShape {
+    float area();
+    string describe();
+}
+
+class Circle implements IShape {
+    private float radius;
+
+    public new(float radius) {
+        this.radius = radius;
+    }
+
+    public function float area() {
+        return 3.14159 * this.radius * this.radius;
+    }
+
+    public function string describe() {
+        return "circle";
+    }
+}
+
+class Square implements IShape {
+    private float side;
+
+    public new(float side) {
+        this.side = side;
+    }
+
+    public function float area() {
+        return this.side * this.side;
+    }
+
+    public function string describe() {
+        return "square";
+    }
+}
+
+var shapes = [new Circle(2), new Square(3)];
+
+foreach (var shape in shapes) {
+    log(`${shape.describe()} area = ${shape.area()}`);
+}
+
+log("done");

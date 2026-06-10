@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
+using ALKScript.Interpreter.Evaluator;
 using Tests.ALKScript.Interpreter.Runtime.Support;
 
 namespace Tests.ALKScript.Interpreter.Runtime;
@@ -623,6 +624,168 @@ public class EndToEndTests : RuntimeTestBase
         "done",
       },
       logged);
+  }
+
+  // ── Namespace imports ────────────────────────────────────────────────────────
+
+  [Fact]
+  public void NamespaceImportShowcase_StarAsImport_ExposesModuleMembersAsNamespace()
+  {
+    // The program spans two modules:
+    //   main.alk      — entry point; imports "* as MathUtils" from "./mathutils"
+    //   mathutils.alk — exports two functions and a variable
+    //
+    // Features exercised:
+    //   - "import * as N from '...'" namespace imports
+    //   - accessing functions and variables as members of the namespace object
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"]      = ReadScript("NamespaceImportShowcase", "main.alk"),
+        ["mathutils.alk"] = ReadScript("NamespaceImportShowcase", "mathutils.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("NamespaceImportShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "square(4) = 16",
+        "cube(3) = 27",
+        "pi = 3",
+        "done",
+      },
+      logged);
+  }
+
+  // ── Enums ───────────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void EnumShowcase_SwitchAndEquality_BehaveAsExpected()
+  {
+    // Features exercised:
+    //   - "enum" declarations with implicit and explicit member values
+    //   - "Enum.Member" access, "switch" matching on enum members
+    //   - "==" equality between enum members
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("EnumShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("EnumShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "red",
+        "blue",
+        "cyan",
+        "Green = Color.Green",
+        "Cyan = Color.Cyan",
+        "true",
+        "false",
+        "done",
+      },
+      logged);
+  }
+
+  // ── Interfaces ──────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void InterfaceShowcase_ImplementingClasses_SatisfyInterfaceContract()
+  {
+    // Features exercised:
+    //   - "interface" declarations with method signatures only
+    //   - "implements" on a class, validated at declaration time
+    //   - polymorphic dispatch through an interface-shaped collection
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("InterfaceShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("InterfaceShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "circle area = 12.56636",
+        "square area = 9",
+        "done",
+      },
+      logged);
+  }
+
+  // ── Sealed classes ──────────────────────────────────────────────────────────
+
+  [Fact]
+  public void SealedClassShowcase_ExtendingSealedClass_ThrowsAtDeclaration()
+  {
+    // A "sealed" class cannot be extended; the subclass declaration fails as
+    // soon as it is executed, before any of the program's other statements run.
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("SealedClassShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("SealedClassShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("sealed", exception.Message);
+    Assert.Empty(logged);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

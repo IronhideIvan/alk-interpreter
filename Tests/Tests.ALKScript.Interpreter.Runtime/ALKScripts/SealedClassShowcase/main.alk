@@ -1,0 +1,17 @@
+import { log } from "console";
+
+// ── sealed classes ──────────────────────────────────────────────────────
+//
+// A "sealed" class cannot be extended; attempting to do so is a runtime
+// error as soon as the subclass is declared.
+
+sealed class FinalBase {
+    public function string name() {
+        return "final";
+    }
+}
+
+class Derived extends FinalBase {
+}
+
+log("unreachable");

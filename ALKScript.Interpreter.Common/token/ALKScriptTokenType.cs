@@ -58,6 +58,10 @@ namespace ALKScript.Interpreter.Common.Token
     Virtual,
     Abstract,
     Override,
+    Sealed,
+    Interface,
+    Implements,
+    Enum,
 
     // Keywords - modules
     Import,

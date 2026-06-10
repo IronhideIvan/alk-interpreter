@@ -128,6 +128,16 @@ namespace ALKScript.Interpreter.Parser
         return ParseClassDecl();
       }
 
+      if (_stream.Check(ALKScriptTokenType.Interface))
+      {
+        return ParseInterfaceDecl();
+      }
+
+      if (_stream.Check(ALKScriptTokenType.Enum))
+      {
+        return ParseEnumDecl();
+      }
+
       if (CheckFunctionDeclStart())
       {
         return ParseFunctionDecl();
@@ -146,11 +156,21 @@ namespace ALKScript.Interpreter.Parser
 
     private ExportDecl ParseExportDecl()
     {
-      // "export" is only valid immediately before a class, function, or
-      // variable declaration.
+      // "export" is only valid immediately before a class, interface, enum,
+      // function, or variable declaration.
       if (CheckClassDeclStart())
       {
         return new ExportDecl(ParseClassDecl());
+      }
+
+      if (_stream.Check(ALKScriptTokenType.Interface))
+      {
+        return new ExportDecl(ParseInterfaceDecl());
+      }
+
+      if (_stream.Check(ALKScriptTokenType.Enum))
+      {
+        return new ExportDecl(ParseEnumDecl());
       }
 
       if (CheckFunctionDeclStart())
@@ -163,7 +183,7 @@ namespace ALKScript.Interpreter.Parser
         return new ExportDecl(variableDecl!);
       }
 
-      throw Error(_stream.Peek(), "Expect a class, function, or variable declaration after 'export'.");
+      throw Error(_stream.Peek(), "Expect a class, interface, enum, function, or variable declaration after 'export'.");
     }
 
     private bool CheckClassDeclStart()
@@ -175,7 +195,7 @@ namespace ALKScript.Interpreter.Parser
         offset++;
       }
 
-      if (_stream.CheckAhead(offset, ALKScriptTokenType.Abstract))
+      if (_stream.CheckAhead(offset, ALKScriptTokenType.Abstract) || _stream.CheckAhead(offset, ALKScriptTokenType.Sealed))
       {
         offset++;
       }
@@ -187,6 +207,8 @@ namespace ALKScript.Interpreter.Parser
     {
       bool isNative = _stream.Match(ALKScriptTokenType.Native);
       bool isAbstract = _stream.Match(ALKScriptTokenType.Abstract);
+      bool isSealed = !isAbstract && _stream.Match(ALKScriptTokenType.Sealed);
+
       _stream.Consume(ALKScriptTokenType.Class, "Expect 'class'.");
 
       ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a class name.");
@@ -208,6 +230,16 @@ namespace ALKScript.Interpreter.Parser
 
           _stream.Consume(ALKScriptTokenType.Greater, "Expect '>' after superclass type arguments.");
         }
+      }
+
+      var interfaces = new List<ALKScriptToken>();
+
+      if (_stream.Match(ALKScriptTokenType.Implements))
+      {
+        do
+        {
+          interfaces.Add(_stream.Consume(ALKScriptTokenType.Identifier, "Expect an interface name."));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
       }
 
       _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' before class body.");
@@ -232,7 +264,86 @@ namespace ALKScript.Interpreter.Parser
         }
       }
 
-      return new ClassDecl(isAbstract, name, typeParameters, superclassName, superclassTypeArguments, members, isNative);
+      return new ClassDecl(isAbstract, name, typeParameters, superclassName, superclassTypeArguments, members, isNative, isSealed, interfaces);
+    }
+
+    private InterfaceDecl ParseInterfaceDecl()
+    {
+      _stream.Consume(ALKScriptTokenType.Interface, "Expect 'interface'.");
+
+      ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect an interface name.");
+      List<string> typeParameters = ParseOptionalTypeParameters();
+
+      var extends = new List<ALKScriptToken>();
+
+      if (_stream.Match(ALKScriptTokenType.Extends))
+      {
+        do
+        {
+          extends.Add(_stream.Consume(ALKScriptTokenType.Identifier, "Expect an interface name after 'extends'."));
+        } while (_stream.Match(ALKScriptTokenType.Comma));
+      }
+
+      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' before interface body.");
+
+      var methods = new List<InterfaceMethodSignature>();
+
+      while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
+      {
+        List<string> methodTypeParameters = ParseOptionalTypeParameters();
+        TypeNode returnType = ParseType();
+        ALKScriptToken methodName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a method name.");
+        List<Parameter> parameters = ParseParameterList();
+        _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after interface method signature.");
+
+        methods.Add(new InterfaceMethodSignature(methodTypeParameters, returnType, methodName, parameters));
+      }
+
+      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after interface body.");
+
+      return new InterfaceDecl(name, typeParameters, extends, methods);
+    }
+
+    private EnumDecl ParseEnumDecl()
+    {
+      _stream.Consume(ALKScriptTokenType.Enum, "Expect 'enum'.");
+
+      ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect an enum name.");
+
+      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' before enum body.");
+
+      var members = new List<EnumMember>();
+
+      while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
+      {
+        ALKScriptToken memberName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect an enum member name.");
+
+        long? explicitValue = null;
+
+        if (_stream.Match(ALKScriptTokenType.Equal))
+        {
+          bool negative = _stream.Match(ALKScriptTokenType.Minus);
+          ALKScriptToken numberToken = _stream.Consume(ALKScriptTokenType.Number, "Expect an integer constant for an enum member value.");
+
+          if (!long.TryParse(numberToken.Lexeme, out long parsedValue))
+          {
+            throw Error(numberToken, $"Expect an integer constant for enum member '{memberName.Lexeme}'.");
+          }
+
+          explicitValue = negative ? -parsedValue : parsedValue;
+        }
+
+        members.Add(new EnumMember(memberName, explicitValue));
+
+        if (!_stream.Match(ALKScriptTokenType.Comma))
+        {
+          break;
+        }
+      }
+
+      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after enum body.");
+
+      return new EnumDecl(name, members);
     }
 
     private MemberDecl ParseMember()

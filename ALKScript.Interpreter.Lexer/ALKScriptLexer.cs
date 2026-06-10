@@ -54,6 +54,10 @@ namespace ALKScript.Interpreter.Lexer
       { "virtual", ALKScriptTokenType.Virtual },
       { "abstract", ALKScriptTokenType.Abstract },
       { "override", ALKScriptTokenType.Override },
+      { "sealed", ALKScriptTokenType.Sealed },
+      { "interface", ALKScriptTokenType.Interface },
+      { "implements", ALKScriptTokenType.Implements },
+      { "enum", ALKScriptTokenType.Enum },
 
       { "import", ALKScriptTokenType.Import },
       { "export", ALKScriptTokenType.Export },

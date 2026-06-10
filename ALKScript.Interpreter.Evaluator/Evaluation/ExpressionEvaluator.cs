@@ -779,6 +779,22 @@ namespace ALKScript.Interpreter.Evaluator
         case ArrayValue array:
           return GetArrayMember(array, name);
 
+        case NamespaceValue namespaceValue:
+          if (namespaceValue.Members.TryGetValue(name.Lexeme, out var namespaceMember))
+          {
+            return namespaceMember;
+          }
+
+          throw new RuntimeException(name, $"Namespace '{namespaceValue.Name}' does not export '{name.Lexeme}'.");
+
+        case EnumTypeValue enumType:
+          if (enumType.Members.TryGetValue(name.Lexeme, out var enumMember))
+          {
+            return enumMember;
+          }
+
+          throw new RuntimeException(name, $"Enum '{enumType.Declaration.Name.Lexeme}' does not have a member '{name.Lexeme}'.");
+
         default:
           throw new RuntimeException(name, $"Cannot access property '{name.Lexeme}' on a value of type '{target.TypeName}'.");
       }

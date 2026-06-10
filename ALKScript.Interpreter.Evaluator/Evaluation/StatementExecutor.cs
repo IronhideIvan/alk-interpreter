@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
@@ -55,6 +56,14 @@ namespace ALKScript.Interpreter.Evaluator
 
         case ClassDecl classDecl:
           ExecuteClassDecl(classDecl, environment);
+          break;
+
+        case InterfaceDecl interfaceDecl:
+          ExecuteInterfaceDecl(interfaceDecl, environment);
+          break;
+
+        case EnumDecl enumDecl:
+          ExecuteEnumDecl(enumDecl, environment);
           break;
 
         case ExportDecl exportDecl:
@@ -159,9 +168,83 @@ namespace ALKScript.Interpreter.Evaluator
         var superclassValue = Names.LookUp(declaration.SuperclassName, environment);
         superclass = superclassValue as ClassValue
           ?? throw new RuntimeException(declaration.SuperclassName, $"'{declaration.SuperclassName.Lexeme}' is not a class.");
+
+        if (superclass.Declaration.IsSealed)
+        {
+          throw new RuntimeException(declaration.SuperclassName, $"Class '{declaration.Name.Lexeme}' cannot extend '{superclass.Declaration.Name.Lexeme}' because it is declared 'sealed'.");
+        }
       }
 
-      environment.Define(declaration.Name.Lexeme, new ClassValue(declaration, superclass, environment));
+      var interfaces = new List<InterfaceValue>();
+
+      foreach (var interfaceName in declaration.Interfaces)
+      {
+        var interfaceValue = Names.LookUp(interfaceName, environment);
+
+        if (!(interfaceValue is InterfaceValue resolved))
+        {
+          throw new RuntimeException(interfaceName, $"'{interfaceName.Lexeme}' is not an interface.");
+        }
+
+        interfaces.Add(resolved);
+      }
+
+      var classValue = new ClassValue(declaration, superclass, environment, interfaces);
+
+      foreach (var interfaceValue in interfaces)
+      {
+        foreach (var requiredMethod in interfaceValue.AllMethods())
+        {
+          var member = classValue.FindMember(requiredMethod.Name.Lexeme);
+
+          if (!(member is MethodDecl implementingMethod) || implementingMethod.Parameters.Count != requiredMethod.Parameters.Count)
+          {
+            throw new RuntimeException(declaration.Name, $"Class '{declaration.Name.Lexeme}' does not implement method '{requiredMethod.Name.Lexeme}' ({requiredMethod.Parameters.Count} parameter(s)) required by interface '{interfaceValue.Declaration.Name.Lexeme}'.");
+          }
+        }
+      }
+
+      environment.Define(declaration.Name.Lexeme, classValue);
+    }
+
+    private void ExecuteInterfaceDecl(InterfaceDecl declaration, ScriptEnvironment environment)
+    {
+      var extends = new List<InterfaceValue>();
+
+      foreach (var extendedName in declaration.Extends)
+      {
+        var extendedValue = Names.LookUp(extendedName, environment);
+
+        if (!(extendedValue is InterfaceValue resolved))
+        {
+          throw new RuntimeException(extendedName, $"'{extendedName.Lexeme}' is not an interface.");
+        }
+
+        extends.Add(resolved);
+      }
+
+      environment.Define(declaration.Name.Lexeme, new InterfaceValue(declaration, extends));
+    }
+
+    private void ExecuteEnumDecl(EnumDecl declaration, ScriptEnvironment environment)
+    {
+      var members = new Dictionary<string, EnumValue>();
+      long nextValue = 0;
+
+      foreach (var member in declaration.Members)
+      {
+        long value = member.ExplicitValue ?? nextValue;
+
+        if (members.Values.Any(existing => existing.Value == value))
+        {
+          throw new RuntimeException(member.Name, $"Enum '{declaration.Name.Lexeme}' has more than one member with value {value}.");
+        }
+
+        members[member.Name.Lexeme] = new EnumValue(declaration.Name.Lexeme, member.Name.Lexeme, value);
+        nextValue = value + 1;
+      }
+
+      environment.Define(declaration.Name.Lexeme, new EnumTypeValue(declaration, members));
     }
 
     private async Task ExecuteIf(IfStmt statement, ScriptEnvironment environment)

@@ -44,6 +44,12 @@ namespace ALKScript.Interpreter.Common.Evaluation
       _values[name] = value;
     }
 
+    /// <summary>
+    /// The bindings defined directly in this scope, excluding any enclosing scope —
+    /// e.g. a module's own top-level declarations and imports.
+    /// </summary>
+    public IReadOnlyDictionary<string, ALKScriptValue> OwnBindings => _values;
+
     /// <summary>Looks up <paramref name="name"/> in this scope or, failing that, any enclosing scope.</summary>
     public bool TryGet(string name, out ALKScriptValue value)
     {

@@ -255,7 +255,13 @@ namespace ALKScript.Interpreter.Evaluator
           break;
 
         case NamespaceImportClause namespaceImport:
-          throw new RuntimeException(namespaceImport.Alias, "Namespace imports ('* as N') are not yet supported.");
+          var members = new Dictionary<string, ALKScriptValue>();
+          foreach (var entry in sourceEnv.OwnBindings)
+          {
+            members[entry.Key] = entry.Value;
+          }
+          targetEnv.Define(namespaceImport.Alias.Lexeme, new NamespaceValue(namespaceImport.Alias.Lexeme, members));
+          break;
       }
     }
 

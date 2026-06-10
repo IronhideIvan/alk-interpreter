@@ -1,0 +1,11 @@
+// A small utility module used to exercise namespace ("* as") imports.
+
+export function int square(int x) {
+    return x * x;
+}
+
+export function int cube(int x) {
+    return x * x * x;
+}
+
+export var pi = 3;

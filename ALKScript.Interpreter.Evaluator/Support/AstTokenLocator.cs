@@ -24,6 +24,10 @@ namespace ALKScript.Interpreter.Evaluator
           return functionDecl.Name;
         case ClassDecl classDecl:
           return classDecl.Name;
+        case EnumDecl enumDecl:
+          return enumDecl.Name;
+        case InterfaceDecl interfaceDecl:
+          return interfaceDecl.Name;
         case ForeachStmt foreachStmt:
           return foreachStmt.Keyword;
         case DoWhileStmt doWhileStmt:

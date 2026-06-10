@@ -83,6 +83,8 @@ namespace ALKScript.Interpreter.Evaluator
           return leftString.Value == rightString.Value;
         case IntValue leftInt when right is IntValue rightInt:
           return leftInt.Value == rightInt.Value;
+        case EnumValue leftEnum when right is EnumValue rightEnum:
+          return leftEnum.EnumName == rightEnum.EnumName && leftEnum.MemberName == rightEnum.MemberName;
         default:
           return TryToNumber(left, out double leftNumber)
             && TryToNumber(right, out double rightNumber)

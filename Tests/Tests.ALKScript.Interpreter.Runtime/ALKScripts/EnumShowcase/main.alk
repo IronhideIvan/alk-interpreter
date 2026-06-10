@@ -1,0 +1,40 @@
+import { log } from "console";
+
+// ── enums ────────────────────────────────────────────────────────────────
+//
+// Members default to sequential int values starting at 0, but can be given
+// explicit values; later members continue counting up from there.
+
+enum Color {
+    Red,
+    Green,
+    Blue = 10,
+    Cyan
+}
+
+function string describe(Color color) {
+    switch (color) {
+        case Color.Red:
+            return "red";
+        case Color.Green:
+            return "green";
+        case Color.Blue:
+            return "blue";
+        case Color.Cyan:
+            return "cyan";
+        default:
+            return "unknown";
+    }
+}
+
+log(describe(Color.Red));
+log(describe(Color.Blue));
+log(describe(Color.Cyan));
+
+log(`Green = ${Color.Green}`);
+log(`Cyan = ${Color.Cyan}`);
+
+log(`${Color.Red == Color.Red}`);
+log(`${Color.Red == Color.Green}`);
+
+log("done");

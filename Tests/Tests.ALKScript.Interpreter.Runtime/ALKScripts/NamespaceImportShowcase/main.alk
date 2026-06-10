@@ -1,0 +1,13 @@
+import { log } from "console";
+import * as MathUtils from "./mathutils";
+
+// ── namespace import: "import * as N" ──────────────────────────────────────
+//
+// All of the imported module's top-level bindings (functions and variables)
+// are accessible as members of the namespace object.
+
+log(`square(4) = ${MathUtils.square(4)}`);
+log(`cube(3) = ${MathUtils.cube(3)}`);
+log(`pi = ${MathUtils.pi}`);
+
+log("done");

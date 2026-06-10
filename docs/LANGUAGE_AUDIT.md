@@ -59,9 +59,6 @@ These are the most dangerous gaps because they look correct syntactically but pr
 | **Properties** (getter/setter) | No `get`/`set` syntax; fields are exposed directly |
 | **Constructor overloading** | Only one constructor per class |
 | **Constructor chaining** | `this(args)` to delegate to another constructor |
-| **`sealed` classes** | Prevent further subclassing |
-| **Interfaces** | Structural contracts without implementation |
-| **Enums** | Named integer/string constants |
 
 ---
 

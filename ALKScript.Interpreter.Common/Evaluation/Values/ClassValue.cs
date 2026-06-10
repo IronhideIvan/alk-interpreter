@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ALKScript.Interpreter.Common.Ast;
 
 namespace ALKScript.Interpreter.Common.Evaluation.Values
@@ -11,6 +12,7 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
   {
     public ClassDecl Declaration { get; }
     public ClassValue? Superclass { get; }
+    public IReadOnlyList<InterfaceValue> Interfaces { get; }
 
     /// <summary>
     /// The environment the class was declared in, captured as a closure so its
@@ -20,11 +22,12 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     /// </summary>
     public ScriptEnvironment Closure { get; }
 
-    public ClassValue(ClassDecl declaration, ClassValue? superclass, ScriptEnvironment closure)
+    public ClassValue(ClassDecl declaration, ClassValue? superclass, ScriptEnvironment closure, IReadOnlyList<InterfaceValue>? interfaces = null)
     {
       Declaration = declaration;
       Superclass = superclass;
       Closure = closure;
+      Interfaces = interfaces ?? System.Array.Empty<InterfaceValue>();
     }
 
     public override string TypeName => "class";
