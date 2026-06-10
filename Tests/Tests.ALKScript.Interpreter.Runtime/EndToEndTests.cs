@@ -570,6 +570,61 @@ public class EndToEndTests : RuntimeTestBase
       logged);
   }
 
+  // ── Bitwise operators and string interpolation ──────────────────────────────
+
+  [Fact]
+  public void BitwiseAndInterpolationShowcase_OperatorsAndTemplateLiterals_ProducesExpectedOutput()
+  {
+    // The program is a single-module script that exercises:
+    //   - bitwise operators: '&', '|', '^', '~', '<<', '>>'
+    //   - compound bitwise assignment: '&=', '|=', '^=', '<<=', '>>='
+    //   - template-literal string interpolation: `text ${expr} text`,
+    //     including plain (non-interpolated) templates and templates with
+    //     multiple/expression interpolations
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("BitwiseAndInterpolationShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("BitwiseAndInterpolationShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "a & b = 2",
+        "a | b = 7",
+        "a ^ b = 5",
+        "~a = -7",
+        "a << 2 = 24",
+        "a >> 1 = 3",
+        "flags &= 3 -> 2",
+        "flags |= 8 -> 10",
+        "flags ^= 5 -> 15",
+        "flags <<= 2 -> 60",
+        "flags >>= 1 -> 30",
+        "Hello, Ada!",
+        "Ada scored 95 points.",
+        "Plain string with no interpolation",
+        "Sum: 3 and product: 12",
+        "done",
+      },
+      logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

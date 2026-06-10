@@ -103,6 +103,9 @@ namespace ALKScript.Interpreter.Evaluator
         case NullConditionalGetExpr nullCondGet:
           return await EvalNullConditionalGet(nullCondGet, environment);
 
+        case InterpolatedStringExpr interpolated:
+          return await EvalInterpolatedString(interpolated, environment);
+
         default:
           throw new RuntimeException(
             AstTokenLocator.Of(expression),
@@ -146,6 +149,28 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       return new ArrayValue(items);
+    }
+
+    private async Task<ALKScriptValue> EvalInterpolatedString(InterpolatedStringExpr expression, ScriptEnvironment environment)
+    {
+      var builder = new System.Text.StringBuilder();
+
+      builder.Append(expression.Parts[0]);
+
+      for (int i = 0; i < expression.Expressions.Count; i++)
+      {
+        var value = await Eval(expression.Expressions[i], environment);
+
+        if (_context.Signal != null)
+        {
+          return NullValue.Instance;
+        }
+
+        builder.Append(Operators.Stringify(value));
+        builder.Append(expression.Parts[i + 1]);
+      }
+
+      return new StringValue(builder.ToString());
     }
 
     private async Task<ALKScriptValue> EvalAssignment(AssignmentExpr expression, ScriptEnvironment environment)
@@ -352,6 +377,17 @@ namespace ALKScript.Interpreter.Evaluator
         case ALKScriptTokenType.BangEqual:
           return BoolValue.Of(!Operators.AreEqual(leftValue, rightValue));
 
+        case ALKScriptTokenType.Amp:
+          return Operators.Bitwise(leftValue, rightValue, op, (a, b) => a & b);
+        case ALKScriptTokenType.Pipe:
+          return Operators.Bitwise(leftValue, rightValue, op, (a, b) => a | b);
+        case ALKScriptTokenType.Caret:
+          return Operators.Bitwise(leftValue, rightValue, op, (a, b) => a ^ b);
+        case ALKScriptTokenType.LessLess:
+          return Operators.Bitwise(leftValue, rightValue, op, (a, b) => a << (int)b);
+        case ALKScriptTokenType.GreaterGreater:
+          return Operators.Bitwise(leftValue, rightValue, op, (a, b) => a >> (int)b);
+
         default:
           throw new RuntimeException(op, $"Unsupported binary operator '{op.Lexeme}'.");
       }
@@ -380,6 +416,15 @@ namespace ALKScript.Interpreter.Evaluator
               return new FloatValue(-floatValue.Value);
             default:
               throw new RuntimeException(expression.Operator, $"Operator '-' cannot be applied to '{operand.TypeName}'.");
+          }
+
+        case ALKScriptTokenType.Tilde:
+          switch (operand)
+          {
+            case IntValue intValue:
+              return new IntValue(~intValue.Value);
+            default:
+              throw new RuntimeException(expression.Operator, $"Operator '~' cannot be applied to '{operand.TypeName}'; bitwise operators require 'int' operands.");
           }
 
         default:
@@ -846,6 +891,16 @@ namespace ALKScript.Interpreter.Evaluator
           return Operators.Arithmetic(left, right, op, (a, b) => a / b, (a, b) => a / b);
         case ALKScriptTokenType.PercentEqual:
           return Operators.Arithmetic(left, right, op, (a, b) => a % b, (a, b) => a % b);
+        case ALKScriptTokenType.AmpEqual:
+          return Operators.Bitwise(left, right, op, (a, b) => a & b);
+        case ALKScriptTokenType.PipeEqual:
+          return Operators.Bitwise(left, right, op, (a, b) => a | b);
+        case ALKScriptTokenType.CaretEqual:
+          return Operators.Bitwise(left, right, op, (a, b) => a ^ b);
+        case ALKScriptTokenType.LessLessEqual:
+          return Operators.Bitwise(left, right, op, (a, b) => a << (int)b);
+        case ALKScriptTokenType.GreaterGreaterEqual:
+          return Operators.Bitwise(left, right, op, (a, b) => a >> (int)b);
         default:
           throw new RuntimeException(op, $"Unsupported compound assignment operator '{op.Lexeme}'.");
       }

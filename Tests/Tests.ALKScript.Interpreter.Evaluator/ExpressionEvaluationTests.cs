@@ -78,6 +78,75 @@ public class ExpressionEvaluationTests : EvaluatorTestBase
     Assert.Equal(-5L, value.Value);
   }
 
+  // ── Bitwise operators ────────────────────────────────────────────────────────
+
+  [Theory]
+  [InlineData("6 & 3", 2L)]
+  [InlineData("6 | 3", 7L)]
+  [InlineData("6 ^ 3", 5L)]
+  [InlineData("~0", -1L)]
+  [InlineData("~5", -6L)]
+  [InlineData("1 << 4", 16L)]
+  [InlineData("256 >> 4", 16L)]
+  [InlineData("1 | 2 & 3", 3L)]
+  public void Evaluate_BitwiseExpression_ProducesIntValue(string expression, long expected)
+  {
+    var recorded = Run($"{RecordDeclaration} record({expression});");
+
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(expected, value.Value);
+  }
+
+  [Theory]
+  [InlineData("flags &= 3;", 2L)]
+  [InlineData("flags |= 8;", 14L)]
+  [InlineData("flags ^= 3;", 5L)]
+  [InlineData("flags <<= 2;", 24L)]
+  [InlineData("flags >>= 1;", 3L)]
+  public void Evaluate_CompoundBitwiseAssignment_UpdatesVariable(string statement, long expected)
+  {
+    var recorded = Run($"{RecordDeclaration} var flags = 6; {statement} record(flags);");
+
+    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
+    Assert.Equal(expected, value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_BitwiseOperatorOnFloat_ThrowsRuntimeException()
+  {
+    Assert.Throws<RuntimeException>(() =>
+      Run($"{RecordDeclaration} record(1.5 & 2);"));
+  }
+
+  // ── String interpolation ─────────────────────────────────────────────────────
+
+  [Fact]
+  public void Evaluate_TemplateStringWithoutInterpolation_ProducesPlainString()
+  {
+    var recorded = Run($"{RecordDeclaration} record(`hello world`);");
+
+    var value = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("hello world", value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_TemplateStringWithInterpolation_SubstitutesExpressionValues()
+  {
+    var recorded = Run($"{RecordDeclaration} var name = \"Ada\"; record(`Hello, ${{name}}!`);");
+
+    var value = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("Hello, Ada!", value.Value);
+  }
+
+  [Fact]
+  public void Evaluate_TemplateStringWithMultipleInterpolationsAndExpressions_ProducesExpectedString()
+  {
+    var recorded = Run($"{RecordDeclaration} var a = 2; var b = 3; record(`${{a}} + ${{b}} = ${{a + b}}`);");
+
+    var value = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("2 + 3 = 5", value.Value);
+  }
+
   [Fact]
   public void Evaluate_LogicalAnd_ShortCircuitsWithoutEvaluatingRightOperand()
   {

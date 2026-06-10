@@ -921,7 +921,9 @@ namespace ALKScript.Interpreter.Parser
       if (_stream.Match(
             ALKScriptTokenType.PlusEqual, ALKScriptTokenType.MinusEqual,
             ALKScriptTokenType.StarEqual, ALKScriptTokenType.SlashEqual,
-            ALKScriptTokenType.PercentEqual))
+            ALKScriptTokenType.PercentEqual,
+            ALKScriptTokenType.AmpEqual, ALKScriptTokenType.PipeEqual, ALKScriptTokenType.CaretEqual,
+            ALKScriptTokenType.LessLessEqual, ALKScriptTokenType.GreaterGreaterEqual))
       {
         ALKScriptToken op = _stream.Previous();
         Expr value = ParseAssignment();
@@ -983,9 +985,51 @@ namespace ALKScript.Interpreter.Parser
 
     private Expr ParseLogicAnd()
     {
-      Expr expr = ParseEquality();
+      Expr expr = ParseBitwiseOr();
 
       while (_stream.Match(ALKScriptTokenType.AmpAmp))
+      {
+        ALKScriptToken op = _stream.Previous();
+        Expr right = ParseBitwiseOr();
+        expr = new BinaryExpr(expr, op, right);
+      }
+
+      return expr;
+    }
+
+    private Expr ParseBitwiseOr()
+    {
+      Expr expr = ParseBitwiseXor();
+
+      while (_stream.Match(ALKScriptTokenType.Pipe))
+      {
+        ALKScriptToken op = _stream.Previous();
+        Expr right = ParseBitwiseXor();
+        expr = new BinaryExpr(expr, op, right);
+      }
+
+      return expr;
+    }
+
+    private Expr ParseBitwiseXor()
+    {
+      Expr expr = ParseBitwiseAnd();
+
+      while (_stream.Match(ALKScriptTokenType.Caret))
+      {
+        ALKScriptToken op = _stream.Previous();
+        Expr right = ParseBitwiseAnd();
+        expr = new BinaryExpr(expr, op, right);
+      }
+
+      return expr;
+    }
+
+    private Expr ParseBitwiseAnd()
+    {
+      Expr expr = ParseEquality();
+
+      while (_stream.Match(ALKScriptTokenType.Amp))
       {
         ALKScriptToken op = _stream.Previous();
         Expr right = ParseEquality();
@@ -1011,9 +1055,23 @@ namespace ALKScript.Interpreter.Parser
 
     private Expr ParseComparison()
     {
-      Expr expr = ParseTerm();
+      Expr expr = ParseShift();
 
       while (_stream.Match(ALKScriptTokenType.Less, ALKScriptTokenType.LessEqual, ALKScriptTokenType.Greater, ALKScriptTokenType.GreaterEqual))
+      {
+        ALKScriptToken op = _stream.Previous();
+        Expr right = ParseShift();
+        expr = new BinaryExpr(expr, op, right);
+      }
+
+      return expr;
+    }
+
+    private Expr ParseShift()
+    {
+      Expr expr = ParseTerm();
+
+      while (_stream.Match(ALKScriptTokenType.LessLess, ALKScriptTokenType.GreaterGreater))
       {
         ALKScriptToken op = _stream.Previous();
         Expr right = ParseTerm();
@@ -1062,7 +1120,7 @@ namespace ALKScript.Interpreter.Parser
         return new PrefixUpdateExpr(op, operand);
       }
 
-      if (_stream.Match(ALKScriptTokenType.Bang, ALKScriptTokenType.Minus))
+      if (_stream.Match(ALKScriptTokenType.Bang, ALKScriptTokenType.Minus, ALKScriptTokenType.Tilde))
       {
         ALKScriptToken op = _stream.Previous();
         Expr operand = ParseUnary();
@@ -1175,6 +1233,11 @@ namespace ALKScript.Interpreter.Parser
         return new LiteralExpr(token, token.Lexeme);
       }
 
+      if (_stream.Check(ALKScriptTokenType.InterpolatedStringStart) || _stream.Check(ALKScriptTokenType.InterpolatedStringEnd))
+      {
+        return ParseInterpolatedString();
+      }
+
       if (_stream.Match(ALKScriptTokenType.This))
       {
         return new ThisExpr(_stream.Previous());
@@ -1220,6 +1283,43 @@ namespace ALKScript.Interpreter.Parser
       }
 
       throw Error(_stream.Peek(), "Expect an expression.");
+    }
+
+    private Expr ParseInterpolatedString()
+    {
+      var parts = new List<string>();
+      var expressions = new List<Expr>();
+
+      ALKScriptToken first = _stream.Advance();
+      parts.Add(first.Lexeme);
+
+      if (first.Type == ALKScriptTokenType.InterpolatedStringEnd)
+      {
+        return new InterpolatedStringExpr(first, parts, expressions);
+      }
+
+      while (true)
+      {
+        expressions.Add(ParseExpression());
+
+        ALKScriptToken segment = _stream.Advance();
+
+        if (segment.Type == ALKScriptTokenType.InterpolatedStringMid)
+        {
+          parts.Add(segment.Lexeme);
+          continue;
+        }
+
+        if (segment.Type == ALKScriptTokenType.InterpolatedStringEnd)
+        {
+          parts.Add(segment.Lexeme);
+          break;
+        }
+
+        throw Error(segment, "Expect '}' to close an interpolated expression in a template string.");
+      }
+
+      return new InterpolatedStringExpr(first, parts, expressions);
     }
 
     private Expr ParseNewExpression()

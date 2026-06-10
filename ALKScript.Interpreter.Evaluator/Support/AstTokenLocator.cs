@@ -73,6 +73,8 @@ namespace ALKScript.Interpreter.Evaluator
           return ternary.QuestionToken;
         case NullConditionalGetExpr nullCondGet:
           return nullCondGet.Name;
+        case InterpolatedStringExpr interpolated:
+          return interpolated.Token;
         default:
           return EndOfFile;
       }

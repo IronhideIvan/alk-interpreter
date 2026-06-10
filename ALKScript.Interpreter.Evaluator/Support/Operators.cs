@@ -42,6 +42,20 @@ namespace ALKScript.Interpreter.Evaluator
       throw new RuntimeException(op, $"Operator '{op.Lexeme}' cannot be applied to '{left.TypeName}' and '{right.TypeName}'.");
     }
 
+    public static ALKScriptValue Bitwise(
+      ALKScriptValue left,
+      ALKScriptValue right,
+      ALKScriptToken op,
+      Func<long, long, long> onInts)
+    {
+      if (left is IntValue leftInt && right is IntValue rightInt)
+      {
+        return new IntValue(onInts(leftInt.Value, rightInt.Value));
+      }
+
+      throw new RuntimeException(op, $"Operator '{op.Lexeme}' cannot be applied to '{left.TypeName}' and '{right.TypeName}'; bitwise operators require 'int' operands.");
+    }
+
     public static int Compare(ALKScriptValue left, ALKScriptValue right, ALKScriptToken op)
     {
       if (left is StringValue leftString && right is StringValue rightString)

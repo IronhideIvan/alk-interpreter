@@ -89,6 +89,19 @@ namespace ALKScript.Interpreter.Common.Token
     AmpAmp,
     PipePipe,
 
+    // Operators - bitwise
+    Amp,
+    AmpEqual,
+    Pipe,
+    PipeEqual,
+    Caret,
+    CaretEqual,
+    Tilde,
+    LessLess,
+    LessLessEqual,
+    GreaterGreater,
+    GreaterGreaterEqual,
+
     // Punctuation
     LeftParen,
     RightParen,
@@ -103,6 +116,11 @@ namespace ALKScript.Interpreter.Common.Token
     Question,
     QuestionQuestion,
     QuestionDot,
+
+    // String interpolation
+    InterpolatedStringStart,
+    InterpolatedStringMid,
+    InterpolatedStringEnd,
 
     EndOfFile
   }

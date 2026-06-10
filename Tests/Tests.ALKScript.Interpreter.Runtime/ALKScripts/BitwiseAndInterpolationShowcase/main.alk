@@ -1,0 +1,43 @@
+import { log } from "console";
+
+// ── bitwise operators ───────────────────────────────────────────────────────
+
+var a = 6;  // 110
+var b = 3;  // 011
+
+log(`a & b = ${a & b}`);
+log(`a | b = ${a | b}`);
+log(`a ^ b = ${a ^ b}`);
+log(`~a = ${~a}`);
+log(`a << 2 = ${a << 2}`);
+log(`a >> 1 = ${a >> 1}`);
+
+// ── compound bitwise assignment ─────────────────────────────────────────────
+
+var flags = 6;
+flags &= 3;
+log(`flags &= 3 -> ${flags}`);
+
+flags |= 8;
+log(`flags |= 8 -> ${flags}`);
+
+flags ^= 5;
+log(`flags ^= 5 -> ${flags}`);
+
+flags <<= 2;
+log(`flags <<= 2 -> ${flags}`);
+
+flags >>= 1;
+log(`flags >>= 1 -> ${flags}`);
+
+// ── string interpolation ────────────────────────────────────────────────────
+
+var name = "Ada";
+var score = 95;
+
+log(`Hello, ${name}!`);
+log(`${name} scored ${score} points.`);
+log(`Plain string with no interpolation`);
+log(`Sum: ${1 + 2} and product: ${3 * 4}`);
+
+log("done");

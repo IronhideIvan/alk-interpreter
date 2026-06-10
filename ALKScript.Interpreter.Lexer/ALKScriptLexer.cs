@@ -68,6 +68,7 @@ namespace ALKScript.Interpreter.Lexer
     private int _line;
     private int _column;
     private int _startColumn;
+    private int _templateInterpolationDepth;
 
     public IEnumerable<ALKScriptToken> Tokenize(string contents)
     {
@@ -78,6 +79,7 @@ namespace ALKScript.Interpreter.Lexer
       _line = 1;
       _column = 1;
       _startColumn = 1;
+      _templateInterpolationDepth = 0;
 
       while (!IsAtEnd())
       {
@@ -99,7 +101,6 @@ namespace ALKScript.Interpreter.Lexer
         case '(': AddToken(ALKScriptTokenType.LeftParen); break;
         case ')': AddToken(ALKScriptTokenType.RightParen); break;
         case '{': AddToken(ALKScriptTokenType.LeftBrace); break;
-        case '}': AddToken(ALKScriptTokenType.RightBrace); break;
         case '[': AddToken(ALKScriptTokenType.LeftBracket); break;
         case ']': AddToken(ALKScriptTokenType.RightBracket); break;
         case ',': AddToken(ALKScriptTokenType.Comma); break;
@@ -153,15 +154,37 @@ namespace ALKScript.Interpreter.Lexer
           AddToken(Match('=') ? ALKScriptTokenType.BangEqual : ALKScriptTokenType.Bang);
           break;
         case '<':
-          AddToken(Match('=') ? ALKScriptTokenType.LessEqual : ALKScriptTokenType.Less);
+          if (Match('<'))
+          {
+            AddToken(Match('=') ? ALKScriptTokenType.LessLessEqual : ALKScriptTokenType.LessLess);
+          }
+          else
+          {
+            AddToken(Match('=') ? ALKScriptTokenType.LessEqual : ALKScriptTokenType.Less);
+          }
           break;
         case '>':
-          AddToken(Match('=') ? ALKScriptTokenType.GreaterEqual : ALKScriptTokenType.Greater);
+          if (Match('>'))
+          {
+            AddToken(Match('=') ? ALKScriptTokenType.GreaterGreaterEqual : ALKScriptTokenType.GreaterGreater);
+          }
+          else
+          {
+            AddToken(Match('=') ? ALKScriptTokenType.GreaterEqual : ALKScriptTokenType.Greater);
+          }
           break;
         case '&':
           if (Match('&'))
           {
             AddToken(ALKScriptTokenType.AmpAmp);
+          }
+          else if (Match('='))
+          {
+            AddToken(ALKScriptTokenType.AmpEqual);
+          }
+          else
+          {
+            AddToken(ALKScriptTokenType.Amp);
           }
           break;
         case '|':
@@ -169,6 +192,20 @@ namespace ALKScript.Interpreter.Lexer
           {
             AddToken(ALKScriptTokenType.PipePipe);
           }
+          else if (Match('='))
+          {
+            AddToken(ALKScriptTokenType.PipeEqual);
+          }
+          else
+          {
+            AddToken(ALKScriptTokenType.Pipe);
+          }
+          break;
+        case '^':
+          AddToken(Match('=') ? ALKScriptTokenType.CaretEqual : ALKScriptTokenType.Caret);
+          break;
+        case '~':
+          AddToken(ALKScriptTokenType.Tilde);
           break;
 
         case ' ':
@@ -182,6 +219,22 @@ namespace ALKScript.Interpreter.Lexer
 
         case '"':
           ScanString();
+          break;
+
+        case '`':
+          ScanTemplateString();
+          break;
+
+        case '}':
+          if (_templateInterpolationDepth > 0)
+          {
+            _templateInterpolationDepth--;
+            ScanTemplateStringContinuation();
+          }
+          else
+          {
+            AddToken(ALKScriptTokenType.RightBrace);
+          }
           break;
 
         default:
@@ -269,6 +322,83 @@ namespace ALKScript.Interpreter.Lexer
       Advance();
 
       AddToken(ALKScriptTokenType.String, value.ToString());
+    }
+
+    private void ScanTemplateString()
+    {
+      ScanTemplateSegment(isFirst: true);
+    }
+
+    private void ScanTemplateStringContinuation()
+    {
+      ScanTemplateSegment(isFirst: false);
+    }
+
+    private void ScanTemplateSegment(bool isFirst)
+    {
+      var value = new System.Text.StringBuilder();
+
+      while (true)
+      {
+        if (IsAtEnd())
+        {
+          AddToken(ALKScriptTokenType.InterpolatedStringEnd, value.ToString());
+          return;
+        }
+
+        char c = Peek();
+
+        if (c == '`')
+        {
+          Advance();
+          AddToken(ALKScriptTokenType.InterpolatedStringEnd, value.ToString());
+          return;
+        }
+
+        if (c == '$' && PeekNext() == '{')
+        {
+          Advance();
+          Advance();
+          AddToken(isFirst ? ALKScriptTokenType.InterpolatedStringStart : ALKScriptTokenType.InterpolatedStringMid, value.ToString());
+          _templateInterpolationDepth++;
+          return;
+        }
+
+        if (c == '\n')
+        {
+          _line++;
+          _column = 0;
+          value.Append(Advance());
+          continue;
+        }
+
+        if (c == '\\')
+        {
+          Advance();
+          char escaped = Peek();
+
+          switch (escaped)
+          {
+            case 'n': value.Append('\n'); break;
+            case 't': value.Append('\t'); break;
+            case 'r': value.Append('\r'); break;
+            case '`': value.Append('`'); break;
+            case '$': value.Append('$'); break;
+            case '\\': value.Append('\\'); break;
+            case '0': value.Append('\0'); break;
+            default: value.Append(escaped); break;
+          }
+
+          if (!IsAtEnd())
+          {
+            Advance();
+          }
+
+          continue;
+        }
+
+        value.Append(Advance());
+      }
     }
 
     private void ScanNumber()

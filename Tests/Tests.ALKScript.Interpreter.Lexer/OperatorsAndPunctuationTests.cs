@@ -41,6 +41,17 @@ public class OperatorsAndPunctuationTests
   [InlineData("*=", ALKScriptTokenType.StarEqual)]
   [InlineData("/=", ALKScriptTokenType.SlashEqual)]
   [InlineData("%=", ALKScriptTokenType.PercentEqual)]
+  [InlineData("&", ALKScriptTokenType.Amp)]
+  [InlineData("&=", ALKScriptTokenType.AmpEqual)]
+  [InlineData("|", ALKScriptTokenType.Pipe)]
+  [InlineData("|=", ALKScriptTokenType.PipeEqual)]
+  [InlineData("^", ALKScriptTokenType.Caret)]
+  [InlineData("^=", ALKScriptTokenType.CaretEqual)]
+  [InlineData("~", ALKScriptTokenType.Tilde)]
+  [InlineData("<<", ALKScriptTokenType.LessLess)]
+  [InlineData("<<=", ALKScriptTokenType.LessLessEqual)]
+  [InlineData(">>", ALKScriptTokenType.GreaterGreater)]
+  [InlineData(">>=", ALKScriptTokenType.GreaterGreaterEqual)]
   public void Tokenize_OperatorOrPunctuation_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
     var lexer = new ALKScriptLexer();

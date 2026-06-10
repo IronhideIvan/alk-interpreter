@@ -220,6 +220,136 @@ public class ExpressionTests : ParserTestBase
     Assert.Single(call.Arguments);
   }
 
+  // ── Bitwise and shift operators ─────────────────────────────────────────────
+
+  [Fact]
+  public void Parse_BitwiseOperators_RespectPrecedenceRelativeToEquality()
+  {
+    // "a == b | c ^ d & e" parses as "(a == b) | (c ^ (d & e))" — '&' binds
+    // tightest, then '^', then '|', all looser than equality ('==').
+    var program = Parse("a == b | c ^ d & e;");
+
+    var or = Assert.IsType<BinaryExpr>(SingleExpressionStatement(program));
+    Assert.Equal(ALKScriptTokenType.Pipe, or.Operator.Type);
+
+    var equality = Assert.IsType<BinaryExpr>(or.Left);
+    Assert.Equal(ALKScriptTokenType.EqualEqual, equality.Operator.Type);
+
+    var xor = Assert.IsType<BinaryExpr>(or.Right);
+    Assert.Equal(ALKScriptTokenType.Caret, xor.Operator.Type);
+
+    var and = Assert.IsType<BinaryExpr>(xor.Right);
+    Assert.Equal(ALKScriptTokenType.Amp, and.Operator.Type);
+  }
+
+  [Fact]
+  public void Parse_BitwiseAndExpression_LooserThanLogicalAnd_LooserThanEquality()
+  {
+    // "a && b & c == d" parses as "a && (b & (c == d))".
+    var program = Parse("a && b & c == d;");
+
+    var logicalAnd = Assert.IsType<BinaryExpr>(SingleExpressionStatement(program));
+    Assert.Equal(ALKScriptTokenType.AmpAmp, logicalAnd.Operator.Type);
+
+    var bitwiseAnd = Assert.IsType<BinaryExpr>(logicalAnd.Right);
+    Assert.Equal(ALKScriptTokenType.Amp, bitwiseAnd.Operator.Type);
+
+    var equality = Assert.IsType<BinaryExpr>(bitwiseAnd.Right);
+    Assert.Equal(ALKScriptTokenType.EqualEqual, equality.Operator.Type);
+  }
+
+  [Theory]
+  [InlineData("a << b;", ALKScriptTokenType.LessLess)]
+  [InlineData("a >> b;", ALKScriptTokenType.GreaterGreater)]
+  public void Parse_ShiftExpression_ProducesBinaryExpr(string source, ALKScriptTokenType expectedOp)
+  {
+    var program = Parse(source);
+
+    var binary = Assert.IsType<BinaryExpr>(SingleExpressionStatement(program));
+    Assert.Equal(expectedOp, binary.Operator.Type);
+    Assert.IsType<IdentifierExpr>(binary.Left);
+    Assert.IsType<IdentifierExpr>(binary.Right);
+  }
+
+  [Fact]
+  public void Parse_ShiftExpression_IsLooserThanAdditionAndTighterThanComparison()
+  {
+    // "a + b << c < d" parses as "((a + b) << c) < d".
+    var program = Parse("a + b << c < d;");
+
+    var comparison = Assert.IsType<BinaryExpr>(SingleExpressionStatement(program));
+    Assert.Equal(ALKScriptTokenType.Less, comparison.Operator.Type);
+
+    var shift = Assert.IsType<BinaryExpr>(comparison.Left);
+    Assert.Equal(ALKScriptTokenType.LessLess, shift.Operator.Type);
+
+    var addition = Assert.IsType<BinaryExpr>(shift.Left);
+    Assert.Equal(ALKScriptTokenType.Plus, addition.Operator.Type);
+  }
+
+  [Fact]
+  public void Parse_BitwiseNot_ProducesUnaryExpr()
+  {
+    var program = Parse("~flags;");
+
+    var unary = Assert.IsType<UnaryExpr>(SingleExpressionStatement(program));
+    Assert.Equal(ALKScriptTokenType.Tilde, unary.Operator.Type);
+    Assert.IsType<IdentifierExpr>(unary.Operand);
+  }
+
+  [Theory]
+  [InlineData("flags &= mask;", ALKScriptTokenType.AmpEqual)]
+  [InlineData("flags |= mask;", ALKScriptTokenType.PipeEqual)]
+  [InlineData("flags ^= mask;", ALKScriptTokenType.CaretEqual)]
+  [InlineData("flags <<= 1;",   ALKScriptTokenType.LessLessEqual)]
+  [InlineData("flags >>= 1;",   ALKScriptTokenType.GreaterGreaterEqual)]
+  public void Parse_CompoundBitwiseAssignment_ProducesCompoundAssignmentExpr(string source, ALKScriptTokenType expectedOp)
+  {
+    var program = Parse(source);
+
+    var compound = Assert.IsType<CompoundAssignmentExpr>(SingleExpressionStatement(program));
+    Assert.Equal(expectedOp, compound.Operator.Type);
+    Assert.IsType<IdentifierExpr>(compound.Target);
+  }
+
+  // ── String interpolation ────────────────────────────────────────────────────
+
+  [Fact]
+  public void Parse_TemplateStringWithoutInterpolation_ProducesInterpolatedStringExprWithSinglePart()
+  {
+    var program = Parse("`hello world`;");
+
+    var interpolated = Assert.IsType<InterpolatedStringExpr>(SingleExpressionStatement(program));
+    Assert.Equal(new[] { "hello world" }, interpolated.Parts);
+    Assert.Empty(interpolated.Expressions);
+  }
+
+  [Fact]
+  public void Parse_TemplateStringWithInterpolation_ProducesPartsAndExpressions()
+  {
+    var program = Parse("`Hello, ${name}!`;");
+
+    var interpolated = Assert.IsType<InterpolatedStringExpr>(SingleExpressionStatement(program));
+    Assert.Equal(new[] { "Hello, ", "!" }, interpolated.Parts);
+
+    var identifier = Assert.IsType<IdentifierExpr>(Assert.Single(interpolated.Expressions));
+    Assert.Equal("name", identifier.Name.Lexeme);
+  }
+
+  [Fact]
+  public void Parse_TemplateStringWithMultipleInterpolations_ProducesAllPartsAndExpressions()
+  {
+    var program = Parse("`${a} + ${b} = ${a + b}`;");
+
+    var interpolated = Assert.IsType<InterpolatedStringExpr>(SingleExpressionStatement(program));
+    Assert.Equal(new[] { "", " + ", " = ", "" }, interpolated.Parts);
+    Assert.Equal(3, interpolated.Expressions.Count);
+
+    Assert.IsType<IdentifierExpr>(interpolated.Expressions[0]);
+    Assert.IsType<IdentifierExpr>(interpolated.Expressions[1]);
+    Assert.IsType<BinaryExpr>(interpolated.Expressions[2]);
+  }
+
   [Fact]
   public void Parse_NewExpression_ProducesNewExpr()
   {
