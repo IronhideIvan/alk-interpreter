@@ -5,6 +5,11 @@ import { log } from "console";
 var greeting = "Hello, World!";
 log("length=" + greeting.length);
 
+// ── indexer: yields a single-character string ──────────────────────────────
+
+log("char[0]=" + greeting[0]);
+log("char[7]=" + greeting[7]);
+
 // ── toUpper / toLower ───────────────────────────────────────────────────────
 
 log("upper=" + greeting.toUpper());

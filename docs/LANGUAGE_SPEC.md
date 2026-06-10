@@ -86,7 +86,13 @@ is  as
 | `bool` | `true` / `false`. |
 | `void` | Only valid as a function/method/lambda return type, meaning "no value". |
 
-`string` values expose a small set of built-in members, accessed like
+`s[i]` indexes a string, yielding the single-character `string` at UTF-16
+code-unit position `i` (there is no separate `char` type). As with arrays,
+`i` must be an `int` and a runtime error is raised if it is out of bounds.
+Since strings are immutable, `s[i]` cannot appear as an assignment target
+(`s[i] = ...`, `s[i]++`, etc. are all runtime errors).
+
+`string` values also expose a small set of built-in members, accessed like
 `s.length`, `s.toUpper()`, etc. All of these return new values; strings are
 immutable and none of these mutate the receiver.
 

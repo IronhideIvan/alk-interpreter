@@ -600,6 +600,7 @@ public class EndToEndTests : RuntimeTestBase
     //
     // Features exercised:
     //   - string.length
+    //   - string indexer: s[i] yields a single-character string
     //   - string.toUpper(), string.toLower(), string.trim()
     //   - string.substring(start, count)
     //   - string.indexOf(value), string.contains(value),
@@ -632,6 +633,8 @@ public class EndToEndTests : RuntimeTestBase
       new[]
       {
         "length=13",
+        "char[0]=H",
+        "char[7]=W",
         "upper=HELLO, WORLD!",
         "lower=hello, world!",
         "trim=[spaced]",

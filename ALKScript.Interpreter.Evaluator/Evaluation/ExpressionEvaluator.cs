@@ -241,6 +241,11 @@ namespace ALKScript.Interpreter.Evaluator
           {
             return NullValue.Instance;
           }
+          if (indexed is StringValue)
+          {
+            throw new RuntimeException(index.ClosingBracket, "Cannot assign to a string index; strings are immutable.");
+          }
+
           var array = indexed as ArrayValue
             ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{indexed.TypeName}'.");
           var indexValue = await Eval(index.Index, environment);
@@ -248,7 +253,7 @@ namespace ALKScript.Interpreter.Evaluator
           {
             return NullValue.Instance;
           }
-          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count);
+          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count, "Array");
           array.Items[position] = value;
           return value;
 
@@ -307,12 +312,16 @@ namespace ALKScript.Interpreter.Evaluator
           var target = await Eval(index.Target, environment);
           if (_context.Signal != null)
             return (NullValue.Instance, NullValue.Instance);
+          if (target is StringValue)
+          {
+            throw new RuntimeException(index.ClosingBracket, "Cannot assign to a string index; strings are immutable.");
+          }
           var array = target as ArrayValue
             ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
           var indexValue = await Eval(index.Index, environment);
           if (_context.Signal != null)
             return (NullValue.Instance, NullValue.Instance);
-          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count);
+          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count, "Array");
           var old = array.Items[position];
           var next = Step(old, op);
           array.Items[position] = next;
@@ -983,11 +992,15 @@ namespace ALKScript.Interpreter.Evaluator
         {
           var target = await Eval(index.Target, environment);
           if (_context.Signal != null) return NullValue.Instance;
+          if (target is StringValue)
+          {
+            throw new RuntimeException(index.ClosingBracket, "Cannot assign to a string index; strings are immutable.");
+          }
           var array = target as ArrayValue
             ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
           var indexValue = await Eval(index.Index, environment);
           if (_context.Signal != null) return NullValue.Instance;
-          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count);
+          int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count, "Array");
           var current = array.Items[position];
           var rhs = await Eval(expression.Value, environment);
           if (_context.Signal != null) return NullValue.Instance;
@@ -1139,9 +1152,6 @@ namespace ALKScript.Interpreter.Evaluator
         return NullValue.Instance;
       }
 
-      var array = target as ArrayValue
-        ?? throw new RuntimeException(expression.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
-
       var indexValue = await Eval(expression.Index, environment);
 
       if (_context.Signal != null)
@@ -1149,21 +1159,32 @@ namespace ALKScript.Interpreter.Evaluator
         return NullValue.Instance;
       }
 
-      int position = ExpectIndex(indexValue, expression.ClosingBracket, array.Items.Count);
-      return array.Items[position];
+      switch (target)
+      {
+        case ArrayValue array:
+          int position = ExpectIndex(indexValue, expression.ClosingBracket, array.Items.Count, "Array");
+          return array.Items[position];
+
+        case StringValue stringValue:
+          int charPosition = ExpectIndex(indexValue, expression.ClosingBracket, stringValue.Value.Length, "String");
+          return new StringValue(stringValue.Value[charPosition].ToString());
+
+        default:
+          throw new RuntimeException(expression.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
+      }
     }
 
-    private static int ExpectIndex(ALKScriptValue value, ALKScriptToken site, int length)
+    private static int ExpectIndex(ALKScriptValue value, ALKScriptToken site, int length, string kind)
     {
       if (!(value is IntValue intValue))
       {
-        throw new RuntimeException(site, $"Array index must be an int, but got '{value.TypeName}'.");
+        throw new RuntimeException(site, $"{kind} index must be an int, but got '{value.TypeName}'.");
       }
 
       long index = intValue.Value;
       if (index < 0 || index >= length)
       {
-        throw new RuntimeException(site, $"Index {index} is out of bounds for an array of length {length}.");
+        throw new RuntimeException(site, $"Index {index} is out of bounds for {(kind == "String" ? "a string" : "an array")} of length {length}.");
       }
 
       return (int)index;
@@ -1236,7 +1257,7 @@ namespace ALKScript.Interpreter.Evaluator
         case "remove":
           return new NativeFunctionValue("remove", 1, arguments =>
           {
-            int index = ExpectIndex(arguments[0], name, array.Items.Count);
+            int index = ExpectIndex(arguments[0], name, array.Items.Count, "Array");
 
             var removed = array.Items[index];
             array.Items.RemoveAt(index);
