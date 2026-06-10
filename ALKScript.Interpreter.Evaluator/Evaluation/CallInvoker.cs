@@ -123,7 +123,7 @@ namespace ALKScript.Interpreter.Evaluator
       {
         foreach (var member in cls.Declaration.Members)
         {
-          if (member is FieldDecl field)
+          if (member is FieldDecl field && !field.IsStatic)
           {
             ALKScriptValue fieldValue;
             if (field.Initializer != null)

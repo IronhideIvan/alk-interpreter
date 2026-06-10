@@ -208,6 +208,15 @@ namespace ALKScript.Interpreter.Evaluator
           {
             return NullValue.Instance;
           }
+
+          if (target is ClassValue staticTargetClass)
+          {
+            var (staticDeclaringClass, staticField) = ResolveStaticField(staticTargetClass, get.Name, environment);
+            TypeChecking.EnsureAssignable(staticField.Type, value, get.Name, $"static field '{get.Name.Lexeme}'", environment);
+            staticDeclaringClass.StaticFields[get.Name.Lexeme] = value;
+            return value;
+          }
+
           var instance = target as InstanceValue
             ?? throw new RuntimeException(get.Name, $"Cannot set property '{get.Name.Lexeme}' on a value of type '{target.TypeName}'.");
           var fieldMemberForWrite = instance.Class.FindMember(get.Name.Lexeme, out var fieldWriteDeclaringClass);
@@ -271,6 +280,16 @@ namespace ALKScript.Interpreter.Evaluator
           var target = await Eval(get.Target, environment);
           if (_context.Signal != null)
             return (NullValue.Instance, NullValue.Instance);
+
+          if (target is ClassValue staticTargetClass)
+          {
+            var (staticDeclaringClass, _) = ResolveStaticField(staticTargetClass, get.Name, environment);
+            var staticOld = staticDeclaringClass.StaticFields[get.Name.Lexeme];
+            var staticNext = Step(staticOld, op);
+            staticDeclaringClass.StaticFields[get.Name.Lexeme] = staticNext;
+            return (staticOld, staticNext);
+          }
+
           var instance = target as InstanceValue
             ?? throw new RuntimeException(get.Name, $"Cannot apply '{op.Lexeme}' to a value of type '{target.TypeName}'.");
           if (!instance.Fields.TryGetValue(get.Name.Lexeme, out var old))
@@ -765,10 +784,20 @@ namespace ALKScript.Interpreter.Evaluator
           }
 
           var member = instance.Class.FindMember(name.Lexeme, out var declaringClass);
-          if (member is MethodDecl method)
+          if (member is MethodDecl method && !method.IsStatic)
           {
             EnforceAccessModifier(member, declaringClass, name, environment);
             return _functionValueFactory.CreateMethod(method, declaringClass!, ClassEnvironments.For(instance.Class), instance);
+          }
+
+          if (member is FieldDecl staticField && staticField.IsStatic)
+          {
+            throw new RuntimeException(name, $"Cannot access static member '{name.Lexeme}' through an instance; use '{instance.Class.Declaration.Name.Lexeme}.{name.Lexeme}'.");
+          }
+
+          if (member is MethodDecl staticMethodViaInstance && staticMethodViaInstance.IsStatic)
+          {
+            throw new RuntimeException(name, $"Cannot access static member '{name.Lexeme}' through an instance; use '{instance.Class.Declaration.Name.Lexeme}.{name.Lexeme}'.");
           }
 
           throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on '{target.TypeName}'.");
@@ -784,10 +813,17 @@ namespace ALKScript.Interpreter.Evaluator
 
         case ClassValue classValue:
           var staticMember = classValue.FindMember(name.Lexeme, out var staticDeclaringClass);
-          if (staticMember is MethodDecl staticMethod)
+
+          if (staticMember is MethodDecl staticMethod && staticMethod.IsStatic)
           {
             EnforceAccessModifier(staticMember, staticDeclaringClass, name, environment);
             return _functionValueFactory.CreateMethod(staticMethod, staticDeclaringClass!, ClassEnvironments.For(classValue), boundInstance: null);
+          }
+
+          if (staticMember is FieldDecl staticFieldDecl && staticFieldDecl.IsStatic)
+          {
+            EnforceAccessModifier(staticMember, staticDeclaringClass, name, environment);
+            return staticDeclaringClass!.StaticFields[name.Lexeme];
           }
 
           throw new RuntimeException(name, $"Undefined static member '{name.Lexeme}' on '{target.TypeName}'.");
@@ -857,6 +893,27 @@ namespace ALKScript.Interpreter.Evaluator
       return false;
     }
 
+    /// <summary>
+    /// Resolves <paramref name="name"/> as a "static" field on
+    /// <paramref name="classValue"/> (or an inherited one), enforcing its
+    /// access modifier, for "ClassName.field" write/update targets. Throws if
+    /// no such static field exists.
+    /// </summary>
+    private static (ClassValue DeclaringClass, FieldDecl Field) ResolveStaticField(
+      ClassValue classValue, ALKScriptToken name, ScriptEnvironment environment)
+    {
+      var member = classValue.FindMember(name.Lexeme, out var declaringClass);
+
+      if (!(member is FieldDecl field) || !field.IsStatic)
+      {
+        throw new RuntimeException(name, $"Undefined static field '{name.Lexeme}' on '{classValue.Declaration.Name.Lexeme}'.");
+      }
+
+      EnforceAccessModifier(field, declaringClass, name, environment);
+
+      return (declaringClass!, field);
+    }
+
     private async Task<ALKScriptValue> EvalCompoundAssignment(CompoundAssignmentExpr expression, ScriptEnvironment environment)
     {
       switch (expression.Target)
@@ -876,6 +933,18 @@ namespace ALKScript.Interpreter.Evaluator
         {
           var target = await Eval(get.Target, environment);
           if (_context.Signal != null) return NullValue.Instance;
+
+          if (target is ClassValue staticTargetClass)
+          {
+            var (staticDeclaringClass, _) = ResolveStaticField(staticTargetClass, get.Name, environment);
+            var staticCurrent = staticDeclaringClass.StaticFields[get.Name.Lexeme];
+            var staticRhs = await Eval(expression.Value, environment);
+            if (_context.Signal != null) return NullValue.Instance;
+            var staticResult = ApplyCompound(staticCurrent, staticRhs, expression.Operator);
+            staticDeclaringClass.StaticFields[get.Name.Lexeme] = staticResult;
+            return staticResult;
+          }
+
           var instance = target as InstanceValue
             ?? throw new RuntimeException(get.Name, $"Cannot apply '{expression.Operator.Lexeme}' to a value of type '{target.TypeName}'.");
           if (!instance.Fields.TryGetValue(get.Name.Lexeme, out var current))

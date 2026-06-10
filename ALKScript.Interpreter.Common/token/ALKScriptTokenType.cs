@@ -62,6 +62,7 @@ namespace ALKScript.Interpreter.Common.Token
     Interface,
     Implements,
     Enum,
+    Static,
 
     // Keywords - type testing/casting
     Is,

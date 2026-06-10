@@ -22,6 +22,16 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     /// </summary>
     public ScriptEnvironment Closure { get; }
 
+    /// <summary>
+    /// Storage for this class's own "static" fields — one shared slot per
+    /// declaration, populated from each field's initializer when the class
+    /// declaration is executed. Inherited static members are read/written
+    /// through the declaring class's <see cref="ClassValue"/> (see
+    /// <see cref="FindMember(string, out ClassValue?)"/>'s <c>declaringClass</c>
+    /// out parameter), not duplicated per subclass.
+    /// </summary>
+    public Dictionary<string, ALKScriptValue> StaticFields { get; } = new Dictionary<string, ALKScriptValue>();
+
     public ClassValue(ClassDecl declaration, ClassValue? superclass, ScriptEnvironment closure, IReadOnlyList<InterfaceValue>? interfaces = null)
     {
       Declaration = declaration;

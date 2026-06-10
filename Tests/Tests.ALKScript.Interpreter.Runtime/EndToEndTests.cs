@@ -739,6 +739,81 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Contains("missing", exception.Message);
   }
 
+  // ── Static members ──────────────────────────────────────────────────────────
+
+  [Fact]
+  public void StaticMembersShowcase_StaticFieldsAndMethods_AreSharedAcrossInstancesAndSubclasses()
+  {
+    // Features exercised:
+    //   - "static" fields with initializers, shared across all instances
+    //   - "static" methods, called as "ClassName.method(...)"
+    //   - mutating a static field via "ClassName.field = ..." and "+="
+    //   - a subclass accessing its superclass's static members by name
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("StaticMembersShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("StaticMembersShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "count = 2",
+        "a.id = 1",
+        "b.id = 2",
+        "category = tool",
+        "category = device",
+        "device: 2",
+        "done",
+      },
+      logged);
+  }
+
+  [Theory]
+  [InlineData("invalid_private_static_field.alk", "private")]
+  [InlineData("invalid_instance_static_field.alk", "static member")]
+  [InlineData("invalid_instance_static_method.alk", "static member")]
+  public void StaticMembersShowcase_InvalidStaticAccess_ThrowsRuntimeException(string fileName, string expectedDescription)
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("StaticMembersShowcase", fileName),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("StaticMembersShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains(expectedDescription, exception.Message);
+    Assert.Empty(logged);
+  }
+
   // ── Enums ───────────────────────────────────────────────────────────────────
 
   [Fact]

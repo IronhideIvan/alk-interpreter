@@ -382,7 +382,16 @@ namespace ALKScript.Interpreter.Parser
         return new ConstructorDecl(accessModifier, ctorParameters, ctorBody);
       }
 
+      ALKScriptToken? staticKeyword = _stream.Check(ALKScriptTokenType.Static) ? _stream.Peek() : null;
+      bool isStatic = _stream.Match(ALKScriptTokenType.Static);
+
       OverrideModifier overrideModifier = ParseOptionalOverrideModifier();
+
+      if (isStatic && overrideModifier != OverrideModifier.None)
+      {
+        throw Error(staticKeyword!, "'static' members cannot be 'virtual', 'abstract', or 'override'.");
+      }
+
       bool isNative = _stream.Match(ALKScriptTokenType.Native);
       ALKScriptToken? asyncKeyword = _stream.Check(ALKScriptTokenType.Async) ? _stream.Peek() : null;
       bool isAsync = _stream.Match(ALKScriptTokenType.Async);
@@ -426,7 +435,7 @@ namespace ALKScript.Interpreter.Parser
           throw Error(asyncKeyword!, "'async' is only valid on methods whose body contains at least one 'await' expression. Remove 'async' or add an 'await' call.");
         }
 
-        return new MethodDecl(accessModifier, overrideModifier, isNative, isAsync, typeParameters, returnType, methodName, parameters, body);
+        return new MethodDecl(accessModifier, overrideModifier, isNative, isAsync, typeParameters, returnType, methodName, parameters, body, isStatic);
       }
 
       // Field: accessModifier? ("var" | type) IDENTIFIER ("=" expression)? ";"
@@ -442,7 +451,7 @@ namespace ALKScript.Interpreter.Parser
 
       _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after field declaration.");
 
-      return new FieldDecl(accessModifier, fieldType, fieldName, fieldInitializer);
+      return new FieldDecl(accessModifier, fieldType, fieldName, fieldInitializer, isStatic);
     }
 
     private AccessModifier ParseOptionalAccessModifier()

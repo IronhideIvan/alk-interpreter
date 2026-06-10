@@ -1,0 +1,16 @@
+import { log } from "console";
+
+// "instanceCount" is "private static" — accessing it from outside the class,
+// even via the class name, is a RuntimeException.
+
+class Widget {
+    private static int instanceCount = 0;
+
+    public new() {
+        Widget.instanceCount += 1;
+    }
+}
+
+var w = new Widget();
+
+log(`instanceCount = ${Widget.instanceCount}`);

@@ -20,3 +20,4 @@ Everything below was previously listed as missing and is now fully implemented a
 - Generics enforcement for class/interface type parameters (`new Box<int>(...)`)
 - Namespace imports (`import * as Foo from "./foo"`)
 - Re-exports (`export { Foo, Bar as Baz } from "./foo"`)
+- Static fields and methods (`static`, accessed as `ClassName.member`; classes themselves cannot be `static`)

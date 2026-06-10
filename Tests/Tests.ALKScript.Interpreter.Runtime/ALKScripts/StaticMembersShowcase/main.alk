@@ -1,0 +1,44 @@
+import { log } from "console";
+
+// ── static fields and methods ───────────────────────────────────────────────
+//
+// "static" members belong to the class itself rather than to each instance:
+// one shared slot, accessed as "ClassName.member" (never through an instance).
+
+class Widget {
+    private static int instanceCount = 0;
+    public static string category = "tool";
+
+    public int id;
+
+    public new() {
+        Widget.instanceCount += 1;
+        this.id = Widget.instanceCount;
+    }
+
+    public static function int count() {
+        return Widget.instanceCount;
+    }
+}
+
+// Static members are accessible (by name) through a subclass too.
+class Gadget extends Widget {
+    public static function string describe() {
+        return `${Widget.category}: ${Widget.count()}`;
+    }
+}
+
+var a = new Widget();
+var b = new Widget();
+
+log(`count = ${Widget.count()}`);
+log(`a.id = ${a.id}`);
+log(`b.id = ${b.id}`);
+
+log(`category = ${Widget.category}`);
+Widget.category = "device";
+log(`category = ${Widget.category}`);
+
+log(Gadget.describe());
+
+log("done");

@@ -1,4 +1,5 @@
 using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Parser;
 using Xunit;
 
 namespace Tests.ALKScript.Interpreter.Parser;
@@ -102,6 +103,35 @@ public class EnumInterfaceSealedTests : ParserTestBase
 
     Assert.True(classDecl.IsSealed);
     Assert.False(classDecl.IsAbstract);
+  }
+
+  [Fact]
+  public void Parse_StaticFieldAndMethod_SetIsStatic()
+  {
+    var program = Parse("class Counter {\n  public static int count = 0;\n  public static function int next() { return 0; }\n  public int id;\n  public function int instanceMethod() { return 0; }\n}");
+
+    var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
+
+    var countField = Assert.IsType<FieldDecl>(classDecl.Members[0]);
+    Assert.True(countField.IsStatic);
+
+    var nextMethod = Assert.IsType<MethodDecl>(classDecl.Members[1]);
+    Assert.True(nextMethod.IsStatic);
+
+    var idField = Assert.IsType<FieldDecl>(classDecl.Members[2]);
+    Assert.False(idField.IsStatic);
+
+    var instanceMethod = Assert.IsType<MethodDecl>(classDecl.Members[3]);
+    Assert.False(instanceMethod.IsStatic);
+  }
+
+  [Theory]
+  [InlineData("class C { public static virtual function int f() { return 0; } }")]
+  [InlineData("class C { public static abstract function int f(); }")]
+  [InlineData("class C { public static override function int f() { return 0; } }")]
+  public void Parse_StaticCombinedWithOverrideModifier_ThrowsParseException(string source)
+  {
+    Assert.Throws<ParseException>(() => Parse(source));
   }
 
   [Fact]

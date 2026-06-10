@@ -1,0 +1,20 @@
+import { log } from "console";
+
+// "count" is "static" — calling it through an instance ("w.count()") rather
+// than the class name ("Widget.count()") is a RuntimeException.
+
+class Widget {
+    private static int instanceCount = 0;
+
+    public new() {
+        Widget.instanceCount += 1;
+    }
+
+    public static function int count() {
+        return Widget.instanceCount;
+    }
+}
+
+var w = new Widget();
+
+log(`count = ${w.count()}`);

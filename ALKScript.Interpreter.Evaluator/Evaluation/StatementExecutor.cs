@@ -55,7 +55,7 @@ namespace ALKScript.Interpreter.Evaluator
           break;
 
         case ClassDecl classDecl:
-          ExecuteClassDecl(classDecl, environment);
+          await ExecuteClassDecl(classDecl, environment);
           break;
 
         case InterfaceDecl interfaceDecl:
@@ -166,7 +166,7 @@ namespace ALKScript.Interpreter.Evaluator
       environment.Define(declaration.Name.Lexeme, value, declaration.Type);
     }
 
-    private void ExecuteClassDecl(ClassDecl declaration, ScriptEnvironment environment)
+    private async Task ExecuteClassDecl(ClassDecl declaration, ScriptEnvironment environment)
     {
       ClassValue? superclass = null;
 
@@ -212,6 +212,43 @@ namespace ALKScript.Interpreter.Evaluator
       }
 
       environment.Define(declaration.Name.Lexeme, classValue);
+
+      await InitializeStaticFields(classValue, environment);
+    }
+
+    /// <summary>
+    /// Evaluates each "static" <see cref="FieldDecl"/> declared directly on
+    /// <paramref name="classValue"/> (not inherited — each class's static
+    /// fields live in its own <see cref="ClassValue.StaticFields"/>) and seeds
+    /// its initial value, defaulting to <see cref="NullValue.Instance"/> when
+    /// no initializer is present. Runs once, when the class declaration itself
+    /// is executed — not per "new".
+    /// </summary>
+    private async Task InitializeStaticFields(ClassValue classValue, ScriptEnvironment environment)
+    {
+      var initEnvironment = new ScriptEnvironment(environment) { CurrentClass = classValue };
+
+      foreach (var member in classValue.Declaration.Members)
+      {
+        if (member is FieldDecl field && field.IsStatic)
+        {
+          ALKScriptValue fieldValue;
+
+          if (field.Initializer != null)
+          {
+            fieldValue = await _context.Eval(field.Initializer, initEnvironment);
+            if (_context.Signal != null) return;
+
+            TypeChecking.EnsureAssignable(field.Type, fieldValue, field.Name, $"static field '{field.Name.Lexeme}'", initEnvironment);
+          }
+          else
+          {
+            fieldValue = NullValue.Instance;
+          }
+
+          classValue.StaticFields[field.Name.Lexeme] = fieldValue;
+        }
+      }
     }
 
     private void ExecuteInterfaceDecl(InterfaceDecl declaration, ScriptEnvironment environment)

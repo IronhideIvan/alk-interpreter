@@ -1,0 +1,12 @@
+import { log } from "console";
+
+// "category" is "static" — accessing it through an instance ("w.category")
+// rather than the class name ("Widget.category") is a RuntimeException.
+
+class Widget {
+    public static string category = "tool";
+}
+
+var w = new Widget();
+
+log(`category = ${w.category}`);
