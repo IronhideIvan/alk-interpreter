@@ -220,6 +220,28 @@ namespace ALKScript.Interpreter.Evaluator
         BindImport(import, moduleEnvs[resolvedId], env);
       }
 
+      // Re-exports ("export { Foo } from "./foo";") are resolved the same way
+      // as imports — the target module is executed first, then the named
+      // bindings are copied into this module's environment, both so they're
+      // usable locally and so downstream importers of this module see them.
+      foreach (var declaration in module.Program.Declarations)
+      {
+        if (declaration is ReExportDecl reExport)
+        {
+          string resolvedId = module.ImportResolutions[reExport.Source.Lexeme];
+          LoadedModule dependency = graph.Modules[resolvedId];
+
+          await ExecuteModule(dependency, graph, globals, moduleEnvs);
+
+          if (_signal != null)
+          {
+            return;
+          }
+
+          BindNamedSpecifiers(reExport.Specifiers, moduleEnvs[resolvedId], env);
+        }
+      }
+
       foreach (var declaration in module.Program.Declarations)
       {
         await _statements.Execute(declaration, env);
@@ -240,18 +262,7 @@ namespace ALKScript.Interpreter.Evaluator
       switch (import.Clause)
       {
         case NamedImportsClause namedImports:
-          foreach (var specifier in namedImports.Specifiers)
-          {
-            string exportedName = specifier.Name.Lexeme;
-            string localName = specifier.Alias?.Lexeme ?? exportedName;
-
-            if (!sourceEnv.TryGet(exportedName, out ALKScriptValue value))
-            {
-              throw new RuntimeException(specifier.Name, $"Module does not export '{exportedName}'.");
-            }
-
-            targetEnv.Define(localName, value);
-          }
+          BindNamedSpecifiers(namedImports.Specifiers, sourceEnv, targetEnv);
           break;
 
         case NamespaceImportClause namespaceImport:
@@ -262,6 +273,28 @@ namespace ALKScript.Interpreter.Evaluator
           }
           targetEnv.Define(namespaceImport.Alias.Lexeme, new NamespaceValue(namespaceImport.Alias.Lexeme, members));
           break;
+      }
+    }
+
+    /// <summary>
+    /// Binds each named specifier's value from <paramref name="sourceEnv"/>
+    /// into <paramref name="targetEnv"/> under its local name (the alias, if
+    /// any, otherwise the original name) — shared by named imports and
+    /// re-export "from" clauses.
+    /// </summary>
+    private static void BindNamedSpecifiers(IReadOnlyList<ImportSpecifier> specifiers, ScriptEnvironment sourceEnv, ScriptEnvironment targetEnv)
+    {
+      foreach (var specifier in specifiers)
+      {
+        string exportedName = specifier.Name.Lexeme;
+        string localName = specifier.Alias?.Lexeme ?? exportedName;
+
+        if (!sourceEnv.TryGet(exportedName, out ALKScriptValue value))
+        {
+          throw new RuntimeException(specifier.Name, $"Module does not export '{exportedName}'.");
+        }
+
+        targetEnv.Define(localName, value);
       }
     }
 

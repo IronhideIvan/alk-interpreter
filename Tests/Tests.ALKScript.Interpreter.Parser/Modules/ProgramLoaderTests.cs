@@ -157,6 +157,65 @@ public class ProgramLoaderTests
   }
 
   [Fact]
+  public void Load_ReExport_ResolvesTargetModuleAndAddsToGraph()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "export { Foo } from \"./models\";",
+      ["models.alk"] = "export class Foo {}",
+    };
+
+    ModuleGraph graph = CreateLoader(files).Load("main.alk");
+
+    Assert.Equal(2, graph.Modules.Count);
+    Assert.Contains("models.alk", graph.Modules.Keys);
+  }
+
+  [Fact]
+  public void Load_ReExportOfUnexportedDeclaration_ThrowsModuleLoadException()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "export { helper } from \"./models\";",
+      ["models.alk"] = "function int helper(int a) { return a; }",
+    };
+
+    var exception = Assert.Throws<ModuleLoadException>(() => CreateLoader(files).Load("main.alk"));
+    Assert.Contains("has no exported member", exception.Message);
+    Assert.Contains("helper", exception.Message);
+  }
+
+  [Fact]
+  public void Load_NamedImportOfReExportedName_ResolvesThroughReExportingModule()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { Foo } from \"./reexporter\";",
+      ["reexporter.alk"] = "export { Foo as Foo } from \"./models\";",
+      ["models.alk"] = "export class Foo {}",
+    };
+
+    ModuleGraph graph = CreateLoader(files).Load("main.alk");
+
+    Assert.Equal(3, graph.Modules.Count);
+  }
+
+  [Fact]
+  public void Load_NamedImportOfReExportedAliasedName_ValidatesAgainstTheAlias()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { Bar } from \"./reexporter\";",
+      ["reexporter.alk"] = "export { Foo as Bar } from \"./models\";",
+      ["models.alk"] = "export class Foo {}",
+    };
+
+    ModuleGraph graph = CreateLoader(files).Load("main.alk");
+
+    Assert.Equal(3, graph.Modules.Count);
+  }
+
+  [Fact]
   public void Load_RelativeImportFromNestedDirectory_ResolvesAgainstImportingFilesDirectory()
   {
     var files = new Dictionary<string, string>

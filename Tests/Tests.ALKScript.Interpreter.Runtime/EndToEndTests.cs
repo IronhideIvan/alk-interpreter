@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator;
+using ALKScript.Interpreter.Parser.Modules;
 using Tests.ALKScript.Interpreter.Runtime.Support;
 
 namespace Tests.ALKScript.Interpreter.Runtime;
@@ -669,6 +670,73 @@ public class EndToEndTests : RuntimeTestBase
         "done",
       },
       logged);
+  }
+
+  // ── Re-exports ──────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void ReExportShowcase_BarrelModule_ExposesReExportedNamesToImporters()
+  {
+    // The program spans three modules:
+    //   main.alk         — entry point; imports "square", "volume", "PI" from "./shapes_index"
+    //   shapes_index.alk — a "barrel" module; re-exports those names (some renamed) from "./shapes"
+    //   shapes.alk       — owns the actual declarations
+    //
+    // Features exercised:
+    //   - "export { Foo, Bar as Baz } from '...'" re-exports
+    //   - importing re-exported (and renamed) names through the barrel module
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"]         = ReadScript("ReExportShowcase", "main.alk"),
+        ["shapes_index.alk"] = ReadScript("ReExportShowcase", "shapes_index.alk"),
+        ["shapes.alk"]       = ReadScript("ReExportShowcase", "shapes.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ReExportShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "square(4) = 16",
+        "volume(3) = 27",
+        "PI = 3",
+        "done",
+      },
+      logged);
+  }
+
+  [Fact]
+  public void ReExportShowcase_ReExportOfUnexportedName_ThrowsModuleLoadException()
+  {
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"]   = ReadScript("ReExportShowcase", "invalid_index.alk"),
+        ["shapes.alk"] = ReadScript("ReExportShowcase", "shapes.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("ReExportShowcase", "console.alk"),
+      });
+
+    var exception = Assert.Throws<ModuleLoadException>(() => runtime.RunFromFile("main.alk"));
+
+    Assert.Contains("has no exported member", exception.Message);
+    Assert.Contains("missing", exception.Message);
   }
 
   // ── Enums ───────────────────────────────────────────────────────────────────

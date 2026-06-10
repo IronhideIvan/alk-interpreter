@@ -103,4 +103,21 @@ public class EnumInterfaceSealedTests : ParserTestBase
     Assert.True(classDecl.IsSealed);
     Assert.False(classDecl.IsAbstract);
   }
+
+  [Fact]
+  public void Parse_ReExportDeclaration_CapturesSpecifiersAndSource()
+  {
+    var program = Parse("export { Foo, Bar as Baz } from \"./module\";");
+
+    var reExportDecl = Assert.IsType<ReExportDecl>(Assert.Single(program.Declarations));
+
+    Assert.Equal("./module", reExportDecl.Source.Lexeme);
+    Assert.Equal(2, reExportDecl.Specifiers.Count);
+
+    Assert.Equal("Foo", reExportDecl.Specifiers[0].Name.Lexeme);
+    Assert.Null(reExportDecl.Specifiers[0].Alias);
+
+    Assert.Equal("Bar", reExportDecl.Specifiers[1].Name.Lexeme);
+    Assert.Equal("Baz", reExportDecl.Specifiers[1].Alias!.Lexeme);
+  }
 }

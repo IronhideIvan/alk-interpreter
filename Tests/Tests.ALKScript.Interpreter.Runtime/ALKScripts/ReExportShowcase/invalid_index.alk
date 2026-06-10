@@ -1,0 +1,4 @@
+// "shapes.alk" does not export anything named "missing" — re-exporting it
+// is a module-load-time error (ModuleLoadException), not a runtime error.
+
+export { missing } from "./shapes";

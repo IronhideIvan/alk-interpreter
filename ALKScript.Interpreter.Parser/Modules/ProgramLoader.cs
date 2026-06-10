@@ -177,6 +177,14 @@ namespace ALKScript.Interpreter.Parser.Modules
         {
           ResolveImport(path, import, modules, loadingStack, importResolutions);
         }
+
+        foreach (Stmt declaration in program.Declarations)
+        {
+          if (declaration is ReExportDecl reExport)
+          {
+            ResolveReExport(path, reExport, modules, loadingStack, importResolutions);
+          }
+        }
       }
       finally
       {
@@ -213,6 +221,60 @@ namespace ALKScript.Interpreter.Parser.Modules
       importResolutions[specifier] = resolvedPath;
 
       ValidateNamedImports(import, specifier, target.Program);
+    }
+
+    /// <summary>
+    /// Resolves the "from" target of a re-export declaration the same way an
+    /// <see cref="ImportDecl"/> is resolved — recursively loading file modules,
+    /// recording an entry in <paramref name="importResolutions"/>, detecting
+    /// cycles, and validating that the target module actually exports every
+    /// re-exported name.
+    /// </summary>
+    private void ResolveReExport(string importingFilePath, ReExportDecl reExport, Dictionary<string, LoadedModule> modules, HashSet<string> loadingStack, Dictionary<string, string> importResolutions)
+    {
+      string specifier = reExport.Source.Lexeme;
+
+      if (!IsRelativeFilePathSpecifier(specifier))
+      {
+        ResolveCoreModuleForReExport(reExport, specifier, modules);
+        importResolutions[specifier] = specifier; // core modules: identifier == specifier
+        return;
+      }
+
+      string resolvedPath = ResolveFilePathSpecifier(importingFilePath, specifier);
+
+      if (resolvedPath == null!)
+      {
+        throw new ModuleLoadException(reExport.Source, $"Cannot find module '{specifier}'.");
+      }
+
+      if (loadingStack.Contains(resolvedPath))
+      {
+        throw new ModuleLoadException(reExport.Source, $"Circular import detected while loading module '{specifier}'.");
+      }
+
+      LoadedModule target = LoadFileModule(resolvedPath, modules, loadingStack);
+      importResolutions[specifier] = resolvedPath;
+
+      ValidateSpecifiersExported(reExport.Specifiers, specifier, target.Program);
+    }
+
+    private void ResolveCoreModuleForReExport(ReExportDecl reExport, string specifier, Dictionary<string, LoadedModule> modules)
+    {
+      if (!modules.TryGetValue(specifier, out LoadedModule? target))
+      {
+        ProgramNode? program = ResolveCoreModuleProgram(specifier);
+
+        if (program == null)
+        {
+          throw new ModuleLoadException(reExport.Source, $"Cannot find core module '{specifier}'.");
+        }
+
+        target = new LoadedModule(specifier, ModuleKind.Core, program);
+        modules[specifier] = target;
+      }
+
+      ValidateSpecifiersExported(reExport.Specifiers, specifier, target.Program);
     }
 
     private void ResolveCoreModule(ImportDecl import, string specifier, Dictionary<string, LoadedModule> modules)
@@ -301,9 +363,19 @@ namespace ALKScript.Interpreter.Parser.Modules
         return;
       }
 
+      ValidateSpecifiersExported(namedImports.Specifiers, specifier, targetProgram);
+    }
+
+    /// <summary>
+    /// Validates that every name in <paramref name="specifiers"/> is actually
+    /// exported by <paramref name="targetProgram"/>, used for both named
+    /// imports and re-export "from" clauses.
+    /// </summary>
+    private static void ValidateSpecifiersExported(IReadOnlyList<ImportSpecifier> specifiers, string specifier, ProgramNode targetProgram)
+    {
       HashSet<string> exportedNames = CollectExportedNames(targetProgram);
 
-      foreach (ImportSpecifier importSpecifier in namedImports.Specifiers)
+      foreach (ImportSpecifier importSpecifier in specifiers)
       {
         string name = importSpecifier.Name.Lexeme;
 
@@ -327,6 +399,13 @@ namespace ALKScript.Interpreter.Parser.Modules
           if (name != null)
           {
             names.Add(name);
+          }
+        }
+        else if (declaration is ReExportDecl reExportDecl)
+        {
+          foreach (ImportSpecifier specifier in reExportDecl.Specifiers)
+          {
+            names.Add(specifier.Alias?.Lexeme ?? specifier.Name.Lexeme);
           }
         }
       }

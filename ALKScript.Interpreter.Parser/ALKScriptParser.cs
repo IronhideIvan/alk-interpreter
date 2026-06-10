@@ -82,7 +82,13 @@ namespace ALKScript.Interpreter.Parser
         return new NamespaceImportClause(alias);
       }
 
-      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin a named-imports clause.");
+      return new NamedImportsClause(ParseNamedSpecifierList());
+    }
+
+    /// <summary>Parses "{" importSpecifier ("," importSpecifier)* "}", shared by named imports and re-exports.</summary>
+    private List<ImportSpecifier> ParseNamedSpecifierList()
+    {
+      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin a named-specifier list.");
 
       var specifiers = new List<ImportSpecifier>();
 
@@ -94,9 +100,9 @@ namespace ALKScript.Interpreter.Parser
         } while (_stream.Match(ALKScriptTokenType.Comma));
       }
 
-      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after named imports.");
+      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after named specifiers.");
 
-      return new NamedImportsClause(specifiers);
+      return specifiers;
     }
 
     private ImportSpecifier ParseImportSpecifier()
@@ -154,8 +160,21 @@ namespace ALKScript.Interpreter.Parser
       return new StatementDecl(ParseStatement());
     }
 
-    private ExportDecl ParseExportDecl()
+    private Decl ParseExportDecl()
     {
+      // "export { Foo, Bar as Baz } from "./module";" re-exports named members
+      // of another module under this module's export surface.
+      if (_stream.Check(ALKScriptTokenType.LeftBrace))
+      {
+        List<ImportSpecifier> specifiers = ParseNamedSpecifierList();
+
+        _stream.Consume(ALKScriptTokenType.From, "Expect 'from' after re-export specifiers.");
+        ALKScriptToken source = _stream.Consume(ALKScriptTokenType.String, "Expect a module path string after 'from'.");
+        _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after re-export declaration.");
+
+        return new ReExportDecl(specifiers, source);
+      }
+
       // "export" is only valid immediately before a class, interface, enum,
       // function, or variable declaration.
       if (CheckClassDeclStart())

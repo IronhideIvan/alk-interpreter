@@ -70,6 +70,11 @@ namespace ALKScript.Interpreter.Evaluator
           await Execute(exportDecl.Declaration, environment);
           break;
 
+        case ReExportDecl:
+          // Bindings are wired up by ProgramEvaluator.ExecuteModule before the
+          // declarations loop runs; nothing left to do here.
+          break;
+
         case ExpressionStmt expressionStmt:
           await _context.Eval(expressionStmt.Expression, environment);
           break;

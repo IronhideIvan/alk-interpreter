@@ -1,0 +1,14 @@
+import { log } from "console";
+import { square, volume, PI } from "./shapes_index";
+
+// ── re-export ("export { Foo } from './foo'") ──────────────────────────────
+//
+// "shapes_index.alk" doesn't declare "square", "volume", or "PI" itself —
+// it re-exports them (some under new names) from "./shapes". They're
+// imported here exactly as if "shapes_index.alk" had declared them directly.
+
+log(`square(4) = ${square(4)}`);
+log(`volume(3) = ${volume(3)}`);
+log(`PI = ${PI}`);
+
+log("done");

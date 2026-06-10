@@ -1,0 +1,4 @@
+// A "barrel" module: re-exports selected members of "./shapes" under this
+// module's own export surface, optionally renaming them.
+
+export { square, cube as volume, pi as PI } from "./shapes";
