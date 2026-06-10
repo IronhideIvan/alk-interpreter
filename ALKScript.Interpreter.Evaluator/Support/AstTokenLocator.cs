@@ -28,6 +28,8 @@ namespace ALKScript.Interpreter.Evaluator
           return foreachStmt.Keyword;
         case DoWhileStmt doWhileStmt:
           return doWhileStmt.Keyword;
+        case SwitchStmt switchStmt:
+          return switchStmt.Keyword;
         default:
           return EndOfFile;
       }

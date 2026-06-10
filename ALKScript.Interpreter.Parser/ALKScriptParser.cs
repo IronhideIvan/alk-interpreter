@@ -626,6 +626,11 @@ namespace ALKScript.Interpreter.Parser
         return ParseDoWhileStatement();
       }
 
+      if (_stream.Match(ALKScriptTokenType.Switch))
+      {
+        return ParseSwitchStatement();
+      }
+
       if (_stream.Match(ALKScriptTokenType.Try))
       {
         return ParseTryStatement();
@@ -695,6 +700,56 @@ namespace ALKScript.Interpreter.Parser
       _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after do-while condition.");
       _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after do-while statement.");
       return new DoWhileStmt(keyword, body, condition);
+    }
+
+    private Stmt ParseSwitchStatement()
+    {
+      ALKScriptToken keyword = _stream.Previous();
+      _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '(' after 'switch'.");
+      Expr discriminant = ParseExpression();
+      _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after switch discriminant.");
+      _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin switch body.");
+
+      var cases = new List<SwitchCase>();
+      bool seenDefault = false;
+
+      while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
+      {
+        Expr? test = null;
+
+        if (_stream.Match(ALKScriptTokenType.Case))
+        {
+          test = ParseExpression();
+          _stream.Consume(ALKScriptTokenType.Colon, "Expect ':' after 'case' value.");
+        }
+        else if (_stream.Match(ALKScriptTokenType.Default))
+        {
+          if (seenDefault)
+          {
+            throw Error(_stream.Previous(), "A switch statement may only have one 'default' case.");
+          }
+          seenDefault = true;
+          _stream.Consume(ALKScriptTokenType.Colon, "Expect ':' after 'default'.");
+        }
+        else
+        {
+          throw Error(_stream.Peek(), "Expect 'case' or 'default' inside switch body.");
+        }
+
+        var body = new List<Stmt>();
+        while (!_stream.Check(ALKScriptTokenType.Case) &&
+               !_stream.Check(ALKScriptTokenType.Default) &&
+               !_stream.Check(ALKScriptTokenType.RightBrace) &&
+               !_stream.IsAtEnd())
+        {
+          body.Add(ParseDeclaration());
+        }
+
+        cases.Add(new SwitchCase(test, body));
+      }
+
+      _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after switch body.");
+      return new SwitchStmt(keyword, discriminant, cases);
     }
 
     private Stmt ParseForStatement()

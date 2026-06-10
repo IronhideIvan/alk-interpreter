@@ -89,6 +89,10 @@ namespace ALKScript.Interpreter.Evaluator
           await ExecuteDoWhile(doWhileStmt, environment);
           break;
 
+        case SwitchStmt switchStmt:
+          await ExecuteSwitch(switchStmt, environment);
+          break;
+
         case BreakStmt breakStmt:
           _context.Signal = Signal.Break();
           break;
@@ -349,6 +353,72 @@ namespace ALKScript.Interpreter.Evaluator
 
         if (!condition.IsTruthy)
         {
+          return;
+        }
+      }
+    }
+
+    private async Task ExecuteSwitch(SwitchStmt statement, ScriptEnvironment environment)
+    {
+      var discriminant = await _context.Eval(statement.Discriminant, environment);
+
+      if (_context.Signal != null)
+      {
+        return;
+      }
+
+      var switchEnvironment = new ScriptEnvironment(environment);
+
+      // Find the first matching 'case', falling back to 'default' if present.
+      int matchIndex = -1;
+      int defaultIndex = -1;
+
+      for (int i = 0; i < statement.Cases.Count; i++)
+      {
+        var switchCase = statement.Cases[i];
+
+        if (switchCase.Test == null)
+        {
+          defaultIndex = i;
+          continue;
+        }
+
+        var caseValue = await _context.Eval(switchCase.Test, switchEnvironment);
+
+        if (_context.Signal != null)
+        {
+          return;
+        }
+
+        if (Operators.AreEqual(discriminant, caseValue))
+        {
+          matchIndex = i;
+          break;
+        }
+      }
+
+      if (matchIndex == -1)
+      {
+        matchIndex = defaultIndex;
+      }
+
+      if (matchIndex == -1)
+      {
+        return;
+      }
+
+      // Execution falls through subsequent cases until 'break' (or the switch ends).
+      for (int i = matchIndex; i < statement.Cases.Count; i++)
+      {
+        await ExecuteBlock(statement.Cases[i].Body, switchEnvironment);
+
+        if (_context.Signal != null)
+        {
+          if (_context.Signal.Value.Kind == SignalKind.Break)
+          {
+            _context.Signal = null;
+          }
+
           return;
         }
       }

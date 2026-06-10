@@ -449,6 +449,63 @@ public class EndToEndTests : RuntimeTestBase
       logged);
   }
 
+  // ── Switch statement ────────────────────────────────────────────────────────
+
+  [Fact]
+  public void SwitchShowcase_GroupedCasesDefaultAndFallThrough_ProducesExpectedOutput()
+  {
+    // The program is a single-module script that:
+    //   - uses 'switch' inside describe(int) where 'case 2' has an empty body
+    //     (falling through to 'case 3') and a 'default' branch handles the
+    //     unmatched value, returning directly from each branch
+    //   - uses 'switch' inside process(int) where 'case 1' has no 'break' and
+    //     falls through into 'case 2', while the other cases use 'break'
+    //
+    // Features exercised:
+    //   - switch (expr) { case ...: ... default: ... }
+    //   - grouped case labels sharing one body via fall-through
+    //   - fall-through across cases when 'break' is omitted
+    //   - 'break' terminating a case
+    //   - 'default' branch for unmatched values
+    //   - 'return' from inside a switch case
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("SwitchShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("SwitchShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "one",
+        "two-or-three",
+        "two-or-three",
+        "other",
+        "case-1",
+        "case-2",
+        "case-2",
+        "case-3",
+        "case-default",
+        "done",
+      },
+      logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

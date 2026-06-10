@@ -1,0 +1,50 @@
+import { log } from "console";
+
+// ── switch with grouped case labels and 'default' ─────────────────────────
+//
+// 'case 2' has an empty body, so it falls through into 'case 3'. Each
+// matching branch returns directly from the function.
+
+function string describe(int n) {
+    switch (n) {
+        case 1:
+            return "one";
+        case 2:
+        case 3:
+            return "two-or-three";
+        default:
+            return "other";
+    }
+}
+
+log(describe(1));
+log(describe(2));
+log(describe(3));
+log(describe(99));
+
+// ── switch fall-through without 'break' ────────────────────────────────────
+//
+// 'case 1' has no 'break', so execution falls through into 'case 2'.
+
+function void process(int n) {
+    switch (n) {
+        case 1:
+            log("case-1");
+            // falls through
+        case 2:
+            log("case-2");
+            break;
+        case 3:
+            log("case-3");
+            break;
+        default:
+            log("case-default");
+    }
+}
+
+process(1); // "case-1", "case-2" (fall-through)
+process(2); // "case-2"
+process(3); // "case-3"
+process(5); // "case-default"
+
+log("done");
