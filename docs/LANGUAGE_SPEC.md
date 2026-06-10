@@ -1,1100 +1,827 @@
 # ALKScript Language Specification
 
-ALKScript is a small, C-like, general-purpose, **strongly and statically typed**
-language. This document describes its lexical structure, syntax, and semantics.
+This document describes the ALKScript language as implemented by the lexer,
+parser, and evaluator in this repository. It is a description of the
+*current* implementation, not an aspirational design document — every
+construct described here is exercised by the test suite (see
+`Tests/Tests.ALKScript.Interpreter.Runtime/ALKScripts/*` for runnable
+examples).
+
+---
 
 ## 1. Lexical Structure
 
 ### 1.1 Comments
 
 ```
-// line comment
-
-/* block
-   comment */
+// line comment, runs to end of line
+/* block comment, may span
+   multiple lines (not nestable) */
 ```
 
-### 1.2 Identifiers
+### 1.2 Identifiers and Keywords
 
-An identifier starts with a letter or underscore, followed by any number of letters,
-digits, or underscores: `[a-zA-Z_][a-zA-Z0-9_]*`.
+An identifier starts with a letter (`a`-`z`, `A`-`Z`) or underscore (`_`),
+followed by any number of letters, digits, or underscores.
 
-### 1.3 Keywords
-
-Reserved words that cannot be used as identifiers:
+The following words are reserved keywords and cannot be used as identifiers:
 
 ```
-if  else  while  for  break  continue  function  return  var  true  false  null
-int  long  float  string  bool  void
-async  await
-try  catch  finally  throw
-class  new  this  base  extends  public  protected  private  virtual  abstract  override
-native
-import  export  from  as
+if else while for foreach in do break continue
+switch case default
+function native return var true false null
+async await
+try catch finally throw
+int long float string bool void
+class new this base extends
+public protected private virtual abstract override sealed
+interface implements enum static lambda
+is
+import export from as
 ```
 
-The last group (`int`, `long`, `float`, `string`, `bool`, `void`) are the built-in
-**type names**, used in type annotations.
+### 1.3 Literals
 
-### 1.4 Literals
+| Kind | Examples | Notes |
+| --- | --- | --- |
+| Integer | `0`, `42`, `123` | Lexed as a single `Number` token; parsed as `int` if it fits in a 32-bit signed integer, otherwise `long`. |
+| Long | `42L`, `42l` | A trailing `L`/`l` forces a `long` literal regardless of magnitude. |
+| Float | `3.14`, `0.5` | Any numeric literal containing a `.` is a `float` (double-precision). There is no `F`/`f` suffix. |
+| Boolean | `true`, `false` | |
+| Null | `null` | Only assignable/comparable where the static type is nullable (`T?`). |
+| String | `"hello"`, `"line\nbreak"` | Double-quoted. Supports escapes `\n \t \r \" \\ \0`; any other `\x` sequence yields the literal character `x`. Strings may span multiple physical lines. |
+| Interpolated string | `` `Hello ${name}!` `` | Backtick-delimited. `${...}` embeds an arbitrary expression. Supports escapes `` \n \t \r \` \$ \\ \0 ``. May contain multiple `${...}` interpolations and may span multiple lines. |
 
-| Kind    | Examples                  | Type     | Notes                              |
-|---------|---------------------------|----------|------------------------------------|
-| Integer | `42`, `0`, `-7`           | `int`    | No decimal point; no exponent form |
-| Long    | `42L`, `42l`              | `long`   | Integer literal with an `L`/`l` suffix |
-| Float   | `3.14`, `0.5`             | `float`  | Contains a decimal point           |
-| String  | `"hello"`, `"line\n"`     | `string` | Double-quoted, escape sequences    |
-| Boolean | `true`, `false`           | `bool`   | Keyword literals                   |
-| Null    | `null`                    | any nullable type (`T?`) | Absence of a value |
+There is **no dedicated negative-literal token**: `-7` is parsed as the unary
+`-` operator applied to the literal `7` (an `int`).
 
-The lexer does not distinguish `int` from `float` literals (aside from the `L`/`l`
-suffix that marks a `long`) — these produce a `Number` token, and the type checker
-determines `int` vs. `float` based on whether the lexeme contains a decimal point.
-
-### 1.5 Operators and Punctuation
+### 1.4 Operators and Punctuation
 
 ```
 +  -  *  /  %
-=  ==  !  !=  <  <=  >  >=  &&  ||
-(  )  {  }  [  ]
+=  +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
+==  !=  <  <=  >  >=
+&&  ||  !
+&  |  ^  ~  <<  >>
+++  --
+?  ??  ?.  ?:
+=>
+is  as
+( )  { }  [ ]
 ,  ;  :  .
 ```
 
+---
+
 ## 2. Types
 
-ALKScript is **strongly and statically typed**. Every variable, function parameter,
-and function return value has a type that is known at compile time and checked
-before the program runs. There is no implicit conversion between unrelated types
-and no dynamic re-typing of variables.
+### 2.1 Primitive Types
 
-### 2.1 Primitive types
+| Type | Description |
+| --- | --- |
+| `int` | 32-bit signed integer. |
+| `long` | 64-bit signed integer. `int` and `long` are both backed by the same runtime integer value, so casts between them are no-ops. |
+| `float` | Double-precision floating-point number. |
+| `string` | UTF-16 text. |
+| `bool` | `true` / `false`. |
+| `void` | Only valid as a function/method/lambda return type, meaning "no value". |
 
-| Type     | Description                                  |
-|----------|----------------------------------------------|
-| `int`    | 32-bit signed integer                        |
-| `long`   | 64-bit signed integer                        |
-| `float`  | Double-precision floating point              |
-| `string` | Sequence of characters                       |
-| `bool`   | `true` or `false`                            |
-| `void`   | No value; only valid as a function return type |
+### 2.2 Arrays
 
-### 2.2 Composite types
+`T[]` is an array of `T`. Array literals are written `[expr, expr, ...]`.
+Arrays are accessed and assigned with `arr[index]`. Multi-dimensional arrays
+are written `T[][]`, etc. (each `[]` increments the type's array rank).
 
-| Type      | Syntax            | Description                                         |
-|-----------|-------------------|-----------------------------------------------------|
-| Array     | `T[]`             | An ordered, indexable collection of values of type `T` |
-| Function  | `(T1, T2) -> R`   | A callable value taking parameters of types `T1, T2` and returning `R` |
-| Task      | `Task` / `Task<T>` | Represents an asynchronous operation; `Task<T>` represents one that produces a value of type `T` when it completes |
-| Class     | `IDENTIFIER`      | A user-defined reference type declared with `class` (see [§8](#8-classes)) |
+### 2.3 Nullable Types
 
-### 2.3 Variable declarations and type inference
+Appending `?` to any type (`int?`, `string?`, `Box<int>?`, `int[]?`, ...)
+makes it nullable, i.e. it may also hold `null`.
 
-A variable is declared either with an explicit type or with `var`:
+- Assigning, passing, or returning `null` for a **non-nullable** type is a
+  runtime (`RuntimeException`) error.
+- `T?` accepts both `null` and any value that is assignable to `T`.
 
-```
-int num = 1;
-int[] numArr = [1, 2, 3, 4];
-var num = 1;        // inferred as int
-```
+This is enforced at every assignment, field initialization, parameter
+binding, and return point (`TypeChecking.EnsureAssignable`).
 
-When `var` is used, the variable must have an initializer, and its type is
-**inferred** from the initializer expression:
+### 2.4 The `lambda<...>` Function Type
+
+`lambda<ReturnType, ParamType1, ParamType2, ...>` describes a callable value:
+the first type argument is the return type, and the remaining type arguments
+(zero or more) are the parameter types in order. For example:
 
 ```
-var x = 10;         // inferred as int
-var pi = 3.14;      // inferred as float
+lambda<int, int, int> add;       // (int, int) -> int
+lambda<void> action;             // () -> void
+lambda<void, string> printer;    // (string) -> void
 ```
 
-Once a variable's type is fixed — whether explicitly declared or inferred via
-`var` — it cannot change. Assigning a value of a different, incompatible type is
-a compile-time error. `var` is purely a declaration-site convenience; it does not
-make the variable dynamically typed.
+A value is assignable to a `lambda<...>` type if it is callable with a
+matching arity and (for script-defined functions/lambdas, where parameter and
+return types are known) matching parameter and return types.
 
-### 2.4 Nullable types
+### 2.5 Generic Types
 
-Every type `T` is **non-nullable** by default — `null` cannot be assigned to it.
-Appending `?` to a type produces its nullable counterpart `T?`, which additionally
-permits the value `null`. This applies uniformly to primitives, arrays, `Task`, and
-user-defined types:
+Classes, interfaces, and functions/methods may declare type parameters:
 
 ```
-string name = null;        // compile-time error: 'string' is not nullable
-string? name = null;       // ok: 'string?' is nullable
-int? maybeCount = null;    // ok
-int? maybeCount = 5;       // ok: T is assignable to T?
-
-int[]? items = null;       // ok: a nullable array reference
-Task<string>? pending = null;
+class Box<T> { ... }
+interface IContainer<T> { ... }
+function<T> T identity(T value) { return value; }
 ```
 
-A non-nullable `T` is implicitly assignable to `T?`. The reverse — using a `T?`
-where a `T` is required — is a compile-time error unless the value has been
-proven non-null (for example, by a prior equality check against `null` in an
-enclosing `if`/`while` condition); the type checker narrows `T?` to `T` within
-such a guarded branch.
+Note the placement: for functions and methods, `<T>` appears **immediately
+after the `function` keyword and before the return type** —
+`function<T> ReturnType name(...)`.
 
-### 2.5 Type compatibility and conversions
+A generic class **must** be instantiated with explicit type arguments
+(`new Box<int>(5)`); `new Box(5)` with no type arguments is a
+`RuntimeException`. Once instantiated, every field, parameter, or return
+value typed with a bare type parameter (e.g. `T`) is checked against the
+concrete type argument recorded for that instance. Compound uses of a type
+parameter (e.g. `T[]`, `Array<T>`) are *not* checked — generics are otherwise
+type-erased.
 
-- `int` values are implicitly converted to `long`, and `int`/`long` values are
-  implicitly converted to `float`, where the wider type is expected (widening
-  conversions: `int` → `long` → `float`). The reverse requires an explicit conversion.
-- No other implicit conversions are performed; in particular, `string`, `bool`,
-  and the numeric types (`int`, `long`, `float`) are not interchangeable.
-- `null` is assignable only to nullable types (`T?`); assigning it to a
-  non-nullable type, including `int`, `long`, `float`, and `bool`, is a
-  compile-time error.
+### 2.6 `var` and Type Inference
 
-## 3. Grammar
+`var name = expr;` declares a variable whose static type is inferred from
+`expr` and is not checked again afterwards (i.e. `var` itself imposes no
+nullability/type constraint — only explicitly-typed declarations do).
 
-The grammar below is given in EBNF-like notation. Terminals are quoted; `?` means
-optional, `*` means zero-or-more, `+` means one-or-more, `|` means alternation.
+### 2.7 `is`, `as`, and Numeric Casts
 
-```ebnf
-program        = importDecl* declaration* EOF ;
+- `value is Type` — `true` if `value`'s runtime type matches `Type`. Works
+  for primitives (`int`, `long`, `float`, `string`, `bool`), array types
+  (checks the value is any array), `lambda<...>` types (arity/signature
+  check), classes (including any superclass in the chain), interfaces
+  (including interfaces implemented by a superclass, and interfaces extended
+  by an implemented interface), and enum types. `null is T?` is `true`;
+  `null is T` (non-nullable) is `false`.
+- `value as Type` — yields `value` if `value is Type`, otherwise `null`. (The
+  static type of an `as` expression is therefore effectively `Type?`.)
+- `(int)expr`, `(long)expr`, `(float)expr` — C-style numeric casts.
+  Truncates `float` toward zero when converting to `int`/`long`; widens
+  `int`/`long` to `float`. Casting between `int` and `long` is a no-op.
 
-importDecl     = "import" importClause "from" STRING ";" ;
-                 (* importDecl statements must precede all other declarations *)
+---
 
-importClause   = namedImports
-               | namespaceImport ;
+## 3. Operator Precedence
 
-namedImports   = "{" importSpecifier ( "," importSpecifier )* "}" ;
-importSpecifier = IDENTIFIER ( "as" IDENTIFIER )? ;
+From loosest (evaluated last) to tightest (evaluated first). Binary operators
+are left-associative unless noted otherwise.
 
-namespaceImport = "*" "as" IDENTIFIER ;
+| Level | Operators | Associativity |
+| --- | --- | --- |
+| 1 (loosest) | `=` `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=` | right |
+| 2 | `?:` (ternary) | right |
+| 3 | `??` | left |
+| 4 | `\|\|` | left |
+| 5 | `&&` | left |
+| 6 | `\|` | left |
+| 7 | `^` | left |
+| 8 | `&` | left |
+| 9 | `==` `!=` | left |
+| 10 | `<` `<=` `>` `>=` | left |
+| 11 | `is` `as` | left |
+| 12 | `<<` `>>` | left |
+| 13 | `+` `-` (binary) | left |
+| 14 | `*` `/` `%` | left |
+| 15 | unary `!` `-` `~`, prefix `++`/`--`, `await`, `(int)`/`(long)`/`(float)` casts | n/a (prefix) |
+| 16 (tightest) | call `f(...)`, member `.`, `?.`, index `[...]`, postfix `++`/`--` | left |
+
+Note that `is`/`as` bind *tighter* than comparison operators but *looser*
+than shift operators — e.g. `a < b is int` parses as `a < (b is int)`. Since
+`is`/`as` are always followed by a *type* (not an arbitrary expression), the
+right-hand side simply consumes a type name (with optional `<...>`, `[]`,
+`?`) rather than continuing the precedence chain.
+
+The assignment target of `=`/compound-assignment must be an identifier, a
+member access (`a.b`), or an index expression (`a[i]`).
+
+---
+
+## 4. Declarations
+
+A program (and each module) is a sequence of top-level declarations:
+
+```
+program        = { importDecl } , { declaration } ;
 
 declaration    = exportDecl
+               | reExportDecl
                | classDecl
+               | interfaceDecl
+               | enumDecl
                | functionDecl
                | variableDecl
                | statement ;
-
-exportDecl     = "export" ( classDecl | functionDecl | variableDecl ) ;
-                 (* "export" is only valid on top-level declarations *)
-
-classDecl      = "native"? "abstract"? "class" IDENTIFIER typeParameters?
-                 ( "extends" IDENTIFIER ( "<" type ( "," type )* ">" )? )?
-                 "{" member* "}" ;
-                 (* a class must be declared "native" if any of its members
-                    are themselves "native" — see "Native classes" *)
-
-typeParameters = "<" IDENTIFIER ( "," IDENTIFIER )* ">" ;
-
-member         = constructorDecl
-               | fieldDecl
-               | methodDecl ;
-
-accessModifier = "public" | "protected" | "private" ;
-                 (* defaults to "private" when omitted *)
-
-constructorDecl = accessModifier? "new" "(" parameters? ")" block ;
-
-fieldDecl      = accessModifier? ( "var" | type ) IDENTIFIER ( "=" expression )? ";" ;
-
-methodDecl     = accessModifier? overrideModifier? "native"? "async"? "function" typeParameters?
-                 type IDENTIFIER "(" parameters? ")" ( block | ";" ) ;
-                 (* the body is replaced by ";" for "abstract" and "native"
-                    methods; a "native" method may not have a body *)
-
-overrideModifier = "virtual" | "abstract" | "override" ;
-
-functionDecl   = "native"? "async"? "function" typeParameters? type IDENTIFIER
-                 "(" parameters? ")" ( block | ";" ) ;
-                 (* the body is replaced by ";" only for "native" functions,
-                    whose implementation is supplied by the host runtime;
-                    an "async" function's declared return type must be "Task"
-                    or "Task<T>" *)
-parameters     = parameter ( "," parameter )* ;
-parameter      = type IDENTIFIER ;
-
-variableDecl   = ( "var" | type ) IDENTIFIER ( "=" expression )? ";" ;
-                 (* "var" requires an initializer, from which the type is
-                    inferred; an explicit type makes the initializer optional *)
-
-type           = ( "int" | "long" | "float" | "string" | "bool" | "void" | IDENTIFIER )
-                 ( "<" type ( "," type )* ">" )?
-                 ( "[" "]" )*
-                 "?"? ;
-                 (* trailing "?" marks the type as nullable, e.g. "int?", "string[]?" *)
-
-statement      = exprStatement
-               | ifStatement
-               | whileStatement
-               | forStatement
-               | returnStatement
-               | breakStatement
-               | continueStatement
-               | tryStatement
-               | throwStatement
-               | block ;
-
-exprStatement  = expression ";" ;
-
-ifStatement    = "if" "(" expression ")" statement ( "else" statement )? ;
-
-whileStatement = "while" "(" expression ")" statement ;
-
-forStatement   = "for" "(" ( variableDecl | exprStatement | ";" )
-                           expression? ";"
-                           expression? ")" statement ;
-
-returnStatement  = "return" expression? ";" ;
-
-breakStatement   = "break" ";" ;
-                   (* only valid inside the body of a "while" or "for" loop;
-                      using it outside a loop is a compile-time error *)
-
-continueStatement = "continue" ";" ;
-                   (* only valid inside the body of a "while" or "for" loop;
-                      using it outside a loop is a compile-time error *)
-
-tryStatement   = "try" block catchClause* finallyClause? ;
-                 (* at least one catchClause or a finallyClause must be present *)
-
-catchClause    = "catch" ( "(" type IDENTIFIER ")" )? block ;
-                 (* the parenthesized type/binding may be omitted to catch any
-                    exception without binding it to a name *)
-
-finallyClause  = "finally" block ;
-
-throwStatement = "throw" expression ";" ;
-                 (* the thrown expression's type must be "Error" or a type
-                    that extends "Error" (directly or transitively) *)
-
-block          = "{" declaration* "}" ;
-
-expression     = assignment ;
-
-assignment     = IDENTIFIER "=" assignment
-               | logicOr ;
-
-logicOr        = logicAnd ( "||" logicAnd )* ;
-logicAnd       = equality ( "&&" equality )* ;
-equality       = comparison ( ( "==" | "!=" ) comparison )* ;
-comparison     = term ( ( "<" | "<=" | ">" | ">=" ) term )* ;
-term           = factor ( ( "+" | "-" ) factor )* ;
-factor         = unary ( ( "*" | "/" | "%" ) unary )* ;
-unary          = ( "!" | "-" | "await" ) unary
-               | call ;
-call           = primary ( "(" arguments? ")" | "." IDENTIFIER | "[" expression "]" )* ;
-arguments      = expression ( "," expression )* ;
-
-primary        = NUMBER | STRING | "true" | "false" | "null"
-               | "this" | "base"
-               | "new" IDENTIFIER "(" arguments? ")"
-               | IDENTIFIER
-               | "(" expression ")"
-               | "[" arguments? "]" ;
 ```
 
-## 4. Operator Precedence
+All `import` declarations must appear before any other declaration.
 
-From lowest to highest precedence:
-
-1. Assignment (`=`)
-2. Logical OR (`||`)
-3. Logical AND (`&&`)
-4. Equality (`==`, `!=`)
-5. Comparison (`<`, `<=`, `>`, `>=`)
-6. Addition / subtraction (`+`, `-`)
-7. Multiplication / division / modulo (`*`, `/`, `%`)
-8. Unary (`!`, `-`, `await`)
-9. Call / index / member access (`()`, `[]`, `.`)
-
-All binary operators are left-associative. Assignment is right-associative.
-
-## 5. Statements and Declarations
-
-### 5.1 Variable declaration
-
-A variable is declared with either an explicit type or `var`, similar to C#:
+### 4.1 Variable Declarations
 
 ```
-int num = 1;
-int[] numArr = [1, 2, 3, 4];
-var num = 1;            // inferred as int
-string name;            // declared without an initializer; defaults to null
+variableDecl = ( "var" | type ) identifier [ "=" expression ] ";" ;
 ```
 
-`var` always requires an initializer (the type is inferred from it); an explicit
-type makes the initializer optional.
+```
+var x = 5;
+int y = 10;
+string? name = null;
+```
 
-### 5.2 Function declaration
+### 4.2 Function Declarations
 
-The return type immediately follows the `function` keyword (use `void` if the
-function returns nothing), and each parameter declares its type before its name —
-the same `type IDENTIFIER` pattern used for variable declarations:
+```
+functionDecl = [ "export" ] [ "native" ] [ "async" ]
+               "function" [ "<" typeParamList ">" ] type identifier
+               "(" [ paramList ] ")" ( block | ";" ) ;
+
+paramList    = parameter , { "," , parameter } ;
+parameter    = type identifier ;
+```
 
 ```
 function int add(int a, int b) {
-  return a + b;
+    return a + b;
 }
 
-function void log(string message) {
-  print(message);
-}
-```
-
-#### Generic functions
-
-A function may declare one or more **type parameters** in angle brackets between
-the `function` keyword and its return type. The type parameters can then be used
-as types anywhere within the parameter list, return type, and body:
-
-```
-function<T> void process(T n) {
-  // Do something with a value of type T
+function<T> T identity(T value) {
+    return value;
 }
 
-function<T> T first(T[] items) {
-  return items[0];
-}
+native function void log(string message);   // body-less; host-implemented
 ```
 
-Each call site supplies (or lets the compiler infer from the arguments) a
-concrete type for every type parameter; the function is type-checked as if `T`
-were that concrete type. `process(5)` instantiates `T` as `int`; `process("hi")`
-instantiates it as `string`. Supplying incompatible types for the same type
-parameter across a single call (e.g. mismatched array element types) is a
-compile-time error.
+- The declared return type is the function's *actual* return type — see
+  §8 for how this interacts with `async`.
+- A `native` function has no body (terminated by `;`) and is implemented by
+  the embedding host.
+- `async` requires the function body to contain at least one `await`
+  expression somewhere within it (a parse-time error otherwise). This rule
+  does not apply to `native` or `abstract` functions/methods (which have no
+  body to check).
 
-#### Native functions
+### 4.3 Top-Level `await`
 
-Prefixing a function declaration with `native` declares its **signature** in
-ALKScript while leaving its implementation to the host runtime. A `native`
-function has **no body** — its declaration ends with `;` instead of a `block`,
-the same way an `abstract` method does:
+The entry module's top-level statements are themselves treated as the body
+of an implicit `async` function, so `await` may be used directly at the top
+level of a script (mirroring top-level `await` in other async-capable
+languages).
 
-```
-native function void print(string message);
-native function int random(int min, int max);
-```
+---
 
-- `native` may be combined with `async` (`native async function ...`); the
-  combined declaration is still bodyless and follows the same `Task`/`Task<T>`
-  return-type rule as any other async function.
-- Declaring a `native` function with a body — e.g. `native function void f() {}`
-  — is a compile-time error.
-- Calling a `native` function behaves exactly like calling an ordinary one;
-  the only difference is *where* its behavior comes from. This is the
-  mechanism the standard library uses to expose runtime-provided
-  functionality as ordinary ALKScript declarations (see
-  [§10.3](#103-relationship-to-user-code)) — it is not restricted to the
-  standard library, and user programs may declare their own `native` functions
-  when embedding ALKScript in a host that supplies matching implementations.
-- A program that declares a `native` function the host has no implementation
-  for fails to load with a clear error rather than failing unpredictably the
-  first time the function is called.
-
-### 5.3 Control flow
+## 5. Statements
 
 ```
-if (x > 0) {
-  // ...
-} else {
-  // ...
-}
+statement = exprStmt
+          | block
+          | ifStmt
+          | whileStmt
+          | doWhileStmt
+          | forStmt
+          | foreachStmt
+          | switchStmt
+          | returnStmt
+          | breakStmt
+          | continueStmt
+          | throwStmt
+          | tryStmt
+          | variableDecl ;
 
-while (x < 10) {
-  x = x + 1;
-}
+exprStmt   = expression ";" ;
+block      = "{" { declaration } "}" ;
 
-for (var i = 0; i < 10; i = i + 1) {
-  // ...
-}
+ifStmt     = "if" "(" expression ")" statement [ "else" statement ] ;
+whileStmt  = "while" "(" expression ")" statement ;
+doWhileStmt= "do" statement "while" "(" expression ")" ";" ;
+
+forStmt    = "for" "(" ( variableDecl | exprStmt | ";" )
+                       [ expression ] ";"
+                       [ expression ] ")" statement ;
+
+foreachStmt = "foreach" "(" "var" identifier "in" expression ")" statement ;
+
+switchStmt = "switch" "(" expression ")" "{"
+               { "case" expression ":" { declaration } }
+               [ "default" ":" { declaration } ]
+             "}" ;
+
+returnStmt   = "return" [ expression ] ";" ;
+breakStmt    = "break" ";" ;
+continueStmt = "continue" ";" ;
+throwStmt    = "throw" expression ";" ;
+
+tryStmt    = "try" block
+             { "catch" [ "(" type identifier ")" ] block }
+             [ "finally" block ] ;
 ```
 
-#### `break` and `continue`
+Notes:
 
-`break` exits the nearest enclosing `while` or `for` loop immediately, transferring control to the statement that follows it. `continue` skips the remainder of the current loop body and jumps to the loop's next iteration — re-evaluating the condition for `while`, or executing the update expression and re-evaluating the condition for `for`.
+- `for` accepts a variable declaration, an expression statement, or nothing
+  for its initializer (each followed by the loop's normal `;` separators).
+- `foreach` requires `var` — there is no typed-element form
+  (`foreach (Type x in ...)` is not supported).
+- `switch` cases use ordinary fall-through semantics (no implicit `break`);
+  case bodies are parsed as a sequence of declarations/statements, so they
+  may themselves contain `var`/local declarations. At most one `default`
+  case is allowed, and it may appear anywhere among the cases.
+- `try` requires at least one `catch` and/or a `finally`. A `catch` clause
+  may omit its `(Type name)` entirely (catching any thrown value without
+  binding it), or bind the thrown value to a name with an optional type
+  (e.g. `catch (string message)`). `throw` accepts any expression — there is
+  no required exception base type (see §10).
 
-```
-for (var i = 0; i < 10; i = i + 1) {
-  if (i == 3) {
-    continue;        // skip the rest of this iteration; i becomes 4
-  }
-  if (i == 7) {
-    break;           // exit the loop entirely
-  }
-  print(i);          // prints 0 1 2 4 5 6
-}
-```
-
-Both statements are **only valid inside a loop body** — using either one outside a `while` or `for` loop is a compile-time error. They are scoped to the *nearest* enclosing loop, so a `break` or `continue` inside a nested loop does not affect the outer loop:
-
-```
-for (var i = 0; i < 3; i = i + 1) {
-  for (var j = 0; j < 3; j = j + 1) {
-    if (j == 1) {
-      break;         // exits the inner loop only; i continues normally
-    }
-    print(i + "," + j);
-  }
-}
-```
-
-When a `break` or `continue` is executed inside a `try` block that has a `finally` clause, the `finally` block runs before the loop is exited or the next iteration begins:
-
-```
-for (var i = 0; i < 3; i = i + 1) {
-  try {
-    if (i == 1) {
-      break;
-    }
-  } finally {
-    cleanup();       // called for every iteration that entered the try, including i == 1
-  }
-}
-```
-
-#### Exception handling: `try` / `catch` / `finally` / `throw`
-
-The `throw` statement raises an exception. The thrown expression's type must be
-the built-in `Error` class or a class that extends it (directly or
-transitively, see [§10.2](#error)) — attempting to throw a value of any
-other type is a compile-time type error. A `try` statement runs its block and
-may be followed by one or more `catch` clauses and an optional `finally`
-clause — at least one of the two must be present:
-
-```
-try {
-  riskyOperation();
-} catch (IOError e) {
-  print(e.message);
-} catch {
-  print("something went wrong");
-} finally {
-  cleanup();
-}
-```
-
-A `catch` clause's parenthesized type, when present, must likewise be
-`Error` or one of its subclasses; it may be omitted entirely to catch any
-exception without binding it to a name, as shown in the second clause above.
-Clauses are tried in order, and the first whose declared type matches the
-thrown value's type (or which omits a type) handles the exception. The
-`finally` block, when present, always runs after the `try`/`catch` blocks
-complete, whether or not an exception was thrown or handled.
-
-```
-class InvalidAgeError extends Error {
-  public new(string message) {
-    base(message);
-  }
-}
-
-function void validate(int age) {
-  if (age < 0) {
-    throw new InvalidAgeError("age cannot be negative");
-  }
-}
-```
-
-### 5.4 Blocks and scope
-
-A block introduces a new lexical scope. Variables are visible from their
-declaration point to the end of the enclosing block.
+---
 
 ## 6. Expressions
 
-### 6.1 Array literals
-
-An **array literal** constructs an array value inline using bracket syntax:
-
 ```
-[]              // empty array
-[1, 2, 3]       // three-element int array
-["a", "b"]      // two-element string array
-```
+expression = assignment ;
 
-Elements are separated by commas and evaluated left-to-right. All elements must
-share a common type (the element type of the resulting array). An empty literal
-`[]` is valid; its element type is inferred from context (e.g. the declared
-type of the variable it is assigned to). Array literals appear wherever any other
-expression is permitted — including as the operand of `await` for the `whenAll`
-idiom (see [§7.4](#74-concurrent-await-whenall)).
+assignment = ( call "." identifier | call "[" expression "]" | identifier )
+              ( "=" | "+=" | "-=" | "*=" | "/=" | "%="
+              | "&=" | "|=" | "^=" | "<<=" | ">>=" ) assignment
+           | ternary ;
 
-### 6.2 Operators
+ternary    = nullCoalescing [ "?" expression ":" assignment ] ;
+nullCoalescing = logicOr { "??" logicOr } ;
+logicOr    = logicAnd { "||" logicAnd } ;
+logicAnd   = bitwiseOr { "&&" bitwiseOr } ;
+bitwiseOr  = bitwiseXor { "|" bitwiseXor } ;
+bitwiseXor = bitwiseAnd { "^" bitwiseAnd } ;
+bitwiseAnd = equality { "&" equality } ;
+equality   = comparison { ( "==" | "!=" ) comparison } ;
+comparison = typeTest { ( "<" | "<=" | ">" | ">=" ) typeTest } ;
+typeTest   = shift { ( "is" | "as" ) type } ;
+shift      = term { ( "<<" | ">>" ) term } ;
+term       = factor { ( "+" | "-" ) factor } ;
+factor     = unary { ( "*" | "/" | "%" ) unary } ;
 
-- Arithmetic operators (`+ - * / %`) require both operands to be numeric
-  (`int`, `long`, or `float`); the narrower operand is widened to match the wider
-  one (`int` → `long` → `float`), and the result has the wider of the two types.
-  `+` also concatenates two `string` operands, producing a `string`.
-- Comparison operators (`< <= > >=`) require both operands to be numeric
-  (`int`, `long`, or `float`) and produce a `bool`.
-- Equality operators (`== !=`) require both operands to have the same type, or
-  one operand to be `null` and the other a nullable type (`T?`); the result is a
-  `bool`. Comparing `null` against a non-nullable type is a compile-time error.
-- Logical operators (`&& ||`) require both operands to be `bool` and short-circuit,
-  producing a `bool`.
-- The unary `!` requires a `bool` operand; unary `-` requires a numeric
-  (`int`, `long`, or `float`) operand and preserves its type.
-- Mixing incompatible types in any of the above is a compile-time type error —
-  there is no implicit conversion between, for example, `string` and `int`.
+unary      = ( "!" | "-" | "~" ) unary
+           | ( "++" | "--" ) unary
+           | "await" unary
+           | "(" ( "int" | "long" | "float" ) ")" unary
+           | call ;
 
-## 7. Asynchronous Functions (`async`/`await`)
+call       = primary { "(" [ argList ] ")"
+                       | "." identifier
+                       | "?." identifier
+                       | "[" expression "]"
+                       | ( "++" | "--" ) } ;
 
-ALKScript supports an `async`/`await` pattern for asynchronous operations,
-modeled on C#.
+primary    = "true" | "false" | "null" | NUMBER | STRING
+           | interpolatedString
+           | "this" | "base"
+           | identifier
+           | "(" expression ")"
+           | arrayLiteral
+           | newExpr
+           | lambdaExpr ;
 
-### 7.1 Declaring an async function
-
-A function is marked asynchronous by prefixing its declaration with `async`.
-An `async` function's declared return type must be `Task` (for a function that
-produces no value) or `Task<T>` (for a function that produces a value of type `T`):
-
-```
-async function Task<string> fetchGreeting(string name) {
-  var message = await buildGreeting(name);
-  return message;
-}
-
-async function Task logMessage(string message) {
-  await writeToLog(message);
-}
+arrayLiteral = "[" [ expression { "," expression } ] "]" ;
+newExpr      = "new" identifier [ "<" typeArgList ">" ] "(" [ argList ] ")" ;
+argList      = expression { "," expression } ;
 ```
 
-Inside the body of an `async` function, `return expr;` where the declared return
-type is `Task<T>` returns a value of type `T` — the runtime wraps it in the
-`Task<T>` that the function as a whole produces. In a `Task`-returning `async`
-function, `return;` (or falling off the end of the body) completes the `Task`.
-
-### 7.2 The `await` expression
-
-`await` is a unary, prefix operator that suspends execution until the awaited
-operation completes:
+### 6.1 Lambda Expressions
 
 ```
-await expression
+lambdaExpr = [ "async" ] type "(" [ paramList ] ")" "=>" block ;
 ```
 
-- The operand must have type `Task` or `Task<T>`.
-- Awaiting a `Task<T>` yields a value of type `T`.
-- Awaiting a `Task` yields no value (its type is `void`); the result cannot be
-  used in a context that requires a value.
-- `await` is only valid inside the body of an `async` function. Using it
-  elsewhere is a compile-time error.
-
-### 7.3 Calling async functions
-
-Calling an `async` function does not block — it immediately returns a `Task` or
-`Task<T>` representing the in-progress operation. The caller can either `await`
-that result (suspending itself, and therefore must itself be `async`) or store
-and use it later:
-
 ```
-async function Task<int> run() {
-  var greetingTask = fetchGreeting("ALKScript");  // starts running, doesn't block
-  var greeting = await greetingTask;              // suspend until it completes
-  print(greeting);
-  return greeting.length;
-}
+lambda<int, int, int> add = int (int x, int y) => { return x + y; };
+
+lambda<int, int> scale = int (int x) => { return x * factor; };  // captures "factor"
+
+lambda<void, int> action = void (int n) => { log(`item = ${n}`); };
+
+lambda<int, int> doubleAsync = async int (int x) => {
+    int value = await delayValue(x);
+    return value * 2;
+};
 ```
 
-### 7.4 Concurrent await (`whenAll`)
+- The leading `type` is the lambda's *return type*; the parameter list
+  follows in parentheses, then `=>` and a block body.
+- A lambda body is a `{ ... }` block (not a single bare expression).
+- Lambdas close over (by reference) local variables, parameters, and `this`
+  / `base` from the enclosing scope, so mutations to a captured variable are
+  visible to the lambda and vice versa.
+- An `async` lambda follows the same rules as `async` functions/methods: its
+  body must contain at least one `await`.
+- The static type of a lambda expression is `lambda<ReturnType, ParamTypes...>`
+  and is checked against the declared type of the variable/field/parameter it
+  is assigned to.
 
-Passing an **array literal** of tasks to `await` runs all of them concurrently
-and suspends until every one has completed — equivalent to `Task.whenAll` in
-.NET. The result is an array containing each operation's return value in the
-same order as the input:
+### 6.2 Increment/Decrement
 
-```
-native async function Task<int> fetchA();
-native async function Task<int> fetchB();
+`++x` / `--x` (prefix) evaluate to the value *after* the update; `x++` /
+`x--` (postfix) evaluate to the value *before* the update. Both are valid on
+any assignable target (identifier, member access, index expression).
 
-async function void run() {
-  var results = await [fetchA(), fetchB()];  // both run concurrently
-  print(results[0]);                         // result of fetchA
-  print(results[1]);                         // result of fetchB
-}
-```
+### 6.3 Null-Conditional Access
 
-**Fault policy:** if one or more member operations fault, every member is still
-allowed to run to completion before the `await` resolves. All faults are then
-aggregated and surfaced as a single catchable error. Individual faults are also
-reported to the host (e.g. for logging).
+`a?.b` evaluates `a`; if it is `null`, the whole expression short-circuits to
+`null` without evaluating `b`. Otherwise it behaves like `a.b`.
 
-**Lazy-start:** as with any `Task`-producing call, calling `fetchA()` or
-`fetchB()` above does *not* immediately start the operation — it produces a
-pending value. The concurrent run begins only when the array reaches `await`.
+### 6.4 String Interpolation
 
-## 8. Classes
+`` `text ${expr} more ${expr2}` `` — each `${...}` is evaluated, converted to
+its string representation, and substituted into the surrounding literal text.
+Interpolated strings may contain any number of `${...}` segments (including
+zero, in which case it behaves like a plain string) and may span multiple
+lines.
 
-ALKScript supports simple, single-inheritance classes, similar to C#. A class is
-a user-defined reference type that groups fields, a constructor, and methods.
+---
 
-### 8.1 Declaring a class
+## 7. Classes, Interfaces, and Enums
 
-```
-class Person {
-  protected string name;
-  private int age;
-
-  public new(string name, int age) {
-    this.name = name;
-    this.age = age;
-  }
-
-  public virtual function string greet() {
-    return "Hello, my name is " + this.name;
-  }
-}
-```
-
-- **Fields** are declared the same way as variables (`type IDENTIFIER` or `var`
-  with an initializer), optionally preceded by an access modifier.
-- The **constructor** is declared with the `new` keyword in place of a name and
-  has no return type; it initializes the instance's fields.
-- **Methods** are declared the same way as top-level functions (including the
-  `async` modifier), optionally preceded by an access modifier and an
-  overridability modifier (`virtual`/`abstract`, see [§8.6](#86-virtual-and-abstract-methods)).
-  The `function` keyword is required for every member function — only the
-  constructor uses `new` in its place.
-
-### 8.2 Access modifiers
-
-Members may be marked `public`, `protected`, or `private`:
-
-- `public` members are visible to any code that has a reference to the class or
-  an instance of it.
-- `protected` members are visible from within the class's own members and from
-  within the members of any class that (directly or indirectly) `extends` it,
-  but not from outside the class hierarchy.
-- `private` members are visible only from within the class's own members — not
-  even from a derived class.
-- A member with no access modifier is `private` by default.
-
-### 8.3 `this` and member access
-
-Within a constructor or method body, `this` refers to the current instance.
-Members are accessed with `.`, the same operator used for member access on any
-reference type:
+### 7.1 Class Declarations
 
 ```
-var p = new Person("Ada", 36);
-print(p.greet());
+classDecl = [ "export" ] [ "native" ] [ "abstract" | "sealed" ]
+            "class" identifier [ "<" typeParamList ">" ]
+            [ "extends" identifier [ "<" typeArgList ">" ] ]
+            [ "implements" identifier { "," identifier } ]
+            "{" { member } "}" ;
+
+member = constructorDecl | fieldDecl | methodDecl ;
+
+constructorDecl = [ accessModifier ] "new" "(" [ paramList ] ")" block ;
+
+fieldDecl = [ accessModifier ] [ "static" ] ( "var" | type ) identifier
+            [ "=" expression ] ";" ;
+
+methodDecl = [ accessModifier ] [ "static" ]
+             [ "virtual" | "abstract" | "override" ]
+             [ "native" ] [ "async" ]
+             "function" [ "<" typeParamList ">" ] type identifier
+             "(" [ paramList ] ")" ( block | ";" ) ;
+
+accessModifier = "public" | "protected" | "private" ;
 ```
 
-`this` is required to disambiguate a field from a parameter or local variable of
-the same name (as in the constructor above), and may be omitted otherwise.
-
-### 8.4 Instantiation
-
-Instances are created with `new ClassName(arguments)`, which allocates the
-instance and runs its constructor:
-
-```
-var p = new Person("Ada", 36);
-Person? maybeNobody = null;
-```
-
-A class is always a reference type: variables of a class type hold a reference to
-an instance (or `null`, if the type is the nullable form `ClassName?`), not the
-instance's data directly.
-
-### 8.5 Inheritance
-
-A class may extend exactly one other class with `extends`, inheriting its
-`public` and `protected` members. Its `private` members exist on every instance
-but cannot be referenced from the derived class — note that `Person.name`
-(§8.1) is declared `protected` specifically so that `Employee` can use it
-directly, as shown below:
+- Members default to `private` if no access modifier is given.
+- `abstract` and `sealed` are mutually exclusive on a class.
+- `static` cannot be combined with `virtual`, `abstract`, or `override`.
+- A member is parsed as a `MethodDecl` if it has an override modifier
+  (`virtual`/`abstract`/`override`), is `native`, is `async`, or starts with
+  `function`; otherwise (a bare `[access]? [static]? type name [= init]? ;`)
+  it is a `FieldDecl`.
+- `abstract` methods have no body (`;` only) and may only appear in
+  `abstract` classes.
+- A class containing any `native` member must itself be declared `native`.
+- A class declared `sealed` cannot be `extends`-ed; doing so is a runtime
+  error.
 
 ```
-class Employee extends Person {
-  private string title;
+class Box {
+    public string? label = null;
+    public int value;
 
-  public new(string name, int age, string title) {
-    base(name, age);
-    this.title = title;
-  }
+    public new(int value) {
+        this.value = value;
+    }
 
-  public override function string greet() {
-    return base.greet() + ", I work as a " + this.title;
-  }
+    public function int getValue() {
+        return this.value;
+    }
 }
 ```
 
-- `base(arguments)` calls the parent class's constructor and must be the first
-  statement in a derived class's constructor (if the parent has no
-  zero-argument constructor).
-- `base.member` accesses a member of the parent class, most commonly to call an
-  overridden method's parent implementation.
-- A method in a derived class may **override** a method in its parent only if
-  the parent's method is declared `virtual` or `abstract` — see [§8.6](#86-virtual-and-abstract-methods).
-
-### 8.6 Virtual and abstract methods
-
-By default, methods cannot be overridden. A method must be explicitly marked
-`virtual` or `abstract` in its declaring class to allow a derived class to
-provide its own implementation — and the derived class, in turn, must mark its
-replacement `override`:
+### 7.2 Inheritance, `this`, `base`
 
 ```
-class Person {
-  // ...
+class Animal {
+    protected string name;
 
-  public virtual function string greet() {
-    return "Hello, my name is " + this.name;
-  }
+    public new(string name) {
+        this.name = name;
+    }
+
+    public virtual function string speak() {
+        return this.name + " makes a sound";
+    }
 }
 
-class Contractor extends Person {
-  // ...
+class Dog extends Animal {
+    public new(string name) {
+        base(name);          // calls the superclass constructor
+    }
 
-  public override function string greet() {
-    return base.greet() + ", working as a contractor";
-  }
+    public override function string speak() {
+        return this.name + " says Woof";
+    }
 }
 ```
 
-- A `virtual` method has a body and provides a default implementation that
-  derived classes may override.
-- An `abstract` method has **no body** — its declaration ends with `;` instead of
-  a `block` — and must be overridden by every concrete (non-abstract) derived
-  class:
+- `base(...)` (as a call) invokes the superclass constructor, and must be the
+  first statement of a derived class's constructor if used.
+- `base.method(...)` invokes the superclass implementation of an overridden
+  method.
+- `virtual` methods may be overridden by subclasses using `override`.
+  `abstract` methods *must* be overridden by every concrete subclass.
 
-  ```
-  public abstract function string greet();
-  ```
-
-- A derived-class method that replaces a `virtual` or `abstract` parent method
-  (same name and parameter types) **must** be marked `override`. Declaring a
-  method with the same signature as a `virtual`/`abstract` parent method without
-  `override` — or marking a method `override` when the parent has no matching
-  `virtual`/`abstract` method — is a compile-time error. Likewise, overriding a
-  method that is neither `virtual` nor `abstract` in its parent is an error.
-- An `override` method is itself overridable by further-derived classes, using
-  the same `override` keyword (there is no need to repeat `virtual`).
-
-A method may also be marked `native`, in which case — like an `abstract`
-method — it has **no body** and its declaration ends with `;`. Where an
-`abstract` method's implementation must come from a derived class, a `native`
-method's implementation is supplied directly by the host runtime; see
-[Native functions](#native-functions) for the full set of rules, which apply
-identically to methods (`native` may combine with `async`, may not have a
-body, and is resolved against the host at load time).
+### 7.3 Static Members
 
 ```
-native class Console {
-  public native function void log(string message);
+class Widget {
+    private static int instanceCount = 0;
+    public static string category = "tool";
+
+    public new() {
+        Widget.instanceCount += 1;
+    }
+
+    public static function int count() {
+        return Widget.instanceCount;
+    }
 }
 ```
 
-### 8.7 Native classes
+`static` fields and methods belong to the class itself (a single shared
+slot/implementation), and are accessed as `ClassName.member` — including
+through a subclass name (`Subclass.staticMember` resolves up the inheritance
+chain). They are never accessed through an instance. There is no `static
+class`.
 
-A class must be declared `native` if **any** of its members — methods,
-currently the only kind of member that may be `native` — are themselves
-marked `native`:
+### 7.4 Generic Classes
 
 ```
-native class Console {
-  public native function void log(string message);
+class Box<T> {
+    public T value;
+
+    public new(T value) {
+        this.value = value;
+    }
+
+    public function T getValue() {
+        return this.value;
+    }
+}
+
+var intBox = new Box<int>(5);   // type argument is required
+```
+
+See §2.5 for the enforcement rules.
+
+### 7.5 Interfaces
+
+```
+interfaceDecl = [ "export" ] "interface" identifier
+                [ "<" typeParamList ">" ]
+                [ "extends" identifier { "," identifier } ]
+                "{" { interfaceMethod } "}" ;
+
+interfaceMethod = [ "<" typeParamList ">" ] type identifier
+                  "(" [ paramList ] ")" ";" ;
+```
+
+```
+interface IShape {
+    float area();
+    string describe();
+}
+
+class Circle implements IShape {
+    private float radius;
+
+    public new(float radius) { this.radius = radius; }
+
+    public function float area() { return 3.14159 * this.radius * this.radius; }
+    public function string describe() { return "circle"; }
 }
 ```
 
-- `native` is written immediately before `class` (and before `abstract`, if
-  both apply — `native abstract class ...`).
-- Declaring a class with one or more `native` members but omitting the
-  `native` keyword on the class itself is a compile-time (parse) error: e.g.
-  `class Console { public native function void log(string message); }` is
-  rejected with a message naming the offending member.
-- The converse is not required: a `native` class may freely mix `native` and
-  ordinary (script-bodied) members — only classes that contain at least one
-  `native` member are obligated to carry the `native` keyword.
-- A `native` class behaves like any other class from the script's perspective
-  — it can be instantiated with `new`, extended, and its non-`native` members
-  work exactly as written. Its `native` members resolve against host-supplied
-  implementations the same way `native` functions do (see
-  [Native functions](#native-functions)), except each implementation also
-  receives the receiving instance, which lets the host back the class with
-  real, runtime-managed state (e.g. a collection whose storage is entirely
-  host-side) — the *runtime-backed collection* pattern.
-- Subclasses inherit `native` methods normally; the inherited method resolves
-  against the *declaring* class's host implementation, not the subclass.
+A class `implements` an interface if it (or any of its superclasses)
+provides a method matching each interface method's name and parameter count.
+`value is IShape` / `value as IShape` check this relationship, including
+through interface-to-interface `extends` chains.
 
-### 8.8 Abstract classes
-
-A class must be declared `abstract` if it declares any `abstract` methods, or if
-it inherits one or more `abstract` methods without providing concrete `override`
-implementations for all of them:
+### 7.6 Enums
 
 ```
-abstract class Person {
-  protected string name;
+enumDecl = [ "export" ] "enum" identifier "{"
+             enumMember { "," enumMember } [ "," ]
+           "}" ;
 
-  public new(string name) {
-    this.name = name;
-  }
+enumMember = identifier [ "=" [ "-" ] integerLiteral ] ;
+```
 
-  public abstract function string greet();
+```
+enum Color {
+    Red,
+    Green,
+    Blue = 10,
+    Cyan
 }
 ```
 
-- `abstract` is written immediately before `class`, as in `abstract class Person`.
-- An abstract class cannot be instantiated with `new` — only a *concrete* class
-  (one with no unimplemented `abstract` methods) can be.
-- A concrete class extending an abstract class must override every `abstract`
-  method it inherits that isn't already overridden by an intermediate class; if
-  it does not, it must itself be declared `abstract`.
+- Members default to sequential `int`/`long` values starting at `0`; an
+  explicit `= N` (optionally negative) resets the counter, and subsequent
+  members continue counting up from there (so `Cyan` above is `11`).
+- Members are accessed as `EnumName.Member` (e.g. `Color.Red`), are usable as
+  `switch`/`case` labels and with `==`/`!=`, and `value is EnumName` checks
+  whether `value` is a member of that enum.
+- A trailing comma after the last member is allowed.
 
-### 8.9 Generic classes
+---
 
-A class may declare one or more type parameters in angle brackets after its
-name. The type parameters can be used as types anywhere within the class —
-field types, parameter types, return types, and the bodies of its members:
+## 8. Async / Await
+
+This is the area where the implementation differs most significantly from a
+typical `Task<T>`-based design (see "Notable discrepancies" below).
+
+- `async` is a modifier on a function, method, or lambda — **it does not
+  change the declared return type**. An `async function int fetchData() {
+  ... }` is declared (and type-checked) as returning `int`, not
+  `Task<int>`/`Task`.
+- A non-`native`, non-`abstract` `async` function/method/lambda must contain
+  at least one `await` expression in its body; this is enforced at parse
+  time.
+- Calling an async function/method/lambda does **not** run its body
+  synchronously to completion. Instead it immediately returns a `Task`-typed
+  value (internally `TaskValue`/`PendingOperationValue`, both reporting
+  `TypeName == "Task"`) that wraps a `Task<ALKScriptValue>`. `Task`/`Task<T>`
+  is **not** a type you write in script source — it only exists as an
+  internal runtime tag for these in-flight values.
+- `await expr` suspends until the wrapped task settles and yields its result
+  (the function's *declared* return type, e.g. `int`).
+- `await [expr1, expr2, ...]` — when the operand of `await` is an array
+  literal (or array value) of awaitable values, all of them are awaited
+  concurrently (`Task.WhenAll` semantics): the result is an array of each
+  individual result, and if any of them faults the awaited expression
+  propagates that failure.
+- `native async` functions/methods (e.g. an `HttpClient.get` provided by the
+  host) behave the same way from script's perspective: calling them returns
+  a `Task`-tagged value immediately, and `await` suspends until the host's
+  underlying `Task<ALKScriptValue>` completes.
+- The top-level statements of the entry module run inside an implicit async
+  context, so top-level `await` is allowed (§4.3).
 
 ```
-class Array<T> {
-  private T[] items = [];
+native async function int delayValue(int value);
 
-  public void add(T item) {
-    // Do something
-  }
+async int fetchData() {
+    int value = await delayValue(5);
+    return value * 2;
+}
 
-  public T get(int index) {
-    return this.items[index];
-  }
+int doubled = await fetchData();
+```
+
+```
+var endpoints = ["api/users", "api/posts", "api/comments"];
+for (var i = 0; i < 3; i = i + 1) {
+    var response = await client.get(endpoints[i]);
+    log(response);
 }
 ```
 
-A concrete type is supplied for each type parameter where the class is used —
-either explicitly, as in a variable's type or a `new` expression, or (for
-top-level usages) inferred from context:
+---
+
+## 9. Modules
 
 ```
-var numbers = new Array<int>();
-numbers.add(5);
+importDecl = "import" importClause "from" stringLiteral ";" ;
 
-Array<string>? names = null;
+importClause = "{" importSpecifier { "," importSpecifier } "}"
+              | "*" "as" identifier ;
+
+importSpecifier = identifier [ "as" identifier ] ;
+
+exportDecl   = "export" ( classDecl | interfaceDecl | enumDecl
+                         | functionDecl | variableDecl ) ;
+
+reExportDecl = "export" "{" importSpecifier { "," importSpecifier } "}"
+               "from" stringLiteral ";" ;
 ```
 
-A generic class may also extend another generic class or interface-like base,
-supplying concrete types or its own type parameters for the base's type
-parameters, e.g. `class StringArray extends Array<string> { ... }` or
-`class Pair<T> extends Container<T> { ... }`.
-
-## 9. Modules and Imports
-
-Each ALKScript source file forms a **module**. A module makes selected
-top-level declarations available to other modules with `export`, and brings
-declarations from other modules into scope with `import` — both modeled on
-TypeScript.
-
-### 9.1 Exporting declarations
-
-Prefixing a top-level `class`, `function`, or variable declaration with
-`export` makes it visible to modules that import it:
-
 ```
-export class Person {
-  public new(string name) {
-    this.name = name;
-  }
-}
+import { log, delayValue } from "console";
+import * as Net from "network";
 
-export function int add(int a, int b) {
-  return a + b;
-}
+export function int add(int a, int b) { return a + b; }
+
+export { Animal, Dog as Doggo } from "./animals";
 ```
 
-A declaration without `export` is private to its module — other modules cannot
-import it. `export` is only valid on top-level declarations; it cannot be
-applied to class members, parameters, locals, or any other nested declaration.
+- `import { A, B as C } from "path"` brings `A` and `C` (an alias for `B`)
+  into scope.
+- `import * as N from "path"` brings the whole module in as a namespace
+  object `N` (members accessed as `N.member`).
+- `export` may prefix a class, interface, enum, function, or variable
+  declaration.
+- `export { A, B as Baz } from "path"` re-exports names from another module
+  without binding them locally.
+- All `import` declarations must precede every other declaration in a module.
+- Module specifiers (`"console"`, `"./animals"`, etc.) are resolved by the
+  embedding host — see §10.
 
-### 9.2 Importing declarations
+---
 
-`import` brings a target module's exported declarations into the current
-module's scope. The target module is identified by a string-literal **module
-specifier**, which takes one of two forms:
+## 10. Host-Provided Modules ("Standard Library")
 
-- **Relative file paths** — specifiers beginning with `./` or `../` refer to
-  other ALKScript source files, resolved the same way as on the host file
-  system (relative to the importing file).
-- **Core module names** — any other specifier (no leading `./` or `../`, e.g.
-  `"collections"`, `"datetime"`, `"io/fs"`) names a **core module**: a module
-  that ships as part of the ALKScript standard library rather than being
-  resolved against the file system. The built-in globals described in
-  [§10](#10-built-in-globals-and-standard-library) are organized into core
-  modules of this kind, and importing one is how a program brings a
-  less-common piece of the standard library into scope explicitly (the most
-  common globals, like `print` and `Array<T>`, are available without any
-  `import` at all — see §10.3).
+ALKScript itself does **not** ship a built-in standard library. The
+interpreter resolves `import ... from "<specifier>"` via an
+`ICoreModuleProvider`/module-resolution mechanism supplied by the embedding
+host; if no provider is registered, *every* import fails with `No core
+module '<specifier>' is registered.`
 
-```
-import { Person, Employee } from "./models";
-import { Array as Arr } from "./collections/array";
-import * as Models from "./models";
-
-import { HttpClient } from "http";
-import * as Collections from "collections";
-```
-
-Aside from how their specifier is resolved, core modules behave exactly like
-file-path modules with respect to the import forms below, `export` visibility,
-and ordering rules.
-
-Two import forms are supported:
-
-- **Named imports** — `import { A, B, C as D } from "path"` brings the named
-  exported declarations `A`, `B`, and `C` into scope, with `C` available locally
-  as `D`.
-- **Namespace imports** — `import * as N from "path"` brings every exported
-  declaration from the module into scope as members of a single namespace value
-  `N`, accessed with `.` (e.g. `N.A`, `N.B`).
-
-`import` declarations must appear at the top of a module, before any other
-declaration. Importing a name the target module does not `export`, or a path
-that cannot be resolved, is a compile-time error.
-
-### 9.3 Example
+Anything that looks like a "global" — `log`, `delayValue`, `HttpClient`, and
+similar names seen throughout the examples in this document and in the test
+suite — is a function or class declared `native` (often `export native`) in
+a small `.alk` module supplied by the host/test-harness, e.g.:
 
 ```
-// models.alk
-export class Person {
-  public new(string name) {
-    this.name = name;
-  }
-}
-
-// main.alk
-import { Person } from "./models";
-
-var p = new Person("Ada");
+// console.alk, supplied by the host
+export native function void log(string message);
+export native async function int delayValue(int value);
 ```
 
-## 10. Built-in Globals and Standard Library
-
-ALKScript programs can use a small set of globally available functions and
-types without an explicit `import`. Conceptually, these behave as though they
-are declared in a "core" module that every module implicitly imports — some may
-in fact be implemented in ALKScript itself and re-exported this way, while
-others (e.g. `Array<T>`, `Task<T>`) are provided directly by the runtime because
-the language depends on them structurally.
-
-This section is not an exhaustive API reference; it documents the *shape* of
-the standard library — the global functions and built-in types a program can
-rely on — using a few representative members as examples. A full reference of
-every member belongs in separate library documentation, not in the language
-specification.
-
-### 10.1 Global functions
-
-| Function                     | Description                                          |
-|------------------------------|------------------------------------------------------|
-| `void print(string message)` | Writes `message` followed by a newline to standard output |
-| `int parseInt(string s)`     | Parses `s` as an `int`; throws if `s` is not a valid integer |
-| `float parseFloat(string s)` | Parses `s` as a `float`; throws if `s` is not a valid number |
-
-### 10.2 Built-in types
-
-Built-in types are ordinary types from the language's point of view — they can
-appear in type annotations, be made nullable (`Array<int>?`), etc. — but their
-members are provided by the runtime rather than written in ALKScript source.
-
-#### `string`
-
-| Member                                  | Description                              |
-|-----------------------------------------|------------------------------------------|
-| `int length`                             | The number of characters                 |
-| `string substring(int start, int length)`| Returns a substring                      |
-| `int indexOf(string value)`              | The index of the first occurrence of `value`, or `-1` |
-
-#### `T[]` (array)
-
-| Member                       | Description                                       |
-|------------------------------|---------------------------------------------------|
-| `int length`                 | The number of elements                            |
-| `void push(T item)`          | Appends `item` to the end of the array            |
-| `T pop()`                    | Removes and returns the last element              |
-| `[index]`                    | Indexing (`items[i]`) reads or writes an element, via the `call` grammar's `"[" expression "]"` suffix |
-
 ```
-var names: string[] = [];
-names.push("Ada");
-names.push("Grace");
-print(names[0]);       // "Ada"
-print(names.length);   // 2
-```
-
-#### `Error`
-
-`Error` is the root of the exception hierarchy: every value thrown with
-`throw`, and every type named in a `catch` clause, must be `Error` or a
-class that `extends` it (directly or transitively) — see
-[§5.3](#exception-handling-try--catch--finally--throw). User code defines its
-own error types by extending `Error`, typically to add context-specific
-fields or override `message`:
-
-| Member                                  | Description                              |
-|-----------------------------------------|------------------------------------------|
-| `public new(string message)`            | Constructs an error with the given message |
-| `string message`                        | A human-readable description of the error |
-
-```
-class NotFoundError extends Error {
-  public new(string message) {
-    base(message);
-  }
+// network.alk, supplied by the host
+export native class HttpClient {
+    public native async function string get(string url);
 }
 ```
 
-#### `Task` / `Task<T>`
+There is **no** built-in `Error` type, exception hierarchy, `Array<T>`,
+`Date`, `print`, `parseInt`, or similar globals available without an explicit
+`import`. `throw` accepts a value of any type (commonly a `string`), and
+`catch (Type name)` may bind it with any type, or omit the binding entirely
+(`catch { ... }`).
 
-See [§7](#7-asynchronous-functions-asyncawait) — `Task`/`Task<T>` are built-in
-types representing asynchronous operations, consumed with `await`.
+Embedding hosts are free to define richer modules (collections, I/O,
+networking, etc.); consult the host's documentation/registered modules for
+what is actually available in a given runtime environment.
 
-#### `Date`
-
-| Member                          | Description                                  |
-|---------------------------------|----------------------------------------------|
-| `static Date now()`             | Returns a `Date` representing the current moment |
-| `long toUnixMillis()`           | The date as milliseconds since the Unix epoch |
-| `string toIsoString()`          | The date formatted as an ISO-8601 string     |
-
-```
-var start = Date.now();
-// ...
-print(start.toIsoString());
-```
-
-### 10.3 Relationship to user code
-
-Built-in types and functions are referenced exactly like user-defined ones — the
-type checker treats them no differently once their declarations are known. The
-most fundamental globals (`print`, `Array<T>`, `string`, `Task<T>`, etc.) are
-available in every module without an `import`; less-common pieces of the
-standard library are organized into named **core modules** (see §9.2) and must
-be imported explicitly, e.g. `import { HttpClient } from "http"`.
-
-A program may shadow a global function or type with its own module-level
-declaration of the same name; within that module, the local declaration takes
-precedence, and the global remains accessible only by importing it from its
-core module under another name, e.g. `import { HttpClient as CoreHttpClient } from "http"`.
-
-Concretely, the standard library's runtime-provided members are themselves
-ordinary `native` declarations (see [Native functions](#native-functions) and
-[§8.6](#86-virtual-and-abstract-methods)) — `print`, the members of `string`
-and `T[]`, `HttpClient.send`, and so on are written as bodyless `native`
-function and method signatures whose implementations the host runtime
-supplies. `native` is simply how *any* ALKScript declaration — standard
-library or user code — describes a signature backed by the host rather than
-by ALKScript source.
+---
 
 ## 11. Sample Program
 
 ```
-function int fibonacci(int n) {
-  if (n <= 1) {
-    return n;
-  }
+import { log } from "console";
 
-  return fibonacci(n - 1) + fibonacci(n - 2);
+interface ISpeaker {
+    string speak();
 }
 
-int i = 0;
-while (i < 10) {
-  print(fibonacci(i));
-  i = i + 1;
+abstract class Animal implements ISpeaker {
+    protected string name;
+
+    public new(string name) {
+        this.name = name;
+    }
+
+    public abstract function string speak();
 }
+
+class Dog extends Animal {
+    public new(string name) {
+        base(name);
+    }
+
+    public override function string speak() {
+        return this.name + " says Woof";
+    }
+}
+
+enum Mood {
+    Calm,
+    Excited
+}
+
+function string greet(ISpeaker speaker, Mood mood) {
+    switch (mood) {
+        case Mood.Excited:
+            return speaker.speak() + "!!!";
+        default:
+            return speaker.speak() + ".";
+    }
+}
+
+lambda<void, string> announce = void (string text) => { log(text); };
+
+var fido = new Dog("Fido");
+announce(greet(fido, Mood.Excited));
+
+try {
+    if (fido is Animal) {
+        log("Fido is an Animal");
+    }
+} catch (string message) {
+    log(`error: ${message}`);
+} finally {
+    log("done");
+}
+
+// Output:
+// Fido says Woof!!!
+// Fido is an Animal
+// done
 ```
