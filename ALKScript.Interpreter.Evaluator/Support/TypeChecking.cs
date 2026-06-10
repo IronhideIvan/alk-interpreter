@@ -45,7 +45,9 @@ namespace ALKScript.Interpreter.Evaluator
         return;
       }
 
-      if (substituted && !MatchesType(value, effectiveType, environment, site))
+      bool isLambdaType = effectiveType.Name == "lambda" && effectiveType.TypeArguments.Count > 0;
+
+      if ((substituted || isLambdaType) && !MatchesType(value, effectiveType, environment, site))
       {
         throw new RuntimeException(site, $"Cannot assign a value of type '{value.TypeName}' to {description} of type '{type}' (instantiated as '{effectiveType}').");
       }
@@ -95,6 +97,11 @@ namespace ALKScript.Interpreter.Evaluator
         return value is ArrayValue;
       }
 
+      if (type.Name == "lambda" && type.TypeArguments.Count > 0)
+      {
+        return MatchesLambdaType(value, type);
+      }
+
       switch (type.Name)
       {
         case "int":
@@ -111,6 +118,65 @@ namespace ALKScript.Interpreter.Evaluator
         default:
           return MatchesNamedType(value, type.Name, environment, site);
       }
+    }
+
+    /// <summary>
+    /// Checks <paramref name="value"/> against a <c>lambda&lt;ReturnType, ParamType1, ...&gt;</c>
+    /// type: <paramref name="value"/> must be a callable whose arity matches
+    /// <c>type.TypeArguments.Count - 1</c>, and — for a <see cref="FunctionValue"/>
+    /// with a known declaration — whose declared parameter/return types match
+    /// the corresponding type arguments structurally. A <see cref="NativeFunctionValue"/>
+    /// has no declared parameter/return types, so only its arity is checked.
+    /// </summary>
+    private static bool MatchesLambdaType(ALKScriptValue value, TypeNode type)
+    {
+      switch (value)
+      {
+        case FunctionValue function:
+          if (function.Declaration.Parameters.Count != type.TypeArguments.Count - 1)
+          {
+            return false;
+          }
+
+          if (!TypesEqual(function.Declaration.ReturnType, type.TypeArguments[0]))
+          {
+            return false;
+          }
+
+          for (int i = 0; i < function.Declaration.Parameters.Count; i++)
+          {
+            if (!TypesEqual(function.Declaration.Parameters[i].Type, type.TypeArguments[i + 1]))
+            {
+              return false;
+            }
+          }
+
+          return true;
+
+        case NativeFunctionValue native:
+          return native.Arity == type.TypeArguments.Count - 1;
+
+        default:
+          return false;
+      }
+    }
+
+    private static bool TypesEqual(TypeNode a, TypeNode b)
+    {
+      if (a.Name != b.Name || a.ArrayRank != b.ArrayRank || a.IsNullable != b.IsNullable || a.TypeArguments.Count != b.TypeArguments.Count)
+      {
+        return false;
+      }
+
+      for (int i = 0; i < a.TypeArguments.Count; i++)
+      {
+        if (!TypesEqual(a.TypeArguments[i], b.TypeArguments[i]))
+        {
+          return false;
+        }
+      }
+
+      return true;
     }
 
     private static bool MatchesNamedType(ALKScriptValue value, string typeName, ScriptEnvironment environment, ALKScriptToken site)

@@ -1,0 +1,2 @@
+export native function void log(string message);
+export native async function int delayValue(int value);

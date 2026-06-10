@@ -1,0 +1,58 @@
+import { log, delayValue } from "console";
+
+// ── basic lambda: arithmetic, explicit "lambda<...>" type ──────────────────
+//
+// "lambda<R, P1, P2, ...>" is a function type: R is the return type, P1, P2,
+// ... are the parameter types. A lambda expression is written
+// "ReturnType (ParamType name, ...) => { ... }".
+
+lambda<int, int, int> add = int (int x, int y) => { return x + y; };
+log(`add = ${add(2, 3)}`);
+
+// ── closures capture enclosing locals by reference ──────────────────────────
+
+int factor = 10;
+lambda<int, int> scale = int (int x) => { return x * factor; };
+log(`scale = ${scale(4)}`);
+
+factor = 100;
+log(`scale-after-factor-change = ${scale(4)}`);
+
+// ── lambdas as parameters (higher-order functions) ──────────────────────────
+
+function void forEachInt(int[] items, lambda<void, int> action) {
+    foreach (var item in items) {
+        action(item);
+    }
+}
+
+forEachInt([1, 2, 3], void (int n) => { log(`item = ${n}`); });
+
+// ── lambdas capture the enclosing "this" inside instance methods ───────────
+
+class Accumulator {
+    private int total = 0;
+
+    public function void addAll(int[] values) {
+        forEachInt(values, void (int n) => { this.total += n; });
+    }
+
+    public function int getTotal() {
+        return this.total;
+    }
+}
+
+var acc = new Accumulator();
+acc.addAll([1, 2, 3, 4]);
+log(`total = ${acc.getTotal()}`);
+
+// ── async lambdas ────────────────────────────────────────────────────────
+
+lambda<int, int> doubleAsync = async int (int x) => {
+    int value = await delayValue(x);
+    return value * 2;
+};
+int doubled = await doubleAsync(5);
+log(`doubled = ${doubled}`);
+
+log("done");

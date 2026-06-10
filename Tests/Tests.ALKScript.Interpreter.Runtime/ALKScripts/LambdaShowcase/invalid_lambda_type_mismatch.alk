@@ -1,0 +1,8 @@
+import { log } from "console";
+
+// "lambda<int, int, int>" requires a lambda taking two ints and returning
+// int, but this lambda takes a "string" and an "int" — assigning it should
+// throw a RuntimeException before "done" is logged.
+lambda<int, int, int> add = int (string x, int y) => { return y; };
+
+log("done");

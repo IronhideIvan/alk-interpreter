@@ -24,6 +24,7 @@ namespace ALKScript.Interpreter.Parser
         { ALKScriptTokenType.StringKeyword, "string" },
         { ALKScriptTokenType.BoolKeyword, "bool" },
         { ALKScriptTokenType.VoidKeyword, "void" },
+        { ALKScriptTokenType.Lambda, "lambda" },
       };
 
     private TokenStream _stream = null!;
@@ -1384,6 +1385,11 @@ namespace ALKScript.Interpreter.Parser
 
     private Expr ParsePrimary()
     {
+      if (TryParseLambda(out Expr? lambdaExpr))
+      {
+        return lambdaExpr!;
+      }
+
       if (_stream.Match(ALKScriptTokenType.False))
       {
         return new LiteralExpr(_stream.Previous(), false);
@@ -1498,6 +1504,77 @@ namespace ALKScript.Interpreter.Parser
       }
 
       return new InterpolatedStringExpr(first, parts, expressions);
+    }
+
+    /// <summary>
+    /// Attempts to parse a lambda expression: <c>"async"? type "(" parameters? ")" "=&gt;" block</c>.
+    /// Lambdas begin with a type (the return type), which overlaps with both
+    /// generic-type-argument parsing (e.g. "a &lt; b &gt; c") and ordinary
+    /// calls (e.g. "foo(x)"), so this speculatively parses the
+    /// return-type/parameter-list/"=&gt;" prefix and restores the parser
+    /// position if it doesn't match — leaving the expression to be parsed
+    /// normally (e.g. as a call or comparison).
+    /// </summary>
+    private bool TryParseLambda(out Expr? lambda)
+    {
+      int checkpoint = _stream.Position;
+
+      bool isAsync = _stream.Match(ALKScriptTokenType.Async);
+
+      if (!CanStartType())
+      {
+        _stream.Position = checkpoint;
+        lambda = null;
+        return false;
+      }
+
+      TypeNode returnType;
+      List<Parameter> parameters;
+
+      try
+      {
+        returnType = ParseType();
+
+        if (!_stream.Check(ALKScriptTokenType.LeftParen))
+        {
+          _stream.Position = checkpoint;
+          lambda = null;
+          return false;
+        }
+
+        parameters = ParseParameterList();
+
+        if (!_stream.Match(ALKScriptTokenType.EqualGreater))
+        {
+          _stream.Position = checkpoint;
+          lambda = null;
+          return false;
+        }
+      }
+      catch (ParseException)
+      {
+        _stream.Position = checkpoint;
+        lambda = null;
+        return false;
+      }
+
+      ALKScriptToken arrow = _stream.Previous();
+      BlockStmt body;
+      bool asyncBodyHasAwait;
+
+      using (_parsingContext.EnterFunctionBody(isAsync))
+      {
+        body = ParseBlock();
+        asyncBodyHasAwait = _parsingContext.BodyHasAwait;
+      }
+
+      if (isAsync && !asyncBodyHasAwait)
+      {
+        throw Error(arrow, "'async' is only valid on lambdas whose body contains at least one 'await' expression. Remove 'async' or add an 'await' call.");
+      }
+
+      lambda = new LambdaExpr(arrow, isAsync, returnType, parameters, body);
+      return true;
     }
 
     private Expr ParseNewExpression()

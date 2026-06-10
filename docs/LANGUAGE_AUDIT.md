@@ -21,3 +21,4 @@ Everything below was previously listed as missing and is now fully implemented a
 - Namespace imports (`import * as Foo from "./foo"`)
 - Re-exports (`export { Foo, Bar as Baz } from "./foo"`)
 - Static fields and methods (`static`, accessed as `ClassName.member`; classes themselves cannot be `static`)
+- Lambdas (`lambda<ReturnType, ParamTypes...>` type, `ReturnType (params) => { ... }` expressions, including `async` lambdas and `this`/`base` capture)

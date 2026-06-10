@@ -52,6 +52,7 @@ public class OperatorsAndPunctuationTests
   [InlineData("<<=", ALKScriptTokenType.LessLessEqual)]
   [InlineData(">>", ALKScriptTokenType.GreaterGreater)]
   [InlineData(">>=", ALKScriptTokenType.GreaterGreaterEqual)]
+  [InlineData("=>", ALKScriptTokenType.EqualGreater)]
   public void Tokenize_OperatorOrPunctuation_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
     var lexer = new ALKScriptLexer();

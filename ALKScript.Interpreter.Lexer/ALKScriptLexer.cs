@@ -59,6 +59,7 @@ namespace ALKScript.Interpreter.Lexer
       { "implements", ALKScriptTokenType.Implements },
       { "enum", ALKScriptTokenType.Enum },
       { "static", ALKScriptTokenType.Static },
+      { "lambda", ALKScriptTokenType.Lambda },
 
       { "is", ALKScriptTokenType.Is },
 
@@ -155,7 +156,8 @@ namespace ALKScript.Interpreter.Lexer
           break;
 
         case '=':
-          AddToken(Match('=') ? ALKScriptTokenType.EqualEqual : ALKScriptTokenType.Equal);
+          if (Match('>')) AddToken(ALKScriptTokenType.EqualGreater);
+          else AddToken(Match('=') ? ALKScriptTokenType.EqualEqual : ALKScriptTokenType.Equal);
           break;
         case '!':
           AddToken(Match('=') ? ALKScriptTokenType.BangEqual : ALKScriptTokenType.Bang);

@@ -115,6 +115,9 @@ namespace ALKScript.Interpreter.Evaluator
         case CastExpr cast:
           return await EvalCast(cast, environment);
 
+        case LambdaExpr lambda:
+          return EvalLambda(lambda, environment);
+
         default:
           throw new RuntimeException(
             AstTokenLocator.Of(expression),
@@ -1082,6 +1085,29 @@ namespace ALKScript.Interpreter.Evaluator
         default:
           throw new RuntimeException(expression.Keyword, $"Cannot cast to '{expression.TargetType}'.");
       }
+    }
+
+    /// <summary>
+    /// Evaluates a lambda expression into a <see cref="FunctionValue"/> closing
+    /// over <paramref name="environment"/>. When written inside a method body,
+    /// the lambda captures the enclosing "this"/"base" by copying the current
+    /// "this" binding and <see cref="ScriptEnvironment.CurrentClass"/> into the
+    /// resulting <see cref="FunctionValue"/>, exactly like a bound method.
+    /// </summary>
+    private ALKScriptValue EvalLambda(LambdaExpr lambda, ScriptEnvironment environment)
+    {
+      var declaration = new FunctionDecl(
+        isNative: false,
+        isAsync: lambda.IsAsync,
+        typeParameters: System.Array.Empty<string>(),
+        returnType: lambda.ReturnType,
+        name: new ALKScriptToken(ALKScriptTokenType.Identifier, "<lambda>", lambda.Arrow.Line, lambda.Arrow.Column),
+        parameters: lambda.Parameters,
+        body: lambda.Body);
+
+      InstanceValue? boundInstance = environment.TryGet("this", out var thisValue) ? thisValue as InstanceValue : null;
+
+      return new FunctionValue(declaration, environment, boundInstance, environment.CurrentClass);
     }
 
     private async Task<ALKScriptValue> EvalIndex(IndexExpr expression, ScriptEnvironment environment)

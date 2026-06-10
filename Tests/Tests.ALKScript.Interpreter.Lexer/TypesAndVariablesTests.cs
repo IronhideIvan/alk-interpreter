@@ -14,6 +14,7 @@ public class TypesAndVariablesTests
   [InlineData("bool", ALKScriptTokenType.BoolKeyword)]
   [InlineData("void", ALKScriptTokenType.VoidKeyword)]
   [InlineData("var", ALKScriptTokenType.Var)]
+  [InlineData("lambda", ALKScriptTokenType.Lambda)]
   public void Tokenize_TypeOrVariableKeyword_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
     var lexer = new ALKScriptLexer();

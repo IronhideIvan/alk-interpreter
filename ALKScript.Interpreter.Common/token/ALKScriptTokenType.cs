@@ -63,6 +63,7 @@ namespace ALKScript.Interpreter.Common.Token
     Implements,
     Enum,
     Static,
+    Lambda,
 
     // Keywords - type testing/casting
     Is,
@@ -96,6 +97,7 @@ namespace ALKScript.Interpreter.Common.Token
     GreaterEqual,
     AmpAmp,
     PipePipe,
+    EqualGreater,
 
     // Operators - bitwise
     Amp,

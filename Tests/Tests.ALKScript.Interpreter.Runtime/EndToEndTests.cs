@@ -814,6 +814,100 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Empty(logged);
   }
 
+  // ── Lambdas ─────────────────────────────────────────────────────────────────
+
+  [Fact]
+  public void LambdaShowcase_LambdasCoverClosuresHigherOrderFunctionsAndAsync()
+  {
+    // Features exercised:
+    //   - "lambda<ReturnType, ParamTypes...>" type annotations
+    //   - lambda expressions: "ReturnType (ParamType name, ...) => { ... }"
+    //   - closures capture enclosing locals by reference (live binding)
+    //   - lambdas passed as arguments to higher-order functions
+    //   - lambdas capture the enclosing "this" inside instance methods
+    //   - "async" lambdas awaited like ordinary async functions
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("LambdaShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("LambdaShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.OperationBinder = new LambdaOperationBinder(op =>
+    {
+      if (op.Name == "delayValue")
+      {
+        return Task.FromResult<ALKScriptValue>(op.Arguments[0]);
+      }
+      throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
+    });
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "add = 5",
+        "scale = 40",
+        "scale-after-factor-change = 400",
+        "item = 1",
+        "item = 2",
+        "item = 3",
+        "total = 10",
+        "doubled = 10",
+        "done",
+      },
+      logged);
+  }
+
+  [Fact]
+  public void LambdaShowcase_LambdaTypeMismatch_ThrowsRuntimeException()
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("LambdaShowcase", "invalid_lambda_type_mismatch.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("LambdaShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.OperationBinder = new LambdaOperationBinder(op =>
+    {
+      if (op.Name == "delayValue")
+      {
+        return Task.FromResult<ALKScriptValue>(op.Arguments[0]);
+      }
+      throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
+    });
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign a value of type 'function'", exception.Message);
+    Assert.Empty(logged);
+  }
+
   // ── Enums ───────────────────────────────────────────────────────────────────
 
   [Fact]
