@@ -303,8 +303,8 @@ namespace ALKScript.Interpreter.Evaluator
     Task<ALKScriptValue> IEvaluationContext.Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
       => _calls.Call(callee, arguments, site);
 
-    Task<ALKScriptValue> IEvaluationContext.Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
-      => _calls.Construct(classValue, arguments, site);
+    Task<ALKScriptValue> IEvaluationContext.Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, IReadOnlyList<TypeNode> typeArguments, ALKScriptToken site)
+      => _calls.Construct(classValue, arguments, typeArguments, site);
 
     OperationLogEntry? IEvaluationContext.TryReplayNext()
       => _replayIndex < _replayLength ? _log[_replayIndex++] : null;

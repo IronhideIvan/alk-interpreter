@@ -48,7 +48,7 @@ namespace ALKScript.Interpreter.Common.Evaluation
 
     Task<ALKScriptValue> Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site);
 
-    Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site);
+    Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, IReadOnlyList<TypeNode> typeArguments, ALKScriptToken site);
 
     /// <summary>
     /// The scheduler continuations are routed through, or <c>null</c> when no

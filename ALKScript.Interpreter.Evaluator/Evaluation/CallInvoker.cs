@@ -31,7 +31,7 @@ namespace ALKScript.Interpreter.Evaluator
       switch (callee)
       {
         case ClassValue classValue:
-          return await Construct(classValue, arguments, site);
+          return await Construct(classValue, arguments, System.Array.Empty<TypeNode>(), site);
 
         case BaseValue baseValue:
           await CallSuperConstructor(baseValue.Superclass, baseValue.Instance, arguments, site);
@@ -49,9 +49,9 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
-    public async Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
+    public async Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, IReadOnlyList<TypeNode> typeArguments, ALKScriptToken site)
     {
-      var instance = new InstanceValue(classValue);
+      var instance = new InstanceValue(classValue, BuildTypeArgumentMap(classValue.Declaration, typeArguments, site));
 
       // Initialize fields from the whole hierarchy, base class first, so that
       // derived-class initializers can rely on base fields already being set.
@@ -69,6 +69,7 @@ namespace ALKScript.Interpreter.Evaluator
 
         var constructorEnvironment = new ScriptEnvironment(ClassEnvironments.For(classValue));
         constructorEnvironment.CurrentClass = classValue;
+        constructorEnvironment.CurrentTypeArguments = instance.TypeArguments;
         constructorEnvironment.Define("this", instance);
         if (classValue.Superclass != null)
         {
@@ -78,7 +79,7 @@ namespace ALKScript.Interpreter.Evaluator
         for (int i = 0; i < constructor.Parameters.Count; i++)
         {
           var parameter = constructor.Parameters[i];
-          Nullability.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'");
+          TypeChecking.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'", constructorEnvironment);
           constructorEnvironment.Define(parameter.Name, arguments[i], parameter.Type);
         }
 
@@ -116,6 +117,7 @@ namespace ALKScript.Interpreter.Evaluator
 
       var initEnvironment = new ScriptEnvironment(ClassEnvironments.For(classValue));
       initEnvironment.Define("this", instance);
+      initEnvironment.CurrentTypeArguments = instance.TypeArguments;
 
       foreach (var cls in hierarchy)
       {
@@ -129,7 +131,7 @@ namespace ALKScript.Interpreter.Evaluator
               fieldValue = await _context.Eval(field.Initializer, initEnvironment);
               if (_context.Signal != null) return;
 
-              Nullability.EnsureAssignable(field.Type, fieldValue, field.Name, $"field '{field.Name.Lexeme}'");
+              TypeChecking.EnsureAssignable(field.Type, fieldValue, field.Name, $"field '{field.Name.Lexeme}'", initEnvironment);
             }
             else
             {
@@ -164,6 +166,7 @@ namespace ALKScript.Interpreter.Evaluator
       var callEnvironment = new ScriptEnvironment(function.Closure);
       callEnvironment.CurrentClass = function.DeclaringClass;
       callEnvironment.CurrentFunctionReturnType = function.Declaration.ReturnType;
+      callEnvironment.CurrentTypeArguments = function.BoundInstance?.TypeArguments;
 
       if (function.BoundInstance != null)
       {
@@ -177,7 +180,7 @@ namespace ALKScript.Interpreter.Evaluator
       for (int i = 0; i < function.Declaration.Parameters.Count; i++)
       {
         var parameter = function.Declaration.Parameters[i];
-        Nullability.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'");
+        TypeChecking.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'", callEnvironment);
         callEnvironment.Define(parameter.Name, arguments[i], parameter.Type);
       }
 
@@ -240,6 +243,7 @@ namespace ALKScript.Interpreter.Evaluator
       var env = new ScriptEnvironment(ClassEnvironments.For(superclass));
       env.CurrentClass = superclass;
       env.Define("this", instance);
+      env.CurrentTypeArguments = instance.TypeArguments;
       if (superclass.Superclass != null)
       {
         env.Define("base", new BaseValue(superclass.Superclass, instance));
@@ -248,7 +252,7 @@ namespace ALKScript.Interpreter.Evaluator
       for (int i = 0; i < constructor.Parameters.Count; i++)
       {
         var parameter = constructor.Parameters[i];
-        Nullability.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'");
+        TypeChecking.EnsureAssignable(parameter.Type, arguments[i], site, $"parameter '{parameter.Name}'", env);
         env.Define(parameter.Name, arguments[i], parameter.Type);
       }
 
@@ -258,6 +262,35 @@ namespace ALKScript.Interpreter.Evaluator
       {
         _context.Signal = null;
       }
+    }
+
+    /// <summary>
+    /// Builds the substitution map (e.g. <c>{"T" -> int}</c>) from the type
+    /// arguments supplied at a <c>new</c> site. A generic class declaration
+    /// (one with one or more <see cref="ClassDecl.TypeParameters"/>) requires
+    /// type arguments to be supplied with the matching count — omitting them,
+    /// or supplying the wrong count, is a <see cref="RuntimeException"/>. A
+    /// non-generic class declaration (no type parameters) yields an empty map.
+    /// </summary>
+    private static IReadOnlyDictionary<string, TypeNode> BuildTypeArgumentMap(ClassDecl declaration, IReadOnlyList<TypeNode> typeArguments, ALKScriptToken site)
+    {
+      if (declaration.TypeParameters.Count == 0)
+      {
+        return new Dictionary<string, TypeNode>();
+      }
+
+      if (typeArguments.Count != declaration.TypeParameters.Count)
+      {
+        throw new RuntimeException(site, $"'{declaration.Name.Lexeme}' expects {declaration.TypeParameters.Count} type argument(s) but got {typeArguments.Count}.");
+      }
+
+      var map = new Dictionary<string, TypeNode>();
+      for (int i = 0; i < declaration.TypeParameters.Count; i++)
+      {
+        map[declaration.TypeParameters[i]] = typeArguments[i];
+      }
+
+      return map;
     }
 
     private static ConstructorDecl? FindConstructor(ClassValue classValue)

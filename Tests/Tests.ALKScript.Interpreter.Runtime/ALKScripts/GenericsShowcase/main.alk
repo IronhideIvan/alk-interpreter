@@ -1,0 +1,35 @@
+import { log } from "console";
+
+// ── Generics enforcement ────────────────────────────────────────────────────
+//
+// "new Box<int>(...)" records the concrete type argument for "T". A field,
+// constructor parameter, method parameter, or return value declared with the
+// bare type parameter "T" is then checked against that concrete type. A
+// generic class must always be constructed with type arguments — "new
+// Box(...)" with none is a RuntimeException.
+
+class Box<T> {
+    public T value;
+
+    public new(T value) {
+        this.value = value;
+    }
+
+    public function T getValue() {
+        return this.value;
+    }
+
+    public function void setValue(T value) {
+        this.value = value;
+    }
+}
+
+// ── instantiated with a type argument ───────────────────────────────────────
+
+var intBox = new Box<int>(5);
+log(`intBox.getValue() = ${intBox.getValue()}`);
+
+intBox.setValue(10);
+log(`intBox.value = ${intBox.value}`);
+
+log("done");

@@ -208,7 +208,7 @@ public class ExpressionEvaluatorTests
 
     var context = new FakeEvaluationContext();
     ClassValue? capturedClass = null;
-    context.ConstructImpl = (cls, arguments, _) => { capturedClass = cls; return new InstanceValue(cls); };
+    context.ConstructImpl = (cls, arguments, typeArguments, _) => { capturedClass = cls; return new InstanceValue(cls); };
 
     var newExpr = new NewExpr(Nodes.Token(ALKScriptTokenType.New, "new"), Nodes.Identifier("Foo"), System.Array.Empty<TypeNode>(), new[] { Nodes.Literal(1L) });
 

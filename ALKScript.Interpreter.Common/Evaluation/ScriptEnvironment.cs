@@ -16,6 +16,7 @@ namespace ALKScript.Interpreter.Common.Evaluation
     private readonly Dictionary<string, TypeNode?> _types = new Dictionary<string, TypeNode?>();
     private ClassValue? _currentClass;
     private TypeNode? _currentFunctionReturnType;
+    private IReadOnlyDictionary<string, TypeNode>? _currentTypeArguments;
 
     public ScriptEnvironment(ScriptEnvironment? enclosing = null)
     {
@@ -59,6 +60,29 @@ namespace ALKScript.Interpreter.Common.Evaluation
         return null;
       }
       set => _currentFunctionReturnType = value;
+    }
+
+    /// <summary>
+    /// The substitution map (e.g. <c>{"T" -> int}</c>) for the class/interface
+    /// type parameters of the instance whose method (or constructor) is
+    /// currently executing, used to enforce generic member types declared as a
+    /// bare type-parameter reference (e.g. "T"). Empty (not null) when the
+    /// instance was constructed without type arguments (<c>new Box(...)</c>),
+    /// in which case such members remain unconstrained. Set on the innermost
+    /// <c>callEnvironment</c> when invoking a bound method or constructor;
+    /// walked up the scope chain like <see cref="CurrentClass"/>.
+    /// </summary>
+    public IReadOnlyDictionary<string, TypeNode>? CurrentTypeArguments
+    {
+      get
+      {
+        for (ScriptEnvironment? scope = this; scope != null; scope = scope._enclosing)
+        {
+          if (scope._currentTypeArguments != null) return scope._currentTypeArguments;
+        }
+        return null;
+      }
+      set => _currentTypeArguments = value;
     }
 
     /// <summary>

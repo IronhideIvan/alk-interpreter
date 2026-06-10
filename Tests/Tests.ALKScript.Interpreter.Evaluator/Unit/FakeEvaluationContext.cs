@@ -39,8 +39,8 @@ internal sealed class FakeEvaluationContext : IEvaluationContext
   public Func<ALKScriptValue, IReadOnlyList<ALKScriptValue>, ALKScriptToken, ALKScriptValue> CallImpl { get; set; } =
     (_, _, _) => throw new InvalidOperationException("Call was not expected.");
 
-  public Func<ClassValue, IReadOnlyList<ALKScriptValue>, ALKScriptToken, ALKScriptValue> ConstructImpl { get; set; } =
-    (_, _, _) => throw new InvalidOperationException("Construct was not expected.");
+  public Func<ClassValue, IReadOnlyList<ALKScriptValue>, IReadOnlyList<TypeNode>, ALKScriptToken, ALKScriptValue> ConstructImpl { get; set; } =
+    (_, _, _, _) => throw new InvalidOperationException("Construct was not expected.");
 
   public Task Execute(Stmt statement, ScriptEnvironment environment)
   {
@@ -60,8 +60,8 @@ internal sealed class FakeEvaluationContext : IEvaluationContext
   public Task<ALKScriptValue> Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
     => Task.FromResult(CallImpl(callee, arguments, site));
 
-  public Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site)
-    => Task.FromResult(ConstructImpl(classValue, arguments, site));
+  public Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, IReadOnlyList<TypeNode> typeArguments, ALKScriptToken site)
+    => Task.FromResult(ConstructImpl(classValue, arguments, typeArguments, site));
 
   public IScriptScheduler? Scheduler => null;
 

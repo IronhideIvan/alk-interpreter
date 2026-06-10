@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
 
@@ -15,6 +16,6 @@ namespace ALKScript.Interpreter.Evaluator
   {
     Task<ALKScriptValue> Call(ALKScriptValue callee, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site);
 
-    Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, ALKScriptToken site);
+    Task<ALKScriptValue> Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, IReadOnlyList<TypeNode> typeArguments, ALKScriptToken site);
   }
 }

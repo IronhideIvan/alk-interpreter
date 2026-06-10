@@ -990,6 +990,106 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Empty(logged);
   }
 
+  // ── Generics enforcement ─────────────────────────────────────────────────────
+
+  [Fact]
+  public void GenericsShowcase_BoundTypeParametersAreEnforced()
+  {
+    // Features exercised:
+    //   - "new Box<int>(...)" binds "T" to "int": fields, constructor
+    //     parameters, method parameters and return values declared as the
+    //     bare type parameter "T" are checked against "int"
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("GenericsShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("GenericsShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "intBox.getValue() = 5",
+        "intBox.value = 10",
+        "done",
+      },
+      logged);
+  }
+
+  [Theory]
+  [InlineData("invalid_field_assign.alk", "field 'value'")]
+  [InlineData("invalid_constructor_argument.alk", "parameter 'value'")]
+  [InlineData("invalid_return.alk", "the return value")]
+  public void GenericsShowcase_AssigningWrongTypeToBoundTypeParameter_ThrowsRuntimeException(string fileName, string expectedDescription)
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("GenericsShowcase", fileName),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("GenericsShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot assign a value of type", exception.Message);
+    Assert.Contains(expectedDescription, exception.Message);
+    Assert.Empty(logged);
+  }
+
+  [Theory]
+  [InlineData("invalid_type_argument_count.alk", "'Box' expects 1 type argument(s) but got 2")]
+  [InlineData("invalid_missing_type_arguments.alk", "'Box' expects 1 type argument(s) but got 0")]
+  public void GenericsShowcase_TypeArgumentCountMismatch_ThrowsRuntimeException(string fileName, string expectedMessage)
+  {
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("GenericsShowcase", fileName),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("GenericsShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains(expectedMessage, exception.Message);
+    Assert.Empty(logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

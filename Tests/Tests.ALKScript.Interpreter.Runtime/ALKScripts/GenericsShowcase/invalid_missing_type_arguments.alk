@@ -1,0 +1,16 @@
+import { log } from "console";
+
+// A generic class must always be constructed with type arguments — "new
+// Box(...)" with none is a RuntimeException.
+
+class Box<T> {
+    public T value;
+
+    public new(T value) {
+        this.value = value;
+    }
+}
+
+var box = new Box(5);
+
+log("unreachable");

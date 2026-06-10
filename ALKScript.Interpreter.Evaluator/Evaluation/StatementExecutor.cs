@@ -155,7 +155,7 @@ namespace ALKScript.Interpreter.Evaluator
           return;
         }
 
-        Nullability.EnsureAssignable(declaration.Type, value, declaration.Name, $"variable '{declaration.Name.Lexeme}'");
+        TypeChecking.EnsureAssignable(declaration.Type, value, declaration.Name, $"variable '{declaration.Name.Lexeme}'", environment);
       }
 
       environment.Define(declaration.Name.Lexeme, value, declaration.Type);
@@ -525,7 +525,7 @@ namespace ALKScript.Interpreter.Evaluator
         var returnType = environment.CurrentFunctionReturnType;
         if (returnType != null && returnType.Name != "void")
         {
-          Nullability.EnsureAssignable(returnType, value, statement.Keyword, "the return value");
+          TypeChecking.EnsureAssignable(returnType, value, statement.Keyword, "the return value", environment);
         }
       }
 

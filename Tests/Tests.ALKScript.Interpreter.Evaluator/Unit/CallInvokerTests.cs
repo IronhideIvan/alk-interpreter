@@ -135,7 +135,7 @@ public class CallInvokerTests
     var context = new FakeEvaluationContext();
     context.ExecuteBlockImpl = (_, environment) => capturedConstructorEnvironment = environment;
 
-    var value = await new CallInvoker(context).Construct(classValue, new ALKScriptValue[] { new StringValue("Ada") }, Site);
+    var value = await new CallInvoker(context).Construct(classValue, new ALKScriptValue[] { new StringValue("Ada") }, System.Array.Empty<TypeNode>(), Site);
 
     var instance = Assert.IsType<InstanceValue>(value);
     Assert.True(capturedConstructorEnvironment!.TryGet("this", out var boundThis));
@@ -151,7 +151,7 @@ public class CallInvokerTests
     var classValue = MakeClass(new MemberDecl[] { constructor });
     var context = new FakeEvaluationContext();
 
-    var exception = await Assert.ThrowsAsync<RuntimeException>(() => new CallInvoker(context).Construct(classValue, System.Array.Empty<ALKScriptValue>(), Site));
+    var exception = await Assert.ThrowsAsync<RuntimeException>(() => new CallInvoker(context).Construct(classValue, System.Array.Empty<ALKScriptValue>(), System.Array.Empty<TypeNode>(), Site));
 
     Assert.Contains("Expected 1 argument(s) but got 0", exception.Message);
   }
@@ -162,7 +162,7 @@ public class CallInvokerTests
     var classValue = MakeClass(System.Array.Empty<MemberDecl>());
     var context = new FakeEvaluationContext();
 
-    var value = await new CallInvoker(context).Construct(classValue, System.Array.Empty<ALKScriptValue>(), Site);
+    var value = await new CallInvoker(context).Construct(classValue, System.Array.Empty<ALKScriptValue>(), System.Array.Empty<TypeNode>(), Site);
 
     Assert.IsType<InstanceValue>(value);
   }
@@ -173,7 +173,7 @@ public class CallInvokerTests
     var classValue = MakeClass(System.Array.Empty<MemberDecl>());
     var context = new FakeEvaluationContext();
 
-    var exception = await Assert.ThrowsAsync<RuntimeException>(() => new CallInvoker(context).Construct(classValue, new ALKScriptValue[] { new IntValue(1) }, Site));
+    var exception = await Assert.ThrowsAsync<RuntimeException>(() => new CallInvoker(context).Construct(classValue, new ALKScriptValue[] { new IntValue(1) }, System.Array.Empty<TypeNode>(), Site));
 
     Assert.Contains("Expected 0 argument(s) but got 1", exception.Message);
   }
@@ -187,7 +187,7 @@ public class CallInvokerTests
     var context = new FakeEvaluationContext();
     context.ExecuteBlockImpl = (_, _) => context.Signal = Signal.Return(NullValue.Instance);
 
-    await new CallInvoker(context).Construct(classValue, System.Array.Empty<ALKScriptValue>(), Site);
+    await new CallInvoker(context).Construct(classValue, System.Array.Empty<ALKScriptValue>(), System.Array.Empty<TypeNode>(), Site);
 
     Assert.Null(context.Signal);
   }
