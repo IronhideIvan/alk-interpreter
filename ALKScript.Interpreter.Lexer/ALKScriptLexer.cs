@@ -59,6 +59,8 @@ namespace ALKScript.Interpreter.Lexer
       { "implements", ALKScriptTokenType.Implements },
       { "enum", ALKScriptTokenType.Enum },
 
+      { "is", ALKScriptTokenType.Is },
+
       { "import", ALKScriptTokenType.Import },
       { "export", ALKScriptTokenType.Export },
       { "from", ALKScriptTokenType.From },

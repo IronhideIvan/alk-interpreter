@@ -46,8 +46,6 @@ These are the most dangerous gaps because they look correct syntactically but pr
 |---|---|---|
 | **Lambda / anonymous function** | `var double = (x) => x * 2;` | No arrow-function syntax; all callables must be named declarations |
 | **String interpolation** | `` `Hello ${name}` `` or `$"Hello {name}"` | Currently requires explicit `+` concatenation |
-| **Type testing** | `x is string`, `x is Animal` | No `is`/`instanceof`/`typeof` |
-| **Explicit cast** | `x as int`, `(int) x` | No safe or unsafe cast syntax |
 
 ---
 
@@ -86,8 +84,7 @@ These are the most dangerous gaps because they look correct syntactically but pr
 8. Access modifier enforcement
 
 **Lower priority / advanced:**
-9. Type checking (`is`/`as`)
-10. Static members, properties, interfaces, enums
+10. Static members, properties
 11. Bitwise operators
 12. String interpolation
 13. Generics enforcement (currently type-erased)

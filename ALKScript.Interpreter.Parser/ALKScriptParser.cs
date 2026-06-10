@@ -1166,13 +1166,30 @@ namespace ALKScript.Interpreter.Parser
 
     private Expr ParseComparison()
     {
-      Expr expr = ParseShift();
+      Expr expr = ParseTypeTest();
 
       while (_stream.Match(ALKScriptTokenType.Less, ALKScriptTokenType.LessEqual, ALKScriptTokenType.Greater, ALKScriptTokenType.GreaterEqual))
       {
         ALKScriptToken op = _stream.Previous();
-        Expr right = ParseShift();
+        Expr right = ParseTypeTest();
         expr = new BinaryExpr(expr, op, right);
+      }
+
+      return expr;
+    }
+
+    private Expr ParseTypeTest()
+    {
+      Expr expr = ParseShift();
+
+      while (_stream.Check(ALKScriptTokenType.Is) || _stream.Check(ALKScriptTokenType.As))
+      {
+        ALKScriptToken keyword = _stream.Advance();
+        TypeNode type = ParseType();
+
+        expr = keyword.Type == ALKScriptTokenType.Is
+          ? new TypeTestExpr(expr, keyword, type)
+          : new TypeCastExpr(expr, keyword, type);
       }
 
       return expr;
@@ -1252,7 +1269,29 @@ namespace ALKScript.Interpreter.Parser
         return new AwaitExpr(keyword, operand);
       }
 
+      if (CheckNumericCastStart())
+      {
+        _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '('.");
+        ALKScriptToken typeToken = _stream.Advance();
+        _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after cast type.");
+        Expr operand = ParseUnary();
+        return new CastExpr(typeToken, PrimitiveTypeNames[typeToken.Type], operand);
+      }
+
       return ParseCall();
+    }
+
+    /// <summary>
+    /// Looks ahead for "(" ("int" | "long" | "float") ")" — a numeric
+    /// conversion cast. Limited to these three primitive types: they're not
+    /// otherwise valid as a parenthesized expression's sole content, so this
+    /// can't be confused with a grouping expression like "(x)".
+    /// </summary>
+    private bool CheckNumericCastStart()
+    {
+      return _stream.CheckAhead(0, ALKScriptTokenType.LeftParen)
+        && (_stream.CheckAhead(1, ALKScriptTokenType.IntKeyword) || _stream.CheckAhead(1, ALKScriptTokenType.LongKeyword) || _stream.CheckAhead(1, ALKScriptTokenType.FloatKeyword))
+        && _stream.CheckAhead(2, ALKScriptTokenType.RightParen);
     }
 
     private Expr ParseCall()

@@ -1,0 +1,82 @@
+import { log } from "console";
+
+// ── "is" / "as" type testing and casting ───────────────────────────────────
+//
+// "is" tests whether a value's runtime type matches a primitive type, a
+// class (or any of its superclasses), an implemented interface (including
+// inherited interfaces), or an enum. "as" performs a safe cast: it yields
+// the value when "is" would be true, and "null" otherwise.
+
+interface ISpeaker {
+    string speak();
+}
+
+abstract class Animal implements ISpeaker {
+    protected string name;
+
+    public new(string name) {
+        this.name = name;
+    }
+
+    public abstract function string speak();
+}
+
+class Dog extends Animal {
+    public new(string name) {
+        base(name);
+    }
+
+    public override function string speak() {
+        return this.name + " says Woof";
+    }
+}
+
+class Cat extends Animal {
+    public new(string name) {
+        base(name);
+    }
+
+    public override function string speak() {
+        return this.name + " says Meow";
+    }
+}
+
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+// ── primitives ──────────────────────────────────────────────────────────
+
+var x = 42;
+log(`x is int = ${x is int}`);
+log(`x is string = ${x is string}`);
+
+// ── class hierarchy and interfaces ─────────────────────────────────────────
+
+var fido = new Dog("Fido");
+log(`fido is Dog = ${fido is Dog}`);
+log(`fido is Animal = ${fido is Animal}`);
+log(`fido is ISpeaker = ${fido is ISpeaker}`);
+log(`fido is Cat = ${fido is Cat}`);
+
+var asCat = fido as Cat;
+log(`fido as Cat == null = ${asCat == null}`);
+
+var asAnimal = fido as Animal;
+log(`fido as Animal != null = ${asAnimal != null}`);
+log(asAnimal.speak());
+
+// ── enums ───────────────────────────────────────────────────────────────────
+
+var color = Color.Green;
+log(`color is Color = ${color is Color}`);
+
+// ── nullable ─────────────────────────────────────────────────────────────────
+
+var n = null;
+log(`n is string? = ${n is string?}`);
+log(`n is string = ${n is string}`);
+
+log("done");

@@ -1,0 +1,9 @@
+import { log } from "console";
+
+// Casting a "string" to "int" is not a supported numeric conversion and
+// throws a RuntimeException as soon as the cast is evaluated.
+
+string s = "not a number";
+int x = (int)s;
+
+log("unreachable");

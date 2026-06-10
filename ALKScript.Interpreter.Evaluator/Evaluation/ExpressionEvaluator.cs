@@ -106,6 +106,15 @@ namespace ALKScript.Interpreter.Evaluator
         case InterpolatedStringExpr interpolated:
           return await EvalInterpolatedString(interpolated, environment);
 
+        case TypeTestExpr typeTest:
+          return await EvalTypeTest(typeTest, environment);
+
+        case TypeCastExpr typeCast:
+          return await EvalTypeCast(typeCast, environment);
+
+        case CastExpr cast:
+          return await EvalCast(cast, environment);
+
         default:
           throw new RuntimeException(
             AstTokenLocator.Of(expression),
@@ -934,6 +943,175 @@ namespace ALKScript.Interpreter.Evaluator
       return condition.IsTruthy
         ? await Eval(expression.ThenExpr, environment)
         : await Eval(expression.ElseExpr, environment);
+    }
+
+    private async Task<ALKScriptValue> EvalTypeTest(TypeTestExpr expression, ScriptEnvironment environment)
+    {
+      var operand = await Eval(expression.Operand, environment);
+
+      if (_context.Signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      return BoolValue.Of(MatchesType(operand, expression.Type, environment, expression.Keyword));
+    }
+
+    private async Task<ALKScriptValue> EvalTypeCast(TypeCastExpr expression, ScriptEnvironment environment)
+    {
+      var operand = await Eval(expression.Operand, environment);
+
+      if (_context.Signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      return MatchesType(operand, expression.Type, environment, expression.Keyword) ? operand : NullValue.Instance;
+    }
+
+    private async Task<ALKScriptValue> EvalCast(CastExpr expression, ScriptEnvironment environment)
+    {
+      var operand = await Eval(expression.Operand, environment);
+
+      if (_context.Signal != null)
+      {
+        return NullValue.Instance;
+      }
+
+      switch (expression.TargetType)
+      {
+        case "int":
+        case "long":
+          switch (operand)
+          {
+            case IntValue intValue:
+              return intValue;
+            case FloatValue floatValue:
+              return new IntValue((long)floatValue.Value);
+            default:
+              throw new RuntimeException(expression.Keyword, $"Cannot cast a value of type '{operand.TypeName}' to '{expression.TargetType}'.");
+          }
+
+        case "float":
+          switch (operand)
+          {
+            case FloatValue floatValue:
+              return floatValue;
+            case IntValue intValue:
+              return new FloatValue(intValue.Value);
+            default:
+              throw new RuntimeException(expression.Keyword, $"Cannot cast a value of type '{operand.TypeName}' to 'float'.");
+          }
+
+        default:
+          throw new RuntimeException(expression.Keyword, $"Cannot cast to '{expression.TargetType}'.");
+      }
+    }
+
+    /// <summary>
+    /// Implements the runtime semantics of <c>is</c>/<c>as</c>: whether
+    /// <paramref name="value"/> is an instance of <paramref name="type"/>.
+    /// User-defined type names (classes, interfaces, enums) are resolved
+    /// against <paramref name="environment"/>.
+    /// </summary>
+    private static bool MatchesType(ALKScriptValue value, TypeNode type, ScriptEnvironment environment, ALKScriptToken site)
+    {
+      if (value is NullValue)
+      {
+        return type.IsNullable;
+      }
+
+      if (type.ArrayRank > 0)
+      {
+        return value is ArrayValue;
+      }
+
+      switch (type.Name)
+      {
+        case "int":
+        case "long":
+          return value is IntValue;
+        case "float":
+          return value is FloatValue;
+        case "string":
+          return value is StringValue;
+        case "bool":
+          return value is BoolValue;
+        case "void":
+          return false;
+        default:
+          return MatchesNamedType(value, type.Name, environment, site);
+      }
+    }
+
+    private static bool MatchesNamedType(ALKScriptValue value, string typeName, ScriptEnvironment environment, ALKScriptToken site)
+    {
+      if (!environment.TryGet(typeName, out var typeValue))
+      {
+        throw new RuntimeException(site, $"Unknown type '{typeName}'.");
+      }
+
+      switch (typeValue)
+      {
+        case ClassValue classValue:
+          return value is InstanceValue instance && IsInstanceOfClass(instance.Class, classValue);
+
+        case InterfaceValue interfaceValue:
+          return value is InstanceValue instanceValue && ImplementsInterface(instanceValue.Class, interfaceValue);
+
+        case EnumTypeValue enumType:
+          return value is EnumValue enumValue && enumValue.EnumName == enumType.Declaration.Name.Lexeme;
+
+        default:
+          throw new RuntimeException(site, $"'{typeName}' is not a type that can be used with 'is'/'as'.");
+      }
+    }
+
+    private static bool IsInstanceOfClass(ClassValue? actual, ClassValue target)
+    {
+      for (var current = actual; current != null; current = current.Superclass)
+      {
+        if (ReferenceEquals(current.Declaration, target.Declaration))
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    private static bool ImplementsInterface(ClassValue? cls, InterfaceValue target)
+    {
+      for (var current = cls; current != null; current = current.Superclass)
+      {
+        foreach (var implemented in current.Interfaces)
+        {
+          if (InterfaceMatches(implemented, target))
+          {
+            return true;
+          }
+        }
+      }
+
+      return false;
+    }
+
+    private static bool InterfaceMatches(InterfaceValue candidate, InterfaceValue target)
+    {
+      if (ReferenceEquals(candidate.Declaration, target.Declaration))
+      {
+        return true;
+      }
+
+      foreach (var extended in candidate.Extends)
+      {
+        if (InterfaceMatches(extended, target))
+        {
+          return true;
+        }
+      }
+
+      return false;
     }
 
     private async Task<ALKScriptValue> EvalIndex(IndexExpr expression, ScriptEnvironment environment)

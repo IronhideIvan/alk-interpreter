@@ -1,0 +1,24 @@
+import { log } from "console";
+
+// ── C-style numeric casts ───────────────────────────────────────────────────
+//
+// "(int)", "(long)" and "(float)" perform numeric conversions: truncating
+// "float" to an integer, or widening "int"/"long" to "float". Casting
+// between "int" and "long" is a no-op since both are backed by IntValue.
+
+long b = 1;
+int a = (int)b;
+log(`a = ${a}`);
+
+float pi = 3.9;
+log(`(int)pi = ${(int)pi}`);
+
+float negative = -3.9;
+log(`(int)negative = ${(int)negative}`);
+
+int five = 5;
+log(`(float)five = ${(float)five}`);
+
+log(`(long)pi = ${(long)pi}`);
+
+log("done");

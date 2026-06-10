@@ -788,6 +788,128 @@ public class EndToEndTests : RuntimeTestBase
     Assert.Empty(logged);
   }
 
+  // ── Type testing/casting ─────────────────────────────────────────────────────
+
+  [Fact]
+  public void TypeTestShowcase_IsAndAs_ResolveAgainstHierarchyInterfacesAndEnums()
+  {
+    // Features exercised:
+    //   - "is" against primitive types, class hierarchies, interfaces, and enums
+    //   - "as" safe-cast: yields the value on a match, "null" otherwise
+    //   - "is" against a nullable type, including matching "null" itself
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("TypeTestShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("TypeTestShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "x is int = true",
+        "x is string = false",
+        "fido is Dog = true",
+        "fido is Animal = true",
+        "fido is ISpeaker = true",
+        "fido is Cat = false",
+        "fido as Cat == null = true",
+        "fido as Animal != null = true",
+        "Fido says Woof",
+        "color is Color = true",
+        "n is string? = true",
+        "n is string = false",
+        "done",
+      },
+      logged);
+  }
+
+  [Fact]
+  public void CastShowcase_NumericCasts_ConvertBetweenIntLongAndFloat()
+  {
+    // Features exercised:
+    //   - "(int)"/"(long)" truncate a "float" toward zero (including negatives)
+    //   - "(float)" widens an "int"/"long" value
+    //   - "(int)"/"(long)" are no-ops when the operand is already an IntValue
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("CastShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("CastShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+
+    Assert.Equal(
+      new[]
+      {
+        "a = 1",
+        "(int)pi = 3",
+        "(int)negative = -3",
+        "(float)five = 5",
+        "(long)pi = 3",
+        "done",
+      },
+      logged);
+  }
+
+  [Fact]
+  public void CastShowcase_NumericCastOnUnsupportedType_ThrowsRuntimeException()
+  {
+    // "(int)" (and likewise "(long)"/"(float)") only convert between
+    // "int"/"long"/"float". Casting a "string" (or any other non-numeric
+    // type) throws a RuntimeException as soon as the cast is evaluated.
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("CastShowcase", "invalid.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("CastShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+
+    Assert.Contains("Cannot cast a value of type 'string' to 'int'", exception.Message);
+    Assert.Empty(logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

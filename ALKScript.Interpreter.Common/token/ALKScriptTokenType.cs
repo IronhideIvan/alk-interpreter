@@ -63,6 +63,9 @@ namespace ALKScript.Interpreter.Common.Token
     Implements,
     Enum,
 
+    // Keywords - type testing/casting
+    Is,
+
     // Keywords - modules
     Import,
     Export,

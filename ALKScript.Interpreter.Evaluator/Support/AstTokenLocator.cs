@@ -79,6 +79,12 @@ namespace ALKScript.Interpreter.Evaluator
           return nullCondGet.Name;
         case InterpolatedStringExpr interpolated:
           return interpolated.Token;
+        case TypeTestExpr typeTest:
+          return typeTest.Keyword;
+        case TypeCastExpr typeCast:
+          return typeCast.Keyword;
+        case CastExpr cast:
+          return cast.Keyword;
         default:
           return EndOfFile;
       }
