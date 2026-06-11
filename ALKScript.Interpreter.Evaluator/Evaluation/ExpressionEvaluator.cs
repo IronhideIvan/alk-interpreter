@@ -549,10 +549,10 @@ namespace ALKScript.Interpreter.Evaluator
       switch (operand)
       {
         case ArrayValue array:
-          return await EvalWhenAll(array.Items);
+          return await EvalWhenAll(array.Items, environment, expression.Keyword);
 
         default:
-          return await AwaitIfNeeded(operand);
+          return await AwaitIfNeeded(operand, environment, expression.Keyword);
       }
     }
 
@@ -562,26 +562,42 @@ namespace ALKScript.Interpreter.Evaluator
     /// shapes a <c>thunk</c>/<c>thunk&lt;T&gt;</c>-typed expression evaluates
     /// to), otherwise returns it unchanged.
     /// </summary>
-    private async Task<ALKScriptValue> AwaitIfNeeded(ALKScriptValue value)
+    private async Task<ALKScriptValue> AwaitIfNeeded(ALKScriptValue value, ScriptEnvironment environment, ALKScriptToken site)
     {
       switch (value)
       {
         case ThunkValue thunkValue:
-          return await AwaitTask(thunkValue.Task);
+          return await AwaitTask(thunkValue.Task, thunkValue.ElementType, environment, site);
 
         case PendingOperationValue pending:
-          return await AwaitPending(pending);
+          return await AwaitPending(pending, environment, site);
 
         default:
           return value;
       }
     }
 
-    private async Task<ALKScriptValue> AwaitTask(Task<ALKScriptValue> task)
+    /// <summary>
+    /// Throws a <see cref="RuntimeException"/> if <paramref name="result"/>
+    /// doesn't match the declared <c>thunk&lt;T&gt;</c>'s <paramref name="elementType"/>.
+    /// A <c>null</c> <paramref name="elementType"/> (bare <c>thunk</c>) means
+    /// there's nothing to validate against.
+    /// </summary>
+    private static void ValidateThunkResult(ALKScriptValue result, TypeNode? elementType, ScriptEnvironment environment, ALKScriptToken site)
+    {
+      if (elementType != null && !TypeChecking.MatchesType(result, elementType, environment, site))
+      {
+        throw new RuntimeException(site, $"Operation declared 'thunk<{elementType}>' resolved to a value of type '{result.TypeName}', expected '{elementType}'.");
+      }
+    }
+
+    private async Task<ALKScriptValue> AwaitTask(Task<ALKScriptValue> task, TypeNode? elementType, ScriptEnvironment environment, ALKScriptToken site)
     {
       try
       {
-        return await task.ScheduledOn(_context.Scheduler);
+        var result = await task.ScheduledOn(_context.Scheduler);
+        ValidateThunkResult(result, elementType, environment, site);
+        return result;
       }
       catch (RuntimeException)
       {
@@ -603,7 +619,7 @@ namespace ALKScript.Interpreter.Evaluator
     /// awaited, and an <see cref="OperationLogEntry"/> is appended to the log
     /// for future replay.
     /// </summary>
-    private async Task<ALKScriptValue> AwaitPending(PendingOperationValue pending)
+    private async Task<ALKScriptValue> AwaitPending(PendingOperationValue pending, ScriptEnvironment environment, ALKScriptToken site)
     {
       var entry = _context.TryReplayNext();
       if (entry != null)
@@ -614,6 +630,7 @@ namespace ALKScript.Interpreter.Evaluator
           _context.Signal = Signal.Thrown(new StringValue(entry.FaultMessage!));
           return NullValue.Instance;
         }
+        ValidateThunkResult(entry.Result!, pending.ElementType, environment, site);
         return entry.Result!;
       }
 
@@ -621,6 +638,7 @@ namespace ALKScript.Interpreter.Evaluator
       {
         var result = await pending.Start().ScheduledOn(_context.Scheduler);
         _context.RecordEntry(OperationLogEntry.FromResult(pending.Operation, result));
+        ValidateThunkResult(result, pending.ElementType, environment, site);
         return result;
       }
       catch (RuntimeException)
@@ -647,13 +665,14 @@ namespace ALKScript.Interpreter.Evaluator
     /// to the host (decision #11) and aggregated into one catchable
     /// <see cref="Signal.Thrown"/>.
     /// </summary>
-    private async Task<ALKScriptValue> EvalWhenAll(IReadOnlyList<ALKScriptValue> items)
+    private async Task<ALKScriptValue> EvalWhenAll(IReadOnlyList<ALKScriptValue> items, ScriptEnvironment environment, ALKScriptToken site)
     {
       var count = items.Count;
       var resolved = new ALKScriptValue?[count];
       var faultMessages = new string?[count];
       var pendingOps = new PendingOperationValue?[count];
       var liveTasks = new Task<ALKScriptValue>?[count];
+      var elementTypes = new TypeNode?[count];
       var liveCount = 0;
 
       // First pass: replay what the log covers; queue up the rest as live tasks.
@@ -663,6 +682,7 @@ namespace ALKScript.Interpreter.Evaluator
         {
           case PendingOperationValue pov:
             pendingOps[i] = pov;
+            elementTypes[i] = pov.ElementType;
             var entry = _context.TryReplayNext();
             if (entry != null)
             {
@@ -679,6 +699,7 @@ namespace ALKScript.Interpreter.Evaluator
 
           case ThunkValue tv:
             liveTasks[i] = tv.Task;
+            elementTypes[i] = tv.ElementType;
             liveCount++;
             break;
 
@@ -754,6 +775,14 @@ namespace ALKScript.Interpreter.Evaluator
           : $"Multiple operations failed: {string.Join("; ", allFaults)}";
         _context.Signal = Signal.Thrown(new StringValue(message));
         return NullValue.Instance;
+      }
+
+      for (int i = 0; i < count; i++)
+      {
+        if (resolved[i] != null)
+        {
+          ValidateThunkResult(resolved[i]!, elementTypes[i], environment, site);
+        }
       }
 
       var results = new List<ALKScriptValue>(count);

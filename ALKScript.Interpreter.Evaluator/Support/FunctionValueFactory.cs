@@ -57,7 +57,7 @@ namespace ALKScript.Interpreter.Evaluator
 
       if (declaration.ReturnType.Name == "thunk")
       {
-        return CreatePendingOperationFactory(declaration.Name.Lexeme, declaration.Name, declaration.Parameters.Count);
+        return CreatePendingOperationFactory(declaration.Name.Lexeme, declaration.Name, declaration.Parameters.Count, ThunkElementType(declaration.ReturnType));
       }
 
       if (_nativeBindings.TryGetValue(declaration.Name.Lexeme, out var implementation))
@@ -86,6 +86,14 @@ namespace ALKScript.Interpreter.Evaluator
       if (_nativeMethodBindings.TryGetValue(className, memberName, out var implementation))
       {
         var instance = boundInstance;
+
+        if (declaration.ReturnType.Name == "thunk")
+        {
+          var elementType = ThunkElementType(declaration.ReturnType);
+          return new NativeFunctionValue(memberName, declaration.Parameters.Count, arguments =>
+            TagThunkElementType(implementation(instance, arguments), elementType));
+        }
+
         return new NativeFunctionValue(memberName, declaration.Parameters.Count, arguments => implementation(instance, arguments));
       }
 
@@ -102,7 +110,7 @@ namespace ALKScript.Interpreter.Evaluator
     /// "free": the host-side effect is requested, not run, until something
     /// needs its result.
     /// </summary>
-    private NativeFunctionValue CreatePendingOperationFactory(string operationName, ALKScriptToken site, int arity)
+    private NativeFunctionValue CreatePendingOperationFactory(string operationName, ALKScriptToken site, int arity, TypeNode? elementType)
     {
       if (_operationBinder == null)
       {
@@ -113,11 +121,31 @@ namespace ALKScript.Interpreter.Evaluator
       var created = _created;
       return new NativeFunctionValue(operationName, arity, arguments =>
       {
-        var pending = new PendingOperationValue(new PendingOperation(operationName, arguments), binder);
+        var pending = new PendingOperationValue(new PendingOperation(operationName, arguments), binder, elementType);
         created.Add(pending);
         return pending;
       });
     }
+
+    /// <summary>
+    /// The "T" of a declared <c>thunk&lt;T&gt;</c> return type, or <c>null</c>
+    /// for a bare <c>thunk</c> (or a non-<c>thunk</c> return type).
+    /// </summary>
+    private static TypeNode? ThunkElementType(TypeNode returnType) =>
+      returnType.Name == "thunk" && returnType.TypeArguments.Count > 0
+        ? returnType.TypeArguments[0]
+        : null;
+
+    /// <summary>
+    /// Tags <paramref name="value"/> with <paramref name="elementType"/> if it
+    /// is a <see cref="ThunkValue"/> — the shape a <c>thunk</c>/<c>thunk&lt;T&gt;</c>-declared
+    /// native method's host implementation returns directly. Other values
+    /// (and <see cref="PendingOperationValue"/>, which is only produced by
+    /// <see cref="CreatePendingOperationFactory"/> and tagged there) pass
+    /// through unchanged.
+    /// </summary>
+    private static ALKScriptValue TagThunkElementType(ALKScriptValue value, TypeNode? elementType) =>
+      value is ThunkValue thunkValue ? thunkValue.WithElementType(elementType) : value;
 
     public void DiscardPending(Action<Exception> onFault)
     {

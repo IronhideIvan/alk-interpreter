@@ -382,3 +382,16 @@ keyword entirely:
 - `await` on a non-`thunk` expression remains a lenient no-op (yields the
   value unchanged), confirmed as the intended behavior — see
   `docs/LANGUAGE_SPEC.md` §8.
+
+## Addendum 2: validating `thunk<T>` resolution against `T`
+
+A further follow-up tightened `await` on a `thunk<T>` (with a concrete `T`):
+`ThunkValue`/`PendingOperationValue` are now tagged at construction time with
+the declared `T` (`ElementType`), computed from the `thunk<T>` return type of
+the `native` declaration that produced them (`FunctionValueFactory`). When
+`await` (including `whenAll`'s per-element resolution) resolves such a value,
+the result is checked against `T` via `TypeChecking.MatchesType`; a mismatch
+throws a `RuntimeException` that is **not** caught by script `try`/`catch` —
+it indicates a host/native bug (the binder resolved to the wrong shape), not
+a normal runtime fault. Bare `thunk` (`ElementType == null`) has nothing to
+validate and remains exactly as lenient as before.

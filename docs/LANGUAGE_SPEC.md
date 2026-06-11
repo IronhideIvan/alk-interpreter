@@ -743,6 +743,13 @@ never constructs one directly.
   called without `await` is **not** started eagerly (lazy/deferred-start). If
   the script ends without ever awaiting it, the host's binder receives a
   `Discard` call so it can run the operation as a fire-and-forget effect.
+- When `await` resolves a value declared `thunk<T>` (with a concrete `T`),
+  the resolved value's runtime type is checked against `T`. A mismatch (e.g.
+  a host binder for `thunk<int>` resolving to a `string`, or to `null` for a
+  non-nullable `T`) throws a `RuntimeException` that is **not**
+  script-catchable — it signals a host/native bug, not a normal runtime
+  fault. Bare `thunk` (no type argument) has nothing to check and remains
+  fully lenient, as described above.
 
 ```
 native function thunk<int> delayValue(int value);

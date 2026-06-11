@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 
 namespace ALKScript.Interpreter.Common.Evaluation.Values
@@ -34,10 +35,19 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
 
     public PendingOperation Operation { get; }
 
-    public PendingOperationValue(PendingOperation operation, IAsyncOperationBinder binder)
+    /// <summary>
+    /// The "T" of the declared <c>thunk&lt;T&gt;</c> return type that produced
+    /// this value, if any — used to validate the resolved result on
+    /// <c>await</c>. <c>null</c> for a bare <c>thunk</c> (nothing to validate
+    /// against).
+    /// </summary>
+    public TypeNode? ElementType { get; }
+
+    public PendingOperationValue(PendingOperation operation, IAsyncOperationBinder binder, TypeNode? elementType = null)
     {
       Operation = operation;
       _binder = binder;
+      ElementType = elementType;
     }
 
     /// <summary>

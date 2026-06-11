@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
+using ALKScript.Interpreter.Evaluator;
 
 namespace Tests.ALKScript.Interpreter.Evaluator;
 
@@ -264,5 +265,49 @@ public class AsyncEvaluationTests : EvaluatorTestBase
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(10L, value.Value);
+  }
+
+  // -------------------------------------------------------------------------
+  // thunk<T> result validation
+  // -------------------------------------------------------------------------
+
+  [Fact]
+  public void Evaluate_AwaitOnThunkOfIntResolvingToString_ThrowsRuntimeException()
+  {
+    var binder = new FuncBinder(_ => Task.FromResult((ALKScriptValue)new StringValue("oops")));
+
+    Assert.Throws<RuntimeException>(() => Run(
+      "native function thunk<int> fetch();\nfunction void main() {\n  await fetch();\n}\nmain();",
+      binder));
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnThunkOfNonNullableIntResolvingToNull_ThrowsRuntimeException()
+  {
+    var binder = new FuncBinder(_ => Task.FromResult((ALKScriptValue)NullValue.Instance));
+
+    Assert.Throws<RuntimeException>(() => Run(
+      "native function thunk<int> fetch();\nfunction void main() {\n  await fetch();\n}\nmain();",
+      binder));
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnBareThunkResolvingToNull_DoesNotThrow()
+  {
+    var binder = new FuncBinder(_ => Task.FromResult((ALKScriptValue)NullValue.Instance));
+
+    RunWithOperationBinder("native function thunk move(); await move();", null, binder);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayWhereOneThunkResolvesToWrongType_ThrowsRuntimeException()
+  {
+    var binder = new FuncBinder(op => op.Name == "ok"
+      ? Task.FromResult((ALKScriptValue)new IntValue(1))
+      : Task.FromResult((ALKScriptValue)new StringValue("wrong")));
+
+    Assert.Throws<RuntimeException>(() => Run(
+      "native function thunk<int> ok();\nnative function thunk<int> bad();\nfunction void main() {\n  await [ok(), bad()];\n}\nmain();",
+      binder));
   }
 }
