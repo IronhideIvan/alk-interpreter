@@ -162,6 +162,9 @@ lambda<void> action;             // () -> void
 lambda<void, string> printer;    // (string) -> void
 ```
 
+A bare `lambda` (no `<...>`) is equivalent to `lambda<void>` — a callable
+taking no parameters and returning nothing.
+
 A value is assignable to a `lambda<...>` type if it is callable with a
 matching arity and (for script-defined functions/lambdas, where parameter and
 return types are known) matching parameter and return types.

@@ -56,6 +56,18 @@ public class LambdaTests : ParserTestBase
   }
 
   [Fact]
+  public void Parse_BareLambdaTypeAnnotation_IsEquivalentToLambdaOfVoid()
+  {
+    var program = Parse("lambda action = void () => { };");
+
+    var decl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
+
+    Assert.NotNull(decl.Type);
+    Assert.Equal("lambda", decl.Type!.Name);
+    Assert.Equal("void", Assert.Single(decl.Type.TypeArguments).Name);
+  }
+
+  [Fact]
   public void Parse_LambdaPassedAsCallArgument_ProducesLambdaExprArgument()
   {
     var program = Parse("forEach(void (Item it) => { log(it); });");

@@ -675,6 +675,12 @@ namespace ALKScript.Interpreter.Parser
 
         _stream.Consume(ALKScriptTokenType.Greater, "Expect '>' after type arguments.");
       }
+      else if (name == "lambda")
+      {
+        // Bare "lambda" (no type arguments) is equivalent to "lambda<void>" —
+        // a callable taking no parameters and returning nothing.
+        typeArguments.Add(new TypeNode("void", System.Array.Empty<TypeNode>(), 0, false));
+      }
 
       int arrayRank = 0;
 
