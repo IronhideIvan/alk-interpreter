@@ -395,3 +395,80 @@ throws a `RuntimeException` that is **not** caught by script `try`/`catch` —
 it indicates a host/native bug (the binder resolved to the wrong shape), not
 a normal runtime fault. Bare `thunk` (`ElementType == null`) has nothing to
 validate and remains exactly as lenient as before.
+
+## Addendum 3: `EvaluationCursor` — a synchronous, resumable evaluator spine
+
+Decision #1 above settled on `async`/`Task`-based suspension, reasoning that
+the CLR's compiler-generated `async`/`await` state machines could stand in for
+a hand-rolled traverser. In practice ALKScript is single-threaded and never
+performs real concurrency itself — the `Task`-based spine (`ExpressionEvaluator`/
+`StatementExecutor`/`CallInvoker`/`ProgramEvaluator`, ~71 `async` methods, 124
+`await` call sites) plus `ScriptScheduler`/`ScheduledTask`'s single-threaded
+pump exists purely to give `await fetch()` its suspend/resume semantics. This
+indirection also stood in the way of decision #17 (save/load of suspended
+scripts): CLR task continuations are opaque and not serializable, so
+"suspended state" had no concrete representation to persist.
+
+A parallel implementation, `EvaluationCursor`
+(`ALKScript.Interpreter.Evaluator/Cursor/`), replaces the `Task`-based spine
+with a hand-rolled, synchronous, resumable traverser:
+
+- Every evaluator method returns `StepResult` (`IsAwaiting` / `Value` /
+  `Handle`) instead of `Task<ALKScriptValue>`/`Task`. The mechanical
+  propagation pattern at each former `await` site is:
+  ```csharp
+  var step = Eval(expr, env);
+  if (step.IsAwaiting) return step;   // propagate suspension upward
+  var x = step.Value!;
+  ```
+- `Signal` (break/continue/return/thrown/cancelled) is **unchanged** — still
+  the orthogonal non-local-exit mechanism, checked after each sub-step exactly
+  as before.
+- When an `AwaitExpr` is reached on a not-yet-resolved `thunk`/
+  `thunk<T>`/`PendingOperationValue` in an allowed position (see
+  docs/LANGUAGE_SPEC.md §8.1), `Eval` returns `StepResult.Awaiting(handle)` and
+  `EvaluationCursor.Run()` returns `RunResult.Awaiting` — synchronously, with
+  no `Task`, no scheduler, no thread involved. The host later calls
+  `Resume(value)`/`ResumeFaulted(message)` once the operation settles.
+- **Resume trail**: when a top-level run suspends, every enclosing resumable
+  construct (block/loop/if/switch/try) records, leaf-to-root, which child
+  (statement/iteration/case/region index) it was executing and with which
+  `ScriptEnvironment`. `Resume` walks this trail root-to-leaf to fast-forward
+  back to the exact suspended statement — re-entering only the chosen
+  branches/iterations/regions, without re-evaluating anything already
+  evaluated — then substitutes the resumed value for the `await` that
+  suspended and continues normal execution.
+- `CursorProgramEvaluator` is the module-graph counterpart to
+  `ProgramEvaluator`: it runs the global prelude(s) then each module's
+  top-level declarations as separate `EvaluationCursor.Start` "segments",
+  preserving topological module ordering, import/export binding, and the
+  existing record-and-replay log (`OperationLogEntry`/`TryReplayNext`/
+  `RecordEntry`) unchanged from decision #17's design.
+- `IAsyncOperationBinder` keeps its existing `Task`-returning contract — `Task`
+  remains purely a host-boundary type. Only the evaluator's own internal walk
+  is now synchronous.
+
+**Scope and current limitations** (tracked for follow-up plans):
+- A called function/constructor body that itself needs to suspend is not yet
+  supported — `CursorCallInvoker` throws if an internal call returns
+  `IsAwaiting`. Only the outermost statement sequence can suspend in this
+  milestone.
+- `await [a, b, c]` ("whenAll") only handles the case where every element is
+  already resolved; an in-flight element throws `RuntimeException`. The
+  composite whenAll suspension model (per-slot `Resume`, fault aggregation) is
+  a follow-up plan.
+- Full serialization (`Capture`/`Restore` of suspended evaluation state,
+  including `InstanceValue`/`FunctionValue`/class-level environment bindings)
+  is a follow-up plan; `EvaluationCursor`'s resume trail is shaped for this but
+  doesn't yet implement it.
+- Native array-method callbacks (`map`/`filter`, etc.) that themselves `await`
+  are not supported — these run via `cursor.Call(...)` and a callback
+  returning `IsAwaiting` is unhandled.
+
+`CursorProgramEvaluator`/`EvaluationCursor` exist alongside the original
+`Task`-based evaluator (`ProgramEvaluator` + `ScriptScheduler`) — differential
+testing (`Tests.ALKScript.Interpreter.Evaluator/Cursor/CursorDifferentialTests.cs`)
+confirms both produce identical `record()` output for the in-scope subset of
+the existing test suite's scripts. Cutover (making `CursorProgramEvaluator`
+the only evaluator and deleting `ScriptScheduler`/`ScheduledTask`/etc.) is a
+later plan, once the limitations above are addressed.
