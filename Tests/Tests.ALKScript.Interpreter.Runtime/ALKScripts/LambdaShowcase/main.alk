@@ -46,13 +46,13 @@ var acc = new Accumulator();
 acc.addAll([1, 2, 3, 4]);
 log(`total = ${acc.getTotal()}`);
 
-// ── async lambdas ────────────────────────────────────────────────────────
+// ── lambdas that await internally ───────────────────────────────────────
 
-lambda<int, int> doubleAsync = async int (int x) => {
+lambda<int, int> doubleAsync = int (int x) => {
     int value = await delayValue(x);
     return value * 2;
 };
-int doubled = await doubleAsync(5);
+int doubled = doubleAsync(5);
 log(`doubled = ${doubled}`);
 
 // ── array.map / array.filter with lambda callbacks ──────────────────────────
@@ -63,9 +63,9 @@ log(`doubledItems = [${doubledItems[0]}, ${doubledItems[1]}, ${doubledItems[2]}]
 var evenItems = [1, 2, 3, 4].filter(bool (int n) => { return n % 2 == 0; });
 log(`evenItems = [${evenItems[0]}, ${evenItems[1]}]`);
 
-// "map"/"filter" callbacks may themselves be "async" — each call is awaited
-// internally, so the result is a plain array, no extra "await" needed.
-var asyncDoubled = [1, 2, 3].map(async int (int n) => {
+// "map"/"filter" callbacks can "await" internally — each call is awaited
+// by the runtime, so the result is a plain array, no extra "await" needed.
+var asyncDoubled = [1, 2, 3].map(int (int n) => {
     int value = await delayValue(n);
     return value * 2;
 });

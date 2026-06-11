@@ -30,7 +30,7 @@ The following words are reserved keywords and cannot be used as identifiers:
 if else while for foreach in do break continue
 switch case default
 function native return var const true false null
-async await
+await thunk
 try catch finally throw
 int long float string bool void
 class new this base extends
@@ -127,12 +127,13 @@ Arrays expose a small set of built-in members, accessed like
 | `join` | `(T[]) -> T[]` | Returns a new array containing this array's elements followed by `other`'s; does not mutate either operand. |
 | `slice` | `(int, int) -> T[]` | Returns a new array of `count` elements starting at `start`; does not mutate the receiver. Runtime error if the range is out of bounds. |
 | `remove` | `(int) -> T` | Removes and returns the element at `index` in place; runtime error if `index` is out of bounds. |
-| `map` | `(lambda<R, T>) -> R[]` | Returns a new array containing the result of calling the given callback with each element in turn, in order; does not mutate the receiver. The callback may itself be `async`. |
-| `filter` | `(lambda<bool, T>) -> T[]` | Returns a new array containing only the elements for which the given callback returns `true`, preserving order; does not mutate the receiver. The callback may itself be `async`. Runtime error if the callback returns a non-`bool` value. |
+| `map` | `(lambda<R, T>) -> R[]` | Returns a new array containing the result of calling the given callback with each element in turn, in order; does not mutate the receiver. |
+| `filter` | `(lambda<bool, T>) -> T[]` | Returns a new array containing only the elements for which the given callback returns `true`, preserving order; does not mutate the receiver. Runtime error if the callback returns a non-`bool` value. |
 
 `map` and `filter` accept any single-argument callable — a `lambda<...>`
 expression, a named function/method reference, etc. — and invoke it once per
-element, awaiting the result if it is itself awaitable.
+element. A callback that needs to unwrap a `thunk`/`thunk<T>` value may use
+`await` internally like any other function.
 
 These are not subject to the element-type checks described in §2.5 — element
 types are erased once values are inside an `ArrayValue`.
@@ -164,6 +165,12 @@ lambda<void, string> printer;    // (string) -> void
 A value is assignable to a `lambda<...>` type if it is callable with a
 matching arity and (for script-defined functions/lambdas, where parameter and
 return types are known) matching parameter and return types.
+
+`thunk`/`thunk<T>` (see §8) can appear as a type argument like any other type:
+`lambda<thunk<int>, int>` describes a callable that *forwards* a deferred
+operation (returns a `thunk<int>` without awaiting it), whereas
+`lambda<int, int>` describes a callable that `await`s internally and returns
+the unwrapped `int` directly.
 
 ### 2.5 Generic Types
 
@@ -294,7 +301,7 @@ const var label = "fixed";
 ### 4.2 Function Declarations
 
 ```
-functionDecl = [ "export" ] [ "native" ] [ "async" ]
+functionDecl = [ "export" ] [ "native" ]
                "function" [ "<" typeParamList ">" ] type identifier
                "(" [ paramList ] ")" ( block | ";" ) ;
 
@@ -315,20 +322,17 @@ native function void log(string message);   // body-less; host-implemented
 ```
 
 - The declared return type is the function's *actual* return type — see
-  §8 for how this interacts with `async`.
+  §8 for how `thunk`/`thunk<T>` and `await` work.
 - A `native` function has no body (terminated by `;`) and is implemented by
   the embedding host.
-- `async` requires the function body to contain at least one `await`
-  expression somewhere within it (a parse-time error otherwise). This rule
-  does not apply to `native` or `abstract` functions/methods (which have no
-  body to check).
+- `await` is a universally-valid operator and may appear in the body of any
+  function, method, lambda, or at the top level — there is no declaration-level
+  marker required to use it.
 
 ### 4.3 Top-Level `await`
 
-The entry module's top-level statements are themselves treated as the body
-of an implicit `async` function, so `await` may be used directly at the top
-level of a script (mirroring top-level `await` in other async-capable
-languages).
+The entry module's top-level statements may use `await` directly (mirroring
+top-level `await` in other async-capable languages).
 
 ---
 
@@ -449,7 +453,7 @@ argList      = expression { "," expression } ;
 ### 6.1 Lambda Expressions
 
 ```
-lambdaExpr = [ "async" ] type "(" [ paramList ] ")" "=>" block ;
+lambdaExpr = type "(" [ paramList ] ")" "=>" block ;
 ```
 
 ```
@@ -459,7 +463,7 @@ lambda<int, int> scale = int (int x) => { return x * factor; };  // captures "fa
 
 lambda<void, int> action = void (int n) => { log(`item = ${n}`); };
 
-lambda<int, int> doubleAsync = async int (int x) => {
+lambda<int, int> doubleValue = int (int x) => {
     int value = await delayValue(x);
     return value * 2;
 };
@@ -471,8 +475,8 @@ lambda<int, int> doubleAsync = async int (int x) => {
 - Lambdas close over (by reference) local variables, parameters, and `this`
   / `base` from the enclosing scope, so mutations to a captured variable are
   visible to the lambda and vice versa.
-- An `async` lambda follows the same rules as `async` functions/methods: its
-  body must contain at least one `await`.
+- `await` may be used inside a lambda body like any function — there is no
+  declaration-level marker required (see §8).
 - The static type of a lambda expression is `lambda<ReturnType, ParamTypes...>`
   and is checked against the declared type of the variable/field/parameter it
   is assigned to.
@@ -518,7 +522,7 @@ fieldDecl = [ accessModifier ] [ "static" ] [ "readonly" ] ( "var" | type ) iden
 
 methodDecl = [ accessModifier ] [ "static" ]
              [ "virtual" | "abstract" | "override" ]
-             [ "native" ] [ "async" ]
+             [ "native" ]
              "function" [ "<" typeParamList ">" ] type identifier
              "(" [ paramList ] ")" ( block | ";" ) ;
 
@@ -529,7 +533,7 @@ accessModifier = "public" | "protected" | "private" ;
 - `abstract` and `sealed` are mutually exclusive on a class.
 - `static` cannot be combined with `virtual`, `abstract`, or `override`.
 - A member is parsed as a `MethodDecl` if it has an override modifier
-  (`virtual`/`abstract`/`override`), is `native`, is `async`, or starts with
+  (`virtual`/`abstract`/`override`), is `native`, or starts with
   `function`; otherwise (a bare `[access]? [static]? type name [= init]? ;`)
   it is a `FieldDecl`.
 - `abstract` methods have no body (`;` only) and may only appear in
@@ -698,45 +702,54 @@ enum Color {
 
 ## 8. Async / Await
 
-This is the area where the implementation differs most significantly from a
-typical `Task<T>`-based design (see "Notable discrepancies" below).
+ALKScript scripts are single-threaded and cannot create a deferred operation
+themselves — the only source of one is a `native` declaration provided by the
+embedding host. Script code can hold, forward, or `await` such a value, but
+never constructs one directly.
 
-- `async` is a modifier on a function, method, or lambda — **it does not
-  change the declared return type**. An `async function int fetchData() {
-  ... }` is declared (and type-checked) as returning `int`, not
-  `Task<int>`/`Task`.
-- A non-`native`, non-`abstract` `async` function/method/lambda must contain
-  at least one `await` expression in its body; this is enforced at parse
-  time.
-- Calling an async function/method/lambda does **not** run its body
-  synchronously to completion. Instead it immediately returns a `Task`-typed
-  value (internally `TaskValue`/`PendingOperationValue`, both reporting
-  `TypeName == "Task"`) that wraps a `Task<ALKScriptValue>`. `Task`/`Task<T>`
-  is **not** a type you write in script source — it only exists as an
-  internal runtime tag for these in-flight values.
-- `await expr` suspends until the wrapped task settles and yields its result
-  (the function's *declared* return type, e.g. `int`).
+- `thunk`/`thunk<T>` is a reserved type name representing a not-yet-completed
+  deferred operation. It is a real, writable type — usable anywhere a type is
+  expected (variable declarations, parameters, return types, `lambda<...>`
+  type arguments) — but it is *type-erased*: `thunk<int>` and `thunk<string>`
+  are both just "a thunk", and the type argument is not checked.
+- Only `native` function/method declarations may declare a `thunk`/`thunk<T>`
+  return type — that's the host's signal that calling the function returns a
+  deferred value immediately rather than blocking. Internally this is
+  represented by `ThunkValue`/`PendingOperationValue` (both reporting
+  `TypeName == "thunk"`), wrapping a `Task<ALKScriptValue>`.
+- `await expr` suspends until the wrapped operation settles and yields its
+  result, unwrapping `thunk<T>` to `T`. `await` is a universally-valid prefix
+  operator and may be used in the body of any function, method, or lambda —
+  including the entry module's top level (§4.3) — with no declaration-level
+  marker required.
+- `await` on an expression that does not evaluate to a `thunk`/`thunk<T>`
+  value is a no-op: it yields the value unchanged. This is intentionally
+  lenient, since a function written to `await` a `thunk<T>` parameter/return
+  may also be called with a plain, already-resolved `T`.
 - `await [expr1, expr2, ...]` — when the operand of `await` is an array
-  literal (or array value) of awaitable values, all of them are awaited
+  literal (or array value) of `thunk`-shaped values, all of them are awaited
   concurrently (`Task.WhenAll` semantics): the result is an array of each
   individual result, and if any of them faults the awaited expression
   propagates that failure.
-- `native async` functions/methods (e.g. an `HttpClient.get` provided by the
-  host) behave the same way from script's perspective: calling them returns
-  a `Task`-tagged value immediately, and `await` suspends until the host's
-  underlying `Task<ALKScriptValue>` completes.
-- The top-level statements of the entry module run inside an implicit async
-  context, so top-level `await` is allowed (§4.3).
+- A script function/method/lambda that needs to unwrap a `thunk<T>` it
+  received (e.g. from a native call) simply `await`s it inline and returns
+  the plain unwrapped value — there is no special declaration form for this.
+  A function may also *forward* a `thunk<T>` it received by declaring its own
+  return type as `thunk<T>` and `return`ing the value without awaiting it.
+- A `native` function/method declared `thunk`/`thunk<T>`-returning that is
+  called without `await` is **not** started eagerly (lazy/deferred-start). If
+  the script ends without ever awaiting it, the host's binder receives a
+  `Discard` call so it can run the operation as a fire-and-forget effect.
 
 ```
-native async function int delayValue(int value);
+native function thunk<int> delayValue(int value);
 
-async int fetchData() {
+function int fetchData() {
     int value = await delayValue(5);
     return value * 2;
 }
 
-int doubled = await fetchData();
+int doubled = fetchData();
 ```
 
 ```
@@ -805,13 +818,13 @@ a small `.alk` module supplied by the host/test-harness, e.g.:
 ```
 // console.alk, supplied by the host
 export native function void log(string message);
-export native async function int delayValue(int value);
+export native function thunk<int> delayValue(int value);
 ```
 
 ```
 // network.alk, supplied by the host
 export native class HttpClient {
-    public native async function string get(string url);
+    public native function thunk<string> get(string url);
 }
 ```
 

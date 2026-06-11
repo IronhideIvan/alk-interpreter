@@ -189,7 +189,7 @@ public class EndToEndTests : RuntimeTestBase
     //
     // This test focuses on the 'native async method on a class instance' path:
     //   - The host registers the binding via NativeMethodBindings["HttpClient","get"].
-    //   - The binding returns a TaskValue wrapping Task.FromResult (synchronously
+    //   - The binding returns a ThunkValue wrapping Task.FromResult (synchronously
     //     completing, so the test is deterministic without a real scheduler).
     //   - The script suspends on each 'await client.get(url)', letting the
     //     scheduler settle the task and resume with the string result.
@@ -224,7 +224,7 @@ public class EndToEndTests : RuntimeTestBase
     runtime.NativeMethodBindings["HttpClient", "get"] = (instance, args) =>
     {
       var url = ((StringValue)args[0]).Value;
-      return new TaskValue(Task.Run(async () =>
+      return new ThunkValue(Task.Run(async () =>
       {
         await Task.Delay(10);
         return (ALKScriptValue)new StringValue("[200] " + url);
@@ -308,7 +308,7 @@ public class EndToEndTests : RuntimeTestBase
     {
       var tcs = new TaskCompletionSource<ALKScriptValue>();
       pendingReads.Add(tcs);
-      return new TaskValue(tcs.Task);
+      return new ThunkValue(tcs.Task);
     };
 
     // ── Checkpoint 0 ──────────────────────────────────────────────────────

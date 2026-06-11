@@ -20,7 +20,7 @@ namespace ALKScript.Interpreter.Evaluator
   /// anywhere in an expression tree can suspend evaluation mid-expression and
   /// resume later without losing in-flight state — see
   /// <see cref="IEvaluationContext"/>. <see cref="EvalAwait"/> is where that
-  /// suspension becomes real: awaiting a <see cref="TaskValue"/> parks the
+  /// suspension becomes real: awaiting a <see cref="ThunkValue"/> parks the
   /// compiler-generated continuation chain on the underlying <see cref="Task"/>.
   /// </summary>
   internal class ExpressionEvaluator : IExpressionEvaluator
@@ -523,8 +523,8 @@ namespace ALKScript.Interpreter.Evaluator
     /// that parks the whole continuation chain and resumes it later exactly
     /// where it left off:
     ///
-    /// - <see cref="TaskValue"/> — an already-running/completed operation, as
-    ///   produced by a synchronous native or an eager-start `async` function.
+    /// - <see cref="ThunkValue"/> — an already-running/completed operation, as
+    ///   produced by a synchronous native returning <c>thunk</c>/<c>thunk&lt;T&gt;</c>.
     /// - <see cref="PendingOperationValue"/> — a not-yet-started `async native`
     ///   operation (docs/ASYNC_AWAIT_DESIGN.md core requirements,
     ///   <see cref="ALKScript.Interpreter.Common.Evaluation.Scheduling.IAsyncOperationBinder"/>):
@@ -558,18 +558,16 @@ namespace ALKScript.Interpreter.Evaluator
 
     /// <summary>
     /// Resolves <paramref name="value"/> to its settled result if it is a
-    /// <see cref="TaskValue"/> or <see cref="PendingOperationValue"/> (the
-    /// shapes produced by calling an <c>async</c> callable), otherwise returns
-    /// it unchanged. Used both by <c>await</c> itself and by built-ins such as
-    /// <c>array.map</c>/<c>array.filter</c> that invoke a possibly-<c>async</c>
-    /// callback once per element and need its resolved result.
+    /// <see cref="ThunkValue"/> or <see cref="PendingOperationValue"/> (the
+    /// shapes a <c>thunk</c>/<c>thunk&lt;T&gt;</c>-typed expression evaluates
+    /// to), otherwise returns it unchanged.
     /// </summary>
     private async Task<ALKScriptValue> AwaitIfNeeded(ALKScriptValue value)
     {
       switch (value)
       {
-        case TaskValue taskValue:
-          return await AwaitTask(taskValue.Task);
+        case ThunkValue thunkValue:
+          return await AwaitTask(thunkValue.Task);
 
         case PendingOperationValue pending:
           return await AwaitPending(pending);
@@ -679,7 +677,7 @@ namespace ALKScript.Interpreter.Evaluator
             }
             break;
 
-          case TaskValue tv:
+          case ThunkValue tv:
             liveTasks[i] = tv.Task;
             liveCount++;
             break;
@@ -1149,7 +1147,6 @@ namespace ALKScript.Interpreter.Evaluator
     {
       var declaration = new FunctionDecl(
         isNative: false,
-        isAsync: lambda.IsAsync,
         typeParameters: System.Array.Empty<string>(),
         returnType: lambda.ReturnType,
         name: new ALKScriptToken(ALKScriptTokenType.Identifier, "<lambda>", lambda.Arrow.Line, lambda.Arrow.Column),
@@ -1296,12 +1293,6 @@ namespace ALKScript.Interpreter.Evaluator
                 return NullValue.Instance;
               }
 
-              mapped = await AwaitIfNeeded(mapped);
-              if (_context.Signal != null)
-              {
-                return NullValue.Instance;
-              }
-
               results.Add(mapped);
             }
 
@@ -1317,12 +1308,6 @@ namespace ALKScript.Interpreter.Evaluator
             foreach (var item in array.Items)
             {
               var keep = await _context.Call(callback, new List<ALKScriptValue> { item }, name);
-              if (_context.Signal != null)
-              {
-                return NullValue.Instance;
-              }
-
-              keep = await AwaitIfNeeded(keep);
               if (_context.Signal != null)
               {
                 return NullValue.Instance;

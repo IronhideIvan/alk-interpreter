@@ -4,8 +4,8 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
 {
   /// <summary>
   /// An in-flight or completed asynchronous operation, as seen from ALKScript:
-  /// the value an <c>async</c> function call or an <c>async native</c>
-  /// invocation produces, and the thing an <c>await</c> expression unwraps.
+  /// the value a <c>thunk</c>/<c>thunk&lt;T&gt;</c>-typed native call produces,
+  /// and the thing an <c>await</c> expression unwraps.
   ///
   /// Wraps a real <see cref="System.Threading.Tasks.Task{TResult}"/> so that
   /// "real suspension" — an <c>await</c> that genuinely parks the calling
@@ -16,20 +16,20 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
   /// and resumes it (with the produced value, or a converted fault) once the
   /// underlying operation settles.
   /// </summary>
-  public sealed class TaskValue : ALKScriptValue
+  public sealed class ThunkValue : ALKScriptValue
   {
     /// <summary>The underlying task. May already be completed (e.g. a native that resolved synchronously) or still pending.</summary>
     public Task<ALKScriptValue> Task { get; }
 
-    public TaskValue(Task<ALKScriptValue> task)
+    public ThunkValue(Task<ALKScriptValue> task)
     {
       Task = task;
     }
 
     /// <summary>An already-completed task wrapping <paramref name="value"/> — e.g. for natives/results that resolve synchronously.</summary>
-    public static TaskValue FromResult(ALKScriptValue value) => new TaskValue(System.Threading.Tasks.Task.FromResult(value));
+    public static ThunkValue FromResult(ALKScriptValue value) => new ThunkValue(System.Threading.Tasks.Task.FromResult(value));
 
-    public override string TypeName => "Task";
+    public override string TypeName => "thunk";
 
     public override string ToString() => $"<task {(Task.IsCompleted ? "completed" : "pending")}>";
   }

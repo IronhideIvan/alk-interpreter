@@ -14,7 +14,6 @@ public class LambdaTests : ParserTestBase
     var decl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
     var lambda = Assert.IsType<LambdaExpr>(decl.Initializer);
 
-    Assert.False(lambda.IsAsync);
     Assert.Equal("int", lambda.ReturnType.Name);
     Assert.Equal(2, lambda.Parameters.Count);
     Assert.Equal("int", lambda.Parameters[0].Type.Name);
@@ -72,23 +71,25 @@ public class LambdaTests : ParserTestBase
   }
 
   [Fact]
-  public void Parse_AsyncLambdaWithAwaitInBody_IsValid()
+  public void Parse_LambdaWithAwaitInBody_IsValid()
   {
-    var program = Parse("var f = async int (int x) => { return await fetchValue(x); };");
+    var program = Parse("var f = int (int x) => { return await fetchValue(x); };");
 
     var decl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
     var lambda = Assert.IsType<LambdaExpr>(decl.Initializer);
 
-    Assert.True(lambda.IsAsync);
+    Assert.Equal("int", lambda.ReturnType.Name);
   }
 
   [Fact]
-  public void Parse_AsyncLambdaWithoutAwaitInBody_ThrowsParseException()
+  public void Parse_LambdaWithThunkReturnType_IsValid()
   {
-    var exception = Assert.Throws<ParseException>(() =>
-      Parse("var f = async int (int x) => { return x; };"));
+    var program = Parse("var f = thunk<int> (int x) => { return fetchValue(x); };");
 
-    Assert.Contains("'async' is only valid on lambdas whose body contains at least one 'await' expression", exception.Message);
+    var decl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
+    var lambda = Assert.IsType<LambdaExpr>(decl.Initializer);
+
+    Assert.Equal("thunk", lambda.ReturnType.Name);
   }
 
   [Fact]

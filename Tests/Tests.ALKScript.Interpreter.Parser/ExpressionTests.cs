@@ -85,9 +85,9 @@ public class ExpressionTests : ParserTestBase
   }
 
   [Fact]
-  public void Parse_AwaitExpressionInsideAsyncFunctionBody_IsAllowed()
+  public void Parse_AwaitExpressionInsideFunctionBody_IsAllowed()
   {
-    var program = Parse("async function void main() {\n  await fetchValue();\n}");
+    var program = Parse("function void main() {\n  await fetchValue();\n}");
 
     var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
     var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(function.Body!.Statements));
@@ -96,40 +96,17 @@ public class ExpressionTests : ParserTestBase
   }
 
   [Fact]
-  public void Parse_AwaitExpressionInsideNonAsyncFunctionBody_ThrowsParseException()
+  public void Parse_AwaitExpressionInsideConstructorBody_IsAllowed()
   {
-    var exception = Assert.Throws<ParseException>(() => Parse("function void main() {\n  await fetchValue();\n}"));
-
-    Assert.Contains("'await' is only valid inside an 'async' function or method.", exception.Message);
-  }
-
-  [Fact]
-  public void Parse_AwaitExpressionInsideNonAsyncMethodNestedInAsyncOne_ThrowsParseException()
-  {
-    // Saving/restoring (rather than just setting a flag) on entering each
-    // body is what makes a non-"async" method nested inside an "async" one
-    // correctly rejected — its own context governs, not its enclosing one's.
-    // 'load' is async with an 'await' inside it (satisfying the "async
-    // requires await" rule); the ParseException comes from 'helper', which is
-    // non-async yet contains an 'await' expression.
-    Assert.Throws<ParseException>(() => Parse(
-      "class Loader {\n" +
-      "  async function void load() { await fetchValue(); }\n" +
-      "  function void helper() {\n" +
-      "    await fetchValue();\n" +
-      "  }\n" +
-      "}"));
-  }
-
-  [Fact]
-  public void Parse_AwaitExpressionInsideConstructorBody_ThrowsParseException()
-  {
-    Assert.Throws<ParseException>(() => Parse(
+    var program = Parse(
       "class Loader {\n" +
       "  new() {\n" +
       "    await fetchValue();\n" +
       "  }\n" +
-      "}"));
+      "}");
+
+    var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
+    Assert.Single(classDecl.Members);
   }
 
   [Fact]

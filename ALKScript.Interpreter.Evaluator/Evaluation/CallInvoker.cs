@@ -188,21 +188,7 @@ namespace ALKScript.Interpreter.Evaluator
         callEnvironment.Define(parameter.Name, arguments[i], parameter.Type);
       }
 
-      // A non-"async" function runs to completion before returning — calling
-      // it suspends the caller for as long as the body takes. An "async"
-      // function instead wraps RunBody in a TaskValue and returns immediately
-      // (like a C# "async Task<T>" method starting up to its first await),
-      // handing back a handle the caller can await later, run alongside other
-      // work, or ignore — the difference between "let t = f(); await t;" and
-      // "await f();".
-      var bodyTask = RunBody(function, callEnvironment);
-
-      if (function.Declaration.IsAsync)
-      {
-        return Task.FromResult<ALKScriptValue>(new TaskValue(bodyTask));
-      }
-
-      return bodyTask;
+      return RunBody(function, callEnvironment);
     }
 
     private async Task<ALKScriptValue> RunBody(FunctionValue function, ScriptEnvironment callEnvironment)

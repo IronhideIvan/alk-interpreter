@@ -5,21 +5,22 @@ using ALKScript.Interpreter.Common.Evaluation.Values;
 namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
 {
   /// <summary>
-  /// The host-integration contract for <c>async native</c> operations — see
+  /// The host-integration contract for <c>thunk</c> native operations — see
   /// docs/ASYNC_AWAIT_DESIGN.md's "Host Integration Guide" companion (decision
   /// #8). A host implements this once (typically dispatching on
   /// <see cref="PendingOperation.Name"/>, e.g. via a <c>switch</c>) to wire
-  /// every <c>async native</c> declaration to the real, host-side game effect
-  /// it represents — replacing the per-declaration delegate registration
-  /// (<see cref="ScriptNativeBindings"/>) that ordinary, synchronous
-  /// <c>native</c>s use, because *when* an async operation starts is no
+  /// every <c>thunk</c>-returning <c>native</c> declaration to the real,
+  /// host-side game effect it represents — replacing the per-declaration
+  /// delegate registration (<see cref="ScriptNativeBindings"/>) that ordinary,
+  /// synchronous <c>native</c>s use, because *when* the operation starts is no
   /// longer simply "when it's called" (see "lazy/deferred start" below).
   ///
-  /// Calling an <c>async native</c> function produces a <see cref="PendingOperationValue"/>
-  /// immediately — without invoking this contract — recording only *that* the
-  /// operation was requested, with what arguments. <see cref="Start"/> is
-  /// invoked at most once per operation, lazily, the moment (and only if) the
-  /// operation actually needs to run for real:
+  /// Calling a <c>thunk</c>-returning <c>native</c> function produces a
+  /// <see cref="PendingOperationValue"/> immediately — without invoking this
+  /// contract — recording only *that* the operation was requested, with what
+  /// arguments. <see cref="Start"/> is invoked at most once per operation,
+  /// lazily, the moment (and only if) the operation actually needs to run for
+  /// real:
   ///
   /// - on `await` of the resulting value ("Suspend" — see <c>ExpressionEvaluator.EvalAwait</c>), or
   /// - at end-of-script, for any operation that was created but never `await`ed
@@ -44,7 +45,7 @@ namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
     Task<ALKScriptValue> Start(PendingOperation operation);
 
     /// <summary>
-    /// Called at end-of-script for any <c>async native</c> operation that was
+    /// Called at end-of-script for any <c>thunk</c> native operation that was
     /// called but never <c>await</c>ed — the "fire-and-forget" path that makes
     /// an un-awaited <c>moveTo(npc, x, y)</c> actually move the NPC (see
     /// docs/ASYNC_AWAIT_DESIGN.md's core requirements). The host is responsible

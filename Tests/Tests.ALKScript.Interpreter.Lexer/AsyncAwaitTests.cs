@@ -1,4 +1,4 @@
-﻿using ALKScript.Interpreter.Common;
+using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Token;
 using ALKScript.Interpreter.Lexer;
 
@@ -7,8 +7,8 @@ namespace Tests.ALKScript.Interpreter.Lexer;
 public class AsyncAwaitTests
 {
   [Theory]
-  [InlineData("async", ALKScriptTokenType.Async)]
   [InlineData("await", ALKScriptTokenType.Await)]
+  [InlineData("thunk", ALKScriptTokenType.Thunk)]
   public void Tokenize_AsyncAwaitKeyword_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
     var lexer = new ALKScriptLexer();
@@ -20,18 +20,20 @@ public class AsyncAwaitTests
   }
 
   [Fact]
-  public void Tokenize_AsyncFunctionDeclaration_ReturnsExpectedTokenSequence()
+  public void Tokenize_ThunkFunctionDeclaration_ReturnsExpectedTokenSequence()
   {
     var lexer = new ALKScriptLexer();
 
-    var tokens = lexer.Tokenize("async function int fetchValue() {\n  return await getValue();\n}").ToList();
+    var tokens = lexer.Tokenize("function thunk<int> fetchValue() {\n  return await getValue();\n}").ToList();
 
     Assert.Equal(
       new[]
       {
-        ALKScriptTokenType.Async,
         ALKScriptTokenType.Function,
+        ALKScriptTokenType.Thunk,
+        ALKScriptTokenType.Less,
         ALKScriptTokenType.IntKeyword,
+        ALKScriptTokenType.Greater,
         ALKScriptTokenType.Identifier,
         ALKScriptTokenType.LeftParen,
         ALKScriptTokenType.RightParen,

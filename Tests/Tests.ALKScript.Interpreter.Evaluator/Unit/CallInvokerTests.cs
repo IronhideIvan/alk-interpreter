@@ -13,7 +13,7 @@ public class CallInvokerTests
   private static readonly ALKScriptToken Site = Nodes.Token(ALKScriptTokenType.RightParen, ")");
 
   private static FunctionDecl MakeFunctionDeclaration(IReadOnlyList<Parameter> parameters) =>
-    new FunctionDecl(false, false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("f"), parameters, new BlockStmt(System.Array.Empty<Stmt>()));
+    new FunctionDecl(false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("f"), parameters, new BlockStmt(System.Array.Empty<Stmt>()));
 
   private static ClassValue MakeClass(IReadOnlyList<MemberDecl> members, string name = "Foo") =>
     new ClassValue(new ClassDecl(false, Nodes.Identifier(name), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), members), null, new ScriptEnvironment());

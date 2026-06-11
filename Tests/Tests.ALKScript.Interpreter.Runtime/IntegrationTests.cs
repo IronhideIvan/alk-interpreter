@@ -148,7 +148,7 @@ public class IntegrationTests
     runtime.NativeMethodBindings["HttpClient", "get"] = (instance, args) =>
     {
       var url = ((StringValue)args[0]).Value;
-      return new TaskValue(Task.Run(async () =>
+      return new ThunkValue(Task.Run(async () =>
       {
         await Task.Delay(10);
         return (ALKScriptValue)new StringValue("[200] " + url);
@@ -196,7 +196,7 @@ public class IntegrationTests
     {
       var tcs = new TaskCompletionSource<ALKScriptValue>();
       pendingReads.Add(tcs);
-      return new TaskValue(tcs.Task);
+      return new ThunkValue(tcs.Task);
     };
 
     var evaluation = runtime.RunFromFile(ScriptPath("PumpOrdering", "main.alk"));

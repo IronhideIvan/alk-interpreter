@@ -11,7 +11,6 @@ public class FunctionsAndControlFlowTests : ParserTestBase
     var program = Parse("function int add(int a, int b) {\n  return a + b;\n}");
 
     var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
-    Assert.False(function.IsAsync);
     Assert.Equal("int", function.ReturnType.Name);
     Assert.Equal("add", function.Name.Lexeme);
     Assert.Equal(2, function.Parameters.Count);
@@ -58,19 +57,18 @@ public class FunctionsAndControlFlowTests : ParserTestBase
 
     var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
     Assert.True(function.IsNative);
-    Assert.False(function.IsAsync);
     Assert.Equal("print", function.Name.Lexeme);
     Assert.Null(function.Body);
   }
 
   [Fact]
-  public void Parse_NativeAsyncFunctionDeclaration_CapturesBothModifiers()
+  public void Parse_NativeThunkFunctionDeclaration_CapturesThunkReturnType()
   {
-    var program = Parse("native async function string fetch(string url);");
+    var program = Parse("native function thunk<string> fetch(string url);");
 
     var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
     Assert.True(function.IsNative);
-    Assert.True(function.IsAsync);
+    Assert.Equal("thunk", function.ReturnType.Name);
     Assert.Null(function.Body);
   }
 
@@ -186,98 +184,57 @@ public class FunctionsAndControlFlowTests : ParserTestBase
     Assert.Null(forStmt.Increment);
   }
 
-  // ── async-requires-await rule ─────────────────────────────────────────────
+  // ── thunk return type ─────────────────────────────────────────────────────
 
   [Fact]
-  public void Parse_AsyncFunctionWithAwaitInBody_IsValid()
+  public void Parse_FunctionWithAwaitInBody_IsValid()
   {
-    // A non-native function may declare itself 'async' if (and only if) its
-    // body contains at least one 'await' expression.
-    var program = Parse("async function void run() { await fetchValue(); }");
+    // 'await' is a universally-valid operator, usable in any function body.
+    var program = Parse("function void run() { await fetchValue(); }");
 
     var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
-    Assert.True(function.IsAsync);
     Assert.False(function.IsNative);
   }
 
   [Fact]
-  public void Parse_AsyncFunctionWithoutAwaitInBody_ThrowsParseException()
-  {
-    // A plain (non-native, non-abstract) function that declares itself 'async'
-    // but never awaits anything is rejected — it would run synchronously, so
-    // the 'async' modifier serves no purpose.
-    var exception = Assert.Throws<ParseException>(() =>
-      Parse("async function string process(string name) { return name; }"));
-
-    Assert.Contains("'async' is only valid on functions whose body contains at least one 'await' expression", exception.Message);
-  }
-
-  [Fact]
-  public void Parse_NativeAsyncFunction_IsValidWithoutAwaitInBody()
-  {
-    // Native async functions are exempt from the "async requires await" rule
-    // because the host provides the (async) implementation; there is no body
-    // to check.
-    var program = Parse("native async function string fetch(string url);");
-
-    var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
-    Assert.True(function.IsNative);
-    Assert.True(function.IsAsync);
-  }
-
-  [Fact]
-  public void Parse_AsyncMethodWithAwaitInBody_IsValid()
+  public void Parse_MethodWithThunkReturnTypeAndAwaitInBody_IsValid()
   {
     var program = Parse(
       "class Loader {\n" +
-      "  async function string load() { return await fetch(); }\n" +
+      "  function thunk<string> load() { return await fetch(); }\n" +
       "}");
 
     var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
     var method = Assert.IsType<MethodDecl>(Assert.Single(classDecl.Members));
-    Assert.True(method.IsAsync);
+    Assert.Equal("thunk", method.ReturnType.Name);
   }
 
   [Fact]
-  public void Parse_AsyncMethodWithoutAwaitInBody_ThrowsParseException()
+  public void Parse_AbstractMethodWithThunkReturnType_IsValidWithoutBody()
   {
-    var exception = Assert.Throws<ParseException>(() => Parse(
-      "class Transformer {\n" +
-      "  async function string transform(string s) { return s; }\n" +
-      "}"));
-
-    Assert.Contains("'async' is only valid on methods whose body contains at least one 'await' expression", exception.Message);
-  }
-
-  [Fact]
-  public void Parse_AbstractAsyncMethod_IsValidWithoutAwaitInBody()
-  {
-    // Abstract methods are exempt: the body (and the awaits it must contain)
-    // are deferred to the concrete override.
     var program = Parse(
       "abstract class Loader {\n" +
-      "  public abstract async function string load(string url);\n" +
+      "  public abstract function thunk<string> load(string url);\n" +
       "}");
 
     var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
     var method = Assert.IsType<MethodDecl>(Assert.Single(classDecl.Members));
     Assert.Equal(OverrideModifier.Abstract, method.OverrideModifier);
-    Assert.True(method.IsAsync);
+    Assert.Equal("thunk", method.ReturnType.Name);
   }
 
   [Fact]
-  public void Parse_NativeAsyncMethod_IsValidWithoutAwaitInBody()
+  public void Parse_NativeMethodWithThunkReturnType_IsValidWithoutBody()
   {
-    // Native methods are exempt: the host provides the async implementation.
     var program = Parse(
       "native class HttpClient {\n" +
-      "  public native async function string get(string url);\n" +
+      "  public native function thunk<string> get(string url);\n" +
       "}");
 
     var classDecl = Assert.IsType<ClassDecl>(Assert.Single(program.Declarations));
     var method = Assert.IsType<MethodDecl>(Assert.Single(classDecl.Members));
     Assert.True(method.IsNative);
-    Assert.True(method.IsAsync);
+    Assert.Equal("thunk", method.ReturnType.Name);
   }
 
   // ── foreach ───────────────────────────────────────────────────────────────

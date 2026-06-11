@@ -4,20 +4,21 @@ using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 namespace ALKScript.Interpreter.Common.Evaluation.Values
 {
   /// <summary>
-  /// The script-visible value an <c>async native</c> function call produces:
-  /// a not-yet-started, "lazy/deferred start" awaitable (see
-  /// docs/ASYNC_AWAIT_DESIGN.md's core requirements and <see cref="IAsyncOperationBinder"/>).
+  /// The script-visible value a <c>thunk</c>/<c>thunk&lt;T&gt;</c>-returning
+  /// <c>native</c> function call produces: a not-yet-started, "lazy/deferred
+  /// start" awaitable (see docs/ASYNC_AWAIT_DESIGN.md's core requirements and
+  /// <see cref="IAsyncOperationBinder"/>).
   ///
-  /// Unlike <see cref="TaskValue"/> — which always wraps an *already-running*
+  /// Unlike <see cref="ThunkValue"/> — which always wraps an *already-running*
   /// (or already-completed) <see cref="System.Threading.Tasks.Task{TResult}"/>,
-  /// the shape both natives that resolve synchronously and `async` *function*
-  /// calls produce (those are eager-start, mirroring C#/JS) — this defers
-  /// actually starting the underlying host-side effect until <see cref="Start"/>
-  /// is first called: on `await` ("Suspend"), or at end-of-script for any
-  /// operation nobody ever awaited ("Discard", decision #10). Calling the
-  /// `async native` function merely records the request; reporting "as seen
-  /// from script" identically to <see cref="TaskValue"/> (<see cref="TypeName"/>
-  /// is the same `"Task"`) is what lets `await` treat both uniformly.
+  /// the shape natives that resolve synchronously produce (those are
+  /// eager-start, mirroring C#/JS) — this defers actually starting the
+  /// underlying host-side effect until <see cref="Start"/> is first called:
+  /// on `await` ("Suspend"), or at end-of-script for any operation nobody ever
+  /// awaited ("Discard", decision #10). Calling the `native` function merely
+  /// records the request; reporting "as seen from script" identically to
+  /// <see cref="ThunkValue"/> (<see cref="TypeName"/> is the same `"thunk"`)
+  /// is what lets `await` treat both uniformly.
   ///
   /// <see cref="Start"/> is memoized — calling it more than once (e.g. once
   /// from `await` and again from end-of-script "Discard" sweeping leftovers)
@@ -61,7 +62,7 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     /// </summary>
     public Task<ALKScriptValue> Start() => _started ??= _binder.Start(Operation);
 
-    public override string TypeName => "Task";
+    public override string TypeName => "thunk";
 
     public override string ToString() =>
       _replayed ? "<task replayed>" :

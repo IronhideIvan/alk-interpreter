@@ -340,3 +340,45 @@ All originally-identified open questions have been resolved:
 17. `Task` API surface → standard library, not grammar
 
 Implementation may now proceed against this design.
+
+## Addendum: `thunk`/`thunk<T>` revision (post-implementation)
+
+After implementing the design above, a follow-up review concluded that
+ALKScript scripts are single-threaded and **cannot create a deferred
+operation themselves** — the only source of one is a `native` declaration
+provided by the embedding host. Given that, the original `async` modifier on
+script-defined functions/methods/lambdas (eager body execution + automatic
+`TaskValue`-wrapping of the result, decision #1 above) carried no real
+meaning: any function can `await` a deferred value it received and just
+return the unwrapped `T`.
+
+This revision **removes** that eager-wrapping behavior and the `async`
+keyword entirely:
+
+- The `async` keyword is removed from the grammar (lexer, parser, AST). There
+  is no "this function is async" declaration anymore.
+- The wrapper type for a deferred operation becomes an explicit, writable,
+  type-erased return type: **`thunk`/`thunk<T>`** (a reserved keyword, like
+  `lambda<...>`). Only `native` declarations may declare a `thunk`/`thunk<T>`
+  return type — script functions never construct one, but may *forward* one
+  they received by declaring the same return type and returning it
+  un-awaited.
+- `await` becomes a universally-valid prefix operator, usable in the body of
+  any function/method/lambda (including top level), with no "must contain
+  `await`" parse-time check.
+- `CallInvoker.InvokeFunction` no longer special-cases anything based on
+  "is async" — every script function call runs its body to completion and
+  returns its result directly (the old "non-async" path is now the only
+  path). Concurrency/suspension is provided exclusively by `await`ing
+  `native`-sourced `thunk`/`thunk<T>` values (`ThunkValue`/
+  `PendingOperationValue`), which is unchanged from decisions #1–#17 above
+  apart from naming.
+- Renamed for consistency with the new `thunk` terminology: `TaskValue` →
+  `ThunkValue`; `TypeName => "Task"` → `TypeName => "thunk"` on both
+  `ThunkValue` and `PendingOperationValue`. `await`/`whenAll`/`Discard`
+  semantics (decisions #9–#13) are otherwise unchanged — they already
+  dispatched on `TypeName == "Task"` (now `"thunk"`) regardless of how the
+  value was declared.
+- `await` on a non-`thunk` expression remains a lenient no-op (yields the
+  value unchanged), confirmed as the intended behavior — see
+  `docs/LANGUAGE_SPEC.md` §8.

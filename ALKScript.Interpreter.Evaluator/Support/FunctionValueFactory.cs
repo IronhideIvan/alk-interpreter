@@ -55,7 +55,7 @@ namespace ALKScript.Interpreter.Evaluator
         return new FunctionValue(declaration, closure);
       }
 
-      if (declaration.IsAsync)
+      if (declaration.ReturnType.Name == "thunk")
       {
         return CreatePendingOperationFactory(declaration.Name.Lexeme, declaration.Name, declaration.Parameters.Count);
       }
@@ -146,7 +146,6 @@ namespace ALKScript.Interpreter.Evaluator
     {
       return new FunctionDecl(
         method.IsNative,
-        method.IsAsync,
         method.TypeParameters,
         method.ReturnType,
         method.Name,

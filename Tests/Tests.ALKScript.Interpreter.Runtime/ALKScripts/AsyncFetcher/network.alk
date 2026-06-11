@@ -1,7 +1,7 @@
 // Simulates an HTTP client whose network I/O is performed by the host.
-// 'get' is declared 'native async': the host returns a TaskValue wrapping a
+// 'get' returns 'thunk<string>': the host returns a ThunkValue wrapping a
 // real Task<ALKScriptValue>, and the script suspends on 'await client.get(url)'
 // until that task settles.
 export native class HttpClient {
-    public native async function string get(string url);
+    public native function thunk<string> get(string url);
 }

@@ -236,7 +236,7 @@ public class StatementExecutorTests
   [Fact]
   public async Task Execute_FunctionDecl_DefinesItsValueViaTheFunctionValueFactory()
   {
-    var declaration = new FunctionDecl(false, false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("greet"), System.Array.Empty<Parameter>(), new BlockStmt(System.Array.Empty<Stmt>()));
+    var declaration = new FunctionDecl(false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("greet"), System.Array.Empty<Parameter>(), new BlockStmt(System.Array.Empty<Stmt>()));
     var context = new FakeEvaluationContext();
     var environment = new ScriptEnvironment();
 

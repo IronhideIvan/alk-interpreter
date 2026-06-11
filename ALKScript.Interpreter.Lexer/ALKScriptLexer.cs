@@ -29,7 +29,6 @@ namespace ALKScript.Interpreter.Lexer
       { "false", ALKScriptTokenType.False },
       { "null", ALKScriptTokenType.Null },
 
-      { "async", ALKScriptTokenType.Async },
       { "await", ALKScriptTokenType.Await },
 
       { "try", ALKScriptTokenType.Try },
@@ -43,6 +42,7 @@ namespace ALKScript.Interpreter.Lexer
       { "string", ALKScriptTokenType.StringKeyword },
       { "bool", ALKScriptTokenType.BoolKeyword },
       { "void", ALKScriptTokenType.VoidKeyword },
+      { "thunk", ALKScriptTokenType.Thunk },
 
       { "class", ALKScriptTokenType.Class },
       { "new", ALKScriptTokenType.New },

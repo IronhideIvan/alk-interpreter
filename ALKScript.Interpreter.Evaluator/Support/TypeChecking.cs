@@ -115,6 +115,8 @@ namespace ALKScript.Interpreter.Evaluator
           return value is BoolValue;
         case "void":
           return false;
+        case "thunk":
+          return value.TypeName == "thunk";
         default:
           return MatchesNamedType(value, type.Name, environment, site);
       }

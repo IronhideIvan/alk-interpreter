@@ -7,13 +7,13 @@ using ALKScript.Interpreter.Common.Evaluation.Values;
 namespace Tests.ALKScript.Interpreter.Evaluator;
 
 /// <summary>
-/// End-to-end coverage for "real" <c>async</c>/<c>await</c> suspension (see
-/// docs/ASYNC_AWAIT_DESIGN.md): an <c>await</c> on a <see cref="TaskValue"/>
-/// genuinely parks evaluation on the underlying <see cref="System.Threading.Tasks.Task"/>
-/// — including across a real cross-thread completion — and resumes with
-/// either the produced value or a catchable fault, and an <c>async</c>
-/// function call returns a <see cref="TaskValue"/> immediately rather than
-/// blocking until its body completes.
+/// End-to-end coverage for "real" <c>await</c> suspension (see
+/// docs/ASYNC_AWAIT_DESIGN.md): an <c>await</c> on a <see cref="ThunkValue"/>
+/// or <see cref="PendingOperationValue"/> (the shapes a <c>thunk</c>/<c>thunk&lt;T&gt;</c>-typed
+/// expression evaluates to) genuinely parks evaluation on the underlying
+/// <see cref="System.Threading.Tasks.Task"/> — including across a real
+/// cross-thread completion — and resumes with either the produced value or a
+/// catchable fault.
 /// </summary>
 public class AsyncEvaluationTests : EvaluatorTestBase
 {
@@ -21,7 +21,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   public void Evaluate_AwaitOnNativeReturningAlreadyCompletedTask_ResolvesToItsValue()
   {
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int fetch();\nasync function void main() {{\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n}}\nmain();",
       new FuncBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(42))));
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
@@ -29,43 +29,33 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Evaluate_AwaitOnPendingTaskLaterCompletedSynchronously_SuspendsAndResumesWithItsValue()
+  public void Evaluate_AwaitOnPendingTaskCompletedFromBackgroundThread_SuspendsAndResumesWithItsValue()
   {
     // "fetch" hands back a *pending* task — "await" must genuinely suspend
-    // mid-script on it (there's nothing to resolve to yet). A later
-    // statement, "resolve()", settles it: by default a TaskCompletionSource's
-    // continuations run synchronously on the thread that completes it, so
-    // this resumes "main"'s suspended body — and its "record" call — right
-    // there, deterministically, with no scheduler required. (A real host
-    // would instead settle this from off-thread, pumped by the scheduler a
-    // later phase introduces — but the suspend/resume mechanics under test
-    // here are exactly the same either way.)
-    var pending = new TaskCompletionSource<ALKScriptValue>();
-
+    // mid-script on it (there's nothing to resolve to yet) and resume once a
+    // background thread settles it.
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int fetch();\nnative function void resolve();\nasync function void main() {{\n  record(await fetch());\n}}\nmain();\nresolve();",
-      new FuncBinder(_ => pending.Task),
-      new ScriptNativeBindings
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n}}\nmain();",
+      new FuncBinder(_ => Task.Run(async () =>
       {
-        ["resolve"] = _ => { pending.SetResult(new IntValue(7)); return NullValue.Instance; }
-      });
+        await Task.Delay(10);
+        return (ALKScriptValue)new IntValue(7);
+      })));
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(7L, value.Value);
   }
 
   [Fact]
-  public void Evaluate_AwaitOnPendingTaskLaterFaultedSynchronously_RaisesACatchableThrownSignal()
+  public void Evaluate_AwaitOnPendingTaskFaultedFromBackgroundThread_RaisesACatchableThrownSignal()
   {
-    var pending = new TaskCompletionSource<ALKScriptValue>();
-
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int fetch();\nnative function void reject();\nasync function void main() {{\n  try {{\n    await fetch();\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();\nreject();",
-      new FuncBinder(_ => pending.Task),
-      new ScriptNativeBindings
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  try {{\n    await fetch();\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();",
+      new FuncBinder(_ => Task.Run<ALKScriptValue>(async () =>
       {
-        ["reject"] = _ => { pending.SetException(new System.InvalidOperationException("boom")); return NullValue.Instance; }
-      });
+        await Task.Delay(10);
+        throw new System.InvalidOperationException("boom");
+      })));
 
     var value = Assert.IsType<StringValue>(Assert.Single(recorded));
     Assert.Equal("boom", value.Value);
@@ -74,29 +64,10 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   [Fact]
   public void Evaluate_AwaitOnPlainValue_YieldsItDirectly()
   {
-    var recorded = Run($"{RecordDeclaration}\nasync function void main() {{\n  record(await 1);\n}}\nmain();");
+    var recorded = Run($"{RecordDeclaration}\nfunction void main() {{\n  record(await 1);\n}}\nmain();");
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(1L, value.Value);
-  }
-
-  [Fact]
-  public void Evaluate_CallingAnAsyncFunction_ReturnsATaskValueRatherThanBlockingUntilItCompletes()
-  {
-    // Calling an "async" function must hand back an awaitable immediately —
-    // not block until the body has fully run — so the caller can do other
-    // work alongside it (or "await" it later). That's the entire point of
-    // "let t = asyncFn(); ...; await t;" being meaningfully different from
-    // "await asyncFn();".
-    // 'compute' uses 'await 1' (identity await — valid per the "async requires
-    // await" rule; awaiting a non-task value is a no-op) so the function is
-    // legitimately async without needing a native async dependency.
-    var recorded = Run($"{RecordDeclaration}\nasync function int compute() {{\n  await 1;\n  return 21 * 2;\n}}\nasync function void main() {{\n  var t = compute();\n  record(t);\n  record(await t);\n}}\nmain();");
-
-    Assert.Equal(2, recorded.Count);
-    Assert.IsType<TaskValue>(recorded[0]);
-    var resolved = Assert.IsType<IntValue>(recorded[1]);
-    Assert.Equal(42L, resolved.Value);
   }
 
   [Fact]
@@ -125,7 +96,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // async call's *eventual* completion is exactly the "Discard"/lazy-start
     // mechanism the design defers past this phase.)
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int fetch();\nrecord(await fetch());",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nrecord(await fetch());",
       new FuncBinder(_ => Task.Run(async () =>
       {
         await Task.Delay(20);
@@ -149,7 +120,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // which is what the host uses to fire them off as fire-and-forget effects.
     var binder = new FuncBinder(_ => Task.FromResult((ALKScriptValue)NullValue.Instance));
 
-    RunWithOperationBinder("native async function void move(); move();", null, binder);
+    RunWithOperationBinder("native function thunk move(); move();", null, binder);
 
     var discarded = Assert.Single(binder.Discarded);
     Assert.Equal("move", discarded.Name);
@@ -162,7 +133,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // a second time at end-of-script (HasStarted guards this).
     var binder = new FuncBinder(_ => Task.FromResult((ALKScriptValue)NullValue.Instance));
 
-    RunWithOperationBinder("native async function void move(); await move();", null, binder);
+    RunWithOperationBinder("native function thunk move(); await move();", null, binder);
 
     Assert.Empty(binder.Discarded);
   }
@@ -181,7 +152,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
       : Task.FromResult((ALKScriptValue)new IntValue(2)));
 
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int fetchA();\nnative async function int fetchB();\nasync function void main() {{\n  var results = await [fetchA(), fetchB()];\n  record(results[0]);\n  record(results[1]);\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetchA();\nnative function thunk<int> fetchB();\nfunction void main() {{\n  var results = await [fetchA(), fetchB()];\n  record(results[0]);\n  record(results[1]);\n}}\nmain();",
       binder);
 
     Assert.Equal(2, recorded.Count);
@@ -200,7 +171,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
       : Task.FromException<ALKScriptValue>(new InvalidOperationException("boom")));
 
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int ok();\nnative async function int fail();\nasync function void main() {{\n  try {{\n    await [ok(), fail()];\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> ok();\nnative function thunk<int> fail();\nfunction void main() {{\n  try {{\n    await [ok(), fail()];\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();",
       binder);
 
     var fault = Assert.IsType<StringValue>(Assert.Single(recorded));
@@ -214,7 +185,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
       new InvalidOperationException(op.Name == "a" ? "fault-a" : "fault-b")));
 
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int a();\nnative async function int b();\nasync function void main() {{\n  try {{\n    await [a(), b()];\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> a();\nnative function thunk<int> b();\nfunction void main() {{\n  try {{\n    await [a(), b()];\n  }} catch (string e) {{\n    record(e);\n  }}\n}}\nmain();",
       binder);
 
     var fault = Assert.IsType<StringValue>(Assert.Single(recorded));
@@ -229,7 +200,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
       new InvalidOperationException($"fault-{op.Name}")));
 
     Run(
-      $"{RecordDeclaration}\nnative async function int a();\nnative async function int b();\nasync function void main() {{\n  try {{\n    await [a(), b()];\n  }} catch (string e) {{\n  }}\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> a();\nnative function thunk<int> b();\nfunction void main() {{\n  try {{\n    await [a(), b()];\n  }} catch (string e) {{\n  }}\n}}\nmain();",
       binder);
 
     Assert.Equal(2, binder.ReportedFaults.Count);
@@ -276,22 +247,20 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Evaluate_AsyncFunctionThatAwaitsASuspendingOperation_PropagatesSuspensionToItsCaller()
+  public void Evaluate_FunctionThatAwaitsASuspendingOperation_PropagatesSuspensionToItsCaller()
   {
     // "load"'s own body suspends mid-call (its "await fetch()" parks on a
-    // still-pending task) — proving suspension composes through user-defined
-    // async functions, not just directly-awaited natives: "main"'s
-    // "await load()" is transitively parked until "load"'s body — and
-    // therefore "fetch"'s task — settles.
-    var pending = new TaskCompletionSource<ALKScriptValue>();
-
+    // task that settles from a background thread) — proving suspension
+    // composes through user-defined functions, not just directly-awaited
+    // natives: "main"'s "await load()" is transitively parked until "load"'s
+    // body — and therefore "fetch"'s task — settles.
     var recorded = Run(
-      $"{RecordDeclaration}\nnative async function int fetch();\nnative function void resolve();\nasync function int load() {{\n  var n = await fetch();\n  return n + 1;\n}}\nasync function void main() {{\n  record(await load());\n}}\nmain();\nresolve();",
-      new FuncBinder(_ => pending.Task),
-      new ScriptNativeBindings
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction int load() {{\n  var n = await fetch();\n  return n + 1;\n}}\nfunction void main() {{\n  record(await load());\n}}\nmain();",
+      new FuncBinder(_ => Task.Run(async () =>
       {
-        ["resolve"] = _ => { pending.SetResult(new IntValue(9)); return NullValue.Instance; }
-      });
+        await Task.Delay(20);
+        return (ALKScriptValue)new IntValue(9);
+      })));
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(10L, value.Value);

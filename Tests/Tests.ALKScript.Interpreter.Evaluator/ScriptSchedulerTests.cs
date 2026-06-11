@@ -110,7 +110,7 @@ public class ScriptSchedulerTests : EvaluatorTestBase
     // Top-level "await" — the Evaluate task parks on tcs.Task and returns an
     // incomplete Task. We discard it here; driving it is the scheduler's job.
     var scheduler = new ScriptScheduler();
-    var graph = LoadGraph($"{RecordDeclaration}\nnative async function int fetch();\nrecord(await fetch());");
+    var graph = LoadGraph($"{RecordDeclaration}\nnative function thunk<int> fetch();\nrecord(await fetch());");
     var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
     evaluator.Evaluate(graph); // starts evaluation; suspends at "await fetch()"
 
@@ -144,8 +144,8 @@ public class ScriptSchedulerTests : EvaluatorTestBase
 
     const string source = """
       native function void record(Object v);
-      native async function int fetch();
-      async function void main() {
+      native function thunk<int> fetch();
+      function void main() {
         record(await fetch());
         record(await fetch());
       }
@@ -196,9 +196,9 @@ public class ScriptSchedulerTests : EvaluatorTestBase
 
     const string source = """
       native function void record(Object v);
-      native async function int fetchA();
-      native async function int fetchB();
-      async function void main() {
+      native function thunk<int> fetchA();
+      native function thunk<int> fetchB();
+      function void main() {
         var results = await [fetchA(), fetchB()];
         record(results[0]);
         record(results[1]);
@@ -241,9 +241,9 @@ public class ScriptSchedulerTests : EvaluatorTestBase
 
     const string source = """
       native function void record(Object v);
-      native async function int fetchA();
-      native async function int fetchB();
-      async function void main() {
+      native function thunk<int> fetchA();
+      native function thunk<int> fetchB();
+      function void main() {
         var results = await [fetchA(), fetchB()];
         record(results[0]);
         record(results[1]);
@@ -307,7 +307,7 @@ public class ScriptSchedulerTests : EvaluatorTestBase
 
     const string source = """
       native function void record(Object v);
-      native async function int fetch();
+      native function thunk<int> fetch();
       record(await fetch());
       """;
 
@@ -348,8 +348,8 @@ public class ScriptSchedulerTests : EvaluatorTestBase
 
     const string source = """
       native function void record(Object v);
-      native async function int fetch();
-      async function void main() {
+      native function thunk<int> fetch();
+      function void main() {
         record(await fetch());
       }
       main();

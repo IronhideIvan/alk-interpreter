@@ -5,7 +5,7 @@ namespace ALKScript.Interpreter.Common.Ast
 {
   /// <summary>
   /// A method declaration:
-  ///   accessModifier? "static"? overrideModifier? "native"? "async"? "function" typeParameters?
+  ///   accessModifier? "static"? overrideModifier? "native"? "function" typeParameters?
   ///   type IDENTIFIER "(" parameters? ")" ( block | ";" ) ;
   /// The body is null for "abstract" methods and for "native" methods —
   /// the latter's implementation is supplied by the host runtime rather
@@ -17,7 +17,6 @@ namespace ALKScript.Interpreter.Common.Ast
   {
     public OverrideModifier OverrideModifier { get; }
     public bool IsNative { get; }
-    public bool IsAsync { get; }
 
     /// <summary>
     /// Whether this method belongs to the class itself (called as
@@ -36,7 +35,6 @@ namespace ALKScript.Interpreter.Common.Ast
       AccessModifier accessModifier,
       OverrideModifier overrideModifier,
       bool isNative,
-      bool isAsync,
       IReadOnlyList<string> typeParameters,
       TypeNode returnType,
       ALKScriptToken name,
@@ -47,7 +45,6 @@ namespace ALKScript.Interpreter.Common.Ast
     {
       OverrideModifier = overrideModifier;
       IsNative = isNative;
-      IsAsync = isAsync;
       IsStatic = isStatic;
       TypeParameters = typeParameters;
       ReturnType = returnType;

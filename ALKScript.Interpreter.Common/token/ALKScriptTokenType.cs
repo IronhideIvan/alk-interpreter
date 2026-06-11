@@ -30,7 +30,6 @@ namespace ALKScript.Interpreter.Common.Token
     Null,
 
     // Keywords - async/await
-    Async,
     Await,
 
     // Keywords - exception handling
@@ -46,6 +45,7 @@ namespace ALKScript.Interpreter.Common.Token
     StringKeyword,
     BoolKeyword,
     VoidKeyword,
+    Thunk,
 
     // Keywords - classes
     Class,

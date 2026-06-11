@@ -1,2 +1,2 @@
 export native function void log(string message);
-export native async function int delayValue(int value);
+export native function thunk<int> delayValue(int value);

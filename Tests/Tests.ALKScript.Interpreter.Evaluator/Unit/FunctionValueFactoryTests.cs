@@ -11,7 +11,6 @@ public class FunctionValueFactoryTests
   private static FunctionDecl MakeDeclaration(string name, bool isNative) =>
     new FunctionDecl(
       isNative,
-      isAsync: false,
       typeParameters: System.Array.Empty<string>(),
       returnType: Nodes.VoidType,
       name: Nodes.Identifier(name),
@@ -67,7 +66,6 @@ public class FunctionValueFactoryTests
       AccessModifier.Public,
       OverrideModifier.None,
       isNative: true,
-      isAsync: true,
       typeParameters: new[] { "T" },
       returnType: Nodes.VoidType,
       name: name,
@@ -77,7 +75,6 @@ public class FunctionValueFactoryTests
     var adapted = FunctionValueFactory.MethodAsFunctionDecl(method);
 
     Assert.Equal(method.IsNative, adapted.IsNative);
-    Assert.Equal(method.IsAsync, adapted.IsAsync);
     Assert.Same(method.TypeParameters, adapted.TypeParameters);
     Assert.Same(method.ReturnType, adapted.ReturnType);
     Assert.Same(method.Name, adapted.Name);
