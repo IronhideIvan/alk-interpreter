@@ -16,15 +16,12 @@ namespace ALKScript.Interpreter.Evaluator
   /// <see cref="Operators"/>; calls/construction are delegated through
   /// <see cref="IEvaluationContext"/> to <see cref="CallInvoker"/>.
   ///
-  /// <c>async</c>/<see cref="Task"/>-returning throughout — see
-  /// <see cref="IEvaluationContext"/> for why: this is the plumbing that lets
-  /// an <c>await</c> anywhere in an expression tree suspend evaluation
-  /// mid-expression and later resume it without losing any in-flight state.
-  /// <see cref="AwaitExpr"/> (handled by <see cref="EvalAwait"/>) is where that
-  /// suspension becomes real: awaiting a <see cref="TaskValue"/> genuinely
-  /// parks the C#-compiler-generated continuation chain on the underlying
-  /// <see cref="Task"/>, which is what lets the whole evaluator suspend and
-  /// later resume mid-script without losing tree-walk state.
+  /// <c>async</c>/<see cref="Task"/>-returning throughout, so an <c>await</c>
+  /// anywhere in an expression tree can suspend evaluation mid-expression and
+  /// resume later without losing in-flight state — see
+  /// <see cref="IEvaluationContext"/>. <see cref="EvalAwait"/> is where that
+  /// suspension becomes real: awaiting a <see cref="TaskValue"/> parks the
+  /// compiler-generated continuation chain on the underlying <see cref="Task"/>.
   /// </summary>
   internal class ExpressionEvaluator : IExpressionEvaluator
   {
@@ -522,34 +519,23 @@ namespace ALKScript.Interpreter.Evaluator
     /// <summary>
     /// Evaluates <c>await &lt;operand&gt;</c>.
     ///
-    /// Two shapes genuinely suspend here — both ultimately by `await`ing a
-    /// real <see cref="System.Threading.Tasks.Task{TResult}"/>, which is what
-    /// parks the whole compiler-generated continuation chain (this method,
-    /// its caller, theirs, ... all the way up through <see cref="IEvaluationContext"/>)
-    /// and resumes it later — possibly long after this call returns control
-    /// to whatever is pumping the scheduler — exactly where it left off, with
-    /// no hand-written state machine required:
+    /// Two shapes genuinely suspend, by awaiting a real <see cref="Task{TResult}"/>
+    /// that parks the whole continuation chain and resumes it later exactly
+    /// where it left off:
     ///
-    /// - <see cref="TaskValue"/> — an already-running (or already-completed)
-    ///   operation: what a synchronously-resolving native, or an eager-start
-    ///   `async` *function* call (mirroring C#/JS), produces.
-    /// - <see cref="PendingOperationValue"/> — a not-yet-started "lazy/deferred
-    ///   start" `async native` operation (see docs/ASYNC_AWAIT_DESIGN.md's core
-    ///   requirements and <see cref="ALKScript.Interpreter.Common.Evaluation.Scheduling.IAsyncOperationBinder"/>):
-    ///   `await` is what "Suspend"s it — its <see cref="PendingOperationValue.Start"/>
-    ///   is what actually kicks off the host-side effect, at the moment (and
-    ///   only if) the script genuinely needs its result, fulfilling the "must
-    ///   not begin running merely because it was called" requirement.
+    /// - <see cref="TaskValue"/> — an already-running/completed operation, as
+    ///   produced by a synchronous native or an eager-start `async` function.
+    /// - <see cref="PendingOperationValue"/> — a not-yet-started `async native`
+    ///   operation (docs/ASYNC_AWAIT_DESIGN.md core requirements,
+    ///   <see cref="ALKScript.Interpreter.Common.Evaluation.Scheduling.IAsyncOperationBinder"/>):
+    ///   `await` triggers its <see cref="PendingOperationValue.Start"/>, so the
+    ///   host effect only begins once the script actually needs the result.
     ///
-    /// A faulted task surfaces as a catchable script-level <see cref="Signal.Thrown"/>
-    /// (mirroring a "throw" of the fault's message) rather than tearing down
-    /// the whole evaluation — except for <see cref="RuntimeException"/>, which
-    /// signals an interpreter-level error and is left to propagate as-is.
+    /// A faulted task surfaces as a catchable <see cref="Signal.Thrown"/>
+    /// (like a script-level "throw") rather than tearing down the whole
+    /// evaluation — except <see cref="RuntimeException"/>, which propagates as-is.
     ///
-    /// Awaiting any other kind of value is permissive identity — it simply
-    /// yields the value, mirroring "awaiting an already-resolved value" in
-    /// other async languages — so e.g. `await 1` is harmless rather than a
-    /// type error.
+    /// Awaiting any other value is identity — `await 1` simply yields `1`.
     /// </summary>
     private async Task<ALKScriptValue> EvalAwait(AwaitExpr expression, ScriptEnvironment environment)
     {
@@ -896,13 +882,6 @@ namespace ALKScript.Interpreter.Evaluator
     }
 
     /// <summary>
-    /// Enforces the access modifier of <paramref name="member"/> relative to the
-    /// currently executing class (<see cref="ScriptEnvironment.CurrentClass"/>).
-    /// Public members are always accessible; private members require the current
-    /// class to be exactly the declaring class; protected members require it to be
-    /// the declaring class or a subclass of it.
-    /// </summary>
-    /// <summary>
     /// Enforces that a <c>readonly</c> field is only assigned from within the
     /// constructor of its declaring class. No-op for fields that aren't
     /// declared <c>readonly</c> (or aren't fields at all).
@@ -917,6 +896,13 @@ namespace ALKScript.Interpreter.Evaluator
       }
     }
 
+    /// <summary>
+    /// Enforces the access modifier of <paramref name="member"/> relative to the
+    /// currently executing class (<see cref="ScriptEnvironment.CurrentClass"/>).
+    /// Public members are always accessible; private members require the current
+    /// class to be exactly the declaring class; protected members require it to be
+    /// the declaring class or a subclass of it.
+    /// </summary>
     private static void EnforceAccessModifier(
       MemberDecl member, ClassValue? declaringClass, ALKScriptToken site, ScriptEnvironment environment)
     {

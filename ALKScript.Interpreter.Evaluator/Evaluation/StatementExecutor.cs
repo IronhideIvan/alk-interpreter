@@ -13,14 +13,10 @@ namespace ALKScript.Interpreter.Evaluator
   /// Expression evaluation and calls are delegated through
   /// <see cref="IEvaluationContext"/>.
   ///
-  /// Every method here is <c>async</c>/<see cref="Task"/>-returning — not
-  /// because anything actually suspends yet (Phase 2 introduces no new
-  /// behavior; everything still resolves synchronously), but because this is
-  /// the plumbing <c>await</c> needs: turning each method into a
-  /// compiler-generated continuation lets a future suspension (e.g. on a
-  /// pending host operation) unwind through this exact call chain and later
-  /// resume it without losing any in-flight control-flow state — see
-  /// <see cref="IEvaluationContext"/> for the fuller rationale.
+  /// Every method here is <c>async</c>/<see cref="Task"/>-returning so that a
+  /// future suspension on a pending host operation can unwind through this
+  /// exact call chain and resume later without losing in-flight control-flow
+  /// state — see <see cref="IEvaluationContext"/> for the fuller rationale.
   /// </summary>
   internal class StatementExecutor : IStatementExecutor
   {

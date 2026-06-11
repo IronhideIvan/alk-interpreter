@@ -22,6 +22,12 @@ namespace ALKScript.Interpreter.Evaluator
   /// them together by implementing <see cref="IEvaluationContext"/>, the
   /// interface they recurse through; that indirection is what lets three
   /// mutually-dependent collaborators be constructed without a cycle.
+  ///
+  /// This evaluator is a pure executor: it never lexes or parses anything, and
+  /// never references the concrete lexer/parser types. Turning source into a
+  /// <see cref="ModuleGraph"/> — including the runtime-supplied global prelude
+  /// (<see cref="ModuleGraph.GlobalPreludes"/>) and core-module resolution — is
+  /// <c>IProgramLoader</c>'s job; this class just walks the result.
   /// </summary>
   public class ProgramEvaluator : IEvaluator, IEvaluationContext
   {
@@ -35,55 +41,39 @@ namespace ALKScript.Interpreter.Evaluator
 
     private readonly List<OperationLogEntry> _log = new List<OperationLogEntry>();
     private int _replayIndex;
-    private int _replayLength; // fixed at construction; live-recorded entries never qualify as replay
+    private int _replayLength; // Fixed at construction; live-recorded entries never count as replay.
 
     /// <summary>
     /// Creates an evaluator.
-    ///
-    /// <paramref name="nativeBindings"/> supplies the host implementations for
-    /// free-standing <c>native function</c> declarations, keyed by declared
-    /// name; <paramref name="nativeMethodBindings"/> supplies them for
-    /// <c>native</c> methods, keyed by declaring class and member name (see
-    /// <see cref="ScriptNativeMethodBindings"/> for why methods need their own,
-    /// class-scoped table — e.g. an <c>Array</c> and a <c>Set</c> can each
-    /// declare a native <c>add</c> without colliding, and each implementation
-    /// receives the receiving instance so it can back the class with real,
-    /// host-managed storage). Both the entry module's own <c>native</c>
-    /// declarations and any in the graph's <see cref="ModuleGraph.GlobalPreludes"/>
-    /// resolve against these tables. A <c>native</c> declaration with no
-    /// matching binding fails with a <see cref="RuntimeException"/> as soon as
-    /// it is declared (functions) or first accessed (methods), so a runtime
-    /// that supplies a prelude with <c>native</c> members is responsible for
-    /// registering bindings for them here.
-    ///
-    /// This evaluator is a pure executor: it never lexes or parses anything
-    /// itself — and so never references the concrete <c>ALKScriptLexer</c>/
-    /// <c>ALKScriptParser</c> types (which live in the Lexer/Parser projects).
-    /// "Compile source -&gt; structured representation" is entirely
-    /// <c>IProgramLoader</c>'s job, including the runtime-supplied "true
-    /// global" prelude (see <see cref="ModuleGraph.GlobalPreludes"/> and
-    /// <c>IGlobalPreludeProvider</c> in the Parser project) — this mirrors how
-    /// core-module resolution is pushed out to an injected
-    /// <c>ICoreModuleProvider</c> rather than hardcoded here: the loader
-    /// provides the mechanism (parse-and-assemble), the runtime supplies the
-    /// content, and the evaluator just walks the result.
     /// </summary>
+    /// <param name="nativeBindings">
+    /// Host implementations for free-standing <c>native function</c>
+    /// declarations, keyed by declared name. A <c>native</c> declaration with
+    /// no matching binding fails with a <see cref="RuntimeException"/> as soon
+    /// as it is declared.
+    /// </param>
+    /// <param name="nativeMethodBindings">
+    /// Host implementations for <c>native</c> methods, keyed by declaring
+    /// class and member name (see <see cref="ScriptNativeMethodBindings"/> for
+    /// why methods need their own class-scoped table). Fails the same way as
+    /// <paramref name="nativeBindings"/>, but on first access rather than
+    /// declaration.
+    /// </param>
     /// <param name="operationBinder">
     /// The host's <see cref="Common.Evaluation.Scheduling.IAsyncOperationBinder"/>
     /// — the integration seam for free-standing <c>native async</c>
-    /// declarations specifically (see <see cref="FunctionValueFactory"/>'s
-    /// constructor docs for why they're bound separately from
-    /// <paramref name="nativeBindings"/>). A runtime that declares no
-    /// <c>native async</c> functions can omit it.
+    /// declarations (see <see cref="FunctionValueFactory"/> for why they're
+    /// bound separately from <paramref name="nativeBindings"/>). Omit if the
+    /// script declares no <c>native async</c> functions.
     /// </param>
     /// <param name="replayLog">
-    /// A previously-captured operation log to replay (see
-    /// <see cref="Log"/> and docs/ASYNC_AWAIT_DESIGN.md decision #17). When
-    /// supplied, each <c>await</c> on a <see cref="Common.Evaluation.Values.PendingOperationValue"/>
-    /// consumes the next log entry positionally — returning its recorded result
-    /// or fault without starting the operation — until the log is exhausted,
-    /// at which point live execution resumes and new entries are appended.
-    /// Omit (or pass <c>null</c>) for a fresh run with no prior log.
+    /// A previously-captured operation log to replay (see <see cref="Log"/>
+    /// and docs/ASYNC_AWAIT_DESIGN.md decision #17). Each <c>await</c> on a
+    /// <see cref="Common.Evaluation.Values.PendingOperationValue"/> consumes
+    /// the next entry positionally — returning its recorded result or fault
+    /// without starting the operation — until the log is exhausted, after
+    /// which live execution resumes and appends new entries. Omit for a fresh
+    /// run with no prior log.
     /// </param>
     public ProgramEvaluator(ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, Common.Evaluation.Scheduling.IAsyncOperationBinder? operationBinder = null, IReadOnlyList<OperationLogEntry>? replayLog = null, IScriptScheduler? scheduler = null)
       : this(new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder), scheduler)
@@ -127,12 +117,9 @@ namespace ALKScript.Interpreter.Evaluator
     {
       var globals = new ScriptEnvironment();
 
-      // Seed the runtime-supplied global prelude(s) first: ordinary top-level
-      // declarations executed into the root environment, in order, so their
-      // bindings are true globals — visible to (and shadowable by) every module
-      // without any "import" or per-script "native function" re-declaration.
-      // These were compiled once by the loader (see ModuleGraph.GlobalPreludes),
-      // so there's nothing to parse here.
+      // Seed the runtime-supplied global prelude(s) first, so their bindings
+      // are true globals visible to every module without an "import".
+      // Already compiled by the loader (ModuleGraph.GlobalPreludes).
       foreach (var program in graph.GlobalPreludes)
       {
         foreach (var declaration in program.Declarations)
@@ -153,16 +140,14 @@ namespace ALKScript.Interpreter.Evaluator
 
       _signal = null;
 
-      // Execute the entry module. Imported modules are executed on demand,
-      // depth-first, with each module's environment cached so shared
-      // dependencies are only executed once.
+      // Execute the entry module. Imported modules run on demand, depth-first,
+      // with each module's environment cached so shared dependencies only run once.
       var moduleEnvs = new Dictionary<string, ScriptEnvironment>();
       await ExecuteModule(graph.EntryModule, graph, globals, moduleEnvs);
 
       // Fire-and-forget any async native operations that were called but never
-      // awaited — the "Discard" path (see IAsyncOperationBinder.Discard and
-      // docs/ASYNC_AWAIT_DESIGN.md decision #10). Skipped if the script was
-      // cancelled: a cancelled script did not "finish" — it was cut short.
+      // awaited (IAsyncOperationBinder.Discard, decision #10). Skipped on
+      // cancellation — a cancelled script didn't "finish", it was cut short.
       if (_signal?.Kind != SignalKind.Cancelled)
       {
         _functionValueFactory.DiscardPending(_ => { });
@@ -199,9 +184,8 @@ namespace ALKScript.Interpreter.Evaluator
         return;
       }
 
-      // Cache the environment before executing imports to handle diamond-shaped
-      // dependency graphs: if A imports B and C, and B also imports C, the second
-      // visit to C (via B) sees the cached env rather than re-executing C.
+      // Cache before executing imports so diamond dependencies (A imports B and
+      // C, B also imports C) only execute C once.
       var env = new ScriptEnvironment(globals);
       moduleEnvs[module.Identifier] = env;
 
@@ -220,10 +204,9 @@ namespace ALKScript.Interpreter.Evaluator
         BindImport(import, moduleEnvs[resolvedId], env);
       }
 
-      // Re-exports ("export { Foo } from "./foo";") are resolved the same way
-      // as imports — the target module is executed first, then the named
-      // bindings are copied into this module's environment, both so they're
-      // usable locally and so downstream importers of this module see them.
+      // Re-exports ("export { Foo } from './foo';") are resolved like imports:
+      // execute the target module, then copy the named bindings into this
+      // module's environment so they're usable here and visible to importers.
       foreach (var declaration in module.Program.Declarations)
       {
         if (declaration is ReExportDecl reExport)
