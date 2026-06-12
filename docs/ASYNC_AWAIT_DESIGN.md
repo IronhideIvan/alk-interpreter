@@ -449,10 +449,39 @@ with a hand-rolled, synchronous, resumable traverser:
   is now synchronous.
 
 **Scope and current limitations** (tracked for follow-up plans):
-- A called function/constructor body that itself needs to suspend is not yet
-  supported — `CursorCallInvoker` throws if an internal call returns
-  `IsAwaiting`. Only the outermost statement sequence can suspend in this
-  milestone.
+- Function, method, and constructor bodies (including `base(...)`
+  super-constructor body recursion) may suspend mid-body — the resume trail
+  is a single flat list spanning all nested `ExecuteBlock` calls regardless of
+  C# call-stack depth, so a suspending nested call simply propagates
+  `IsAwaiting` up through `CursorCallInvoker`.
+- A suspended constructor's `new` expression is itself re-evaluated on
+  resume (per the argument-re-evaluation point below), which would normally
+  allocate a second, distinct instance. `CursorCallInvoker.Construct` special-
+  cases this: while resuming, it recovers the original instance from the
+  resume trail's captured `this` (via `PeekResumeEnvironment`) and reuses it,
+  so field mutations performed by the resumed constructor body land on the
+  instance the `new` expression ultimately returns.
+- Field/static-field initializers cannot suspend — `InitializeFields` runs
+  outside the `ExecuteBlock` resume trail, and `CursorCallInvoker` throws if
+  an initializer expression returns `IsAwaiting`.
+- When a statement containing a suspending call is re-executed on resume,
+  `EvalCall`/`EvalNew` re-evaluate the callee and all argument expressions
+  from scratch (there is no `HasResumeValue`-style short-circuit for call
+  arguments as there is for `AwaitExpr`'s operand). Argument expressions with
+  side effects therefore run twice across a suspend/resume cycle — bind such
+  expressions to a local first, e.g. `var a = sideEffect(); var y = foo(a);`,
+  the same mitigation already recommended for §4's placement restrictions.
+  This can be worse than just a double side effect: `IsResuming` stays true
+  for the whole re-executed statement (until the trail is fully unwound), so
+  if a re-evaluated argument expression itself makes a call, that call's body
+  also sees `IsResuming == true` and consumes the resume-trail entry meant
+  for the original suspended call. E.g. for `var y = withAwait(sideEffect())`
+  where `withAwait` is the one that suspended, on resume `sideEffect()` is
+  evaluated first (as the argument), its body unwinds the trail entry meant
+  for `withAwait`'s body, and `withAwait` is then entered *fresh* with the
+  newly re-evaluated argument — so the resumed `withAwait` body runs with the
+  *second* call's argument value, not the first's. Binding the argument to a
+  local first avoids this entirely.
 - `await [a, b, c]` ("whenAll") only handles the case where every element is
   already resolved; an in-flight element throws `RuntimeException`. The
   composite whenAll suspension model (per-slot `Resume`, fault aggregation) is

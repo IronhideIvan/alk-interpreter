@@ -797,10 +797,23 @@ unresolved 'thunk' — rewrite as 'var t = await ...;' first.` Rewriting the
 expression to bind the awaited value to a variable first (as the message
 suggests) moves the `await` into an allowed position.
 
-Suspension inside a called function/constructor body, and `await [...]`
-where any element is a genuinely in-flight (not-yet-settled, non-replayed)
-operation, are not yet supported by the cursor evaluator — see
-docs/ASYNC_AWAIT_DESIGN.md for current status and follow-up plans.
+The four allowed positions above apply equally inside a called function,
+method, or constructor body (including `base(...)` super-constructor bodies)
+— suspending mid-body and later resuming is supported. Two narrower
+restrictions remain, tracked in docs/ASYNC_AWAIT_DESIGN.md:
+
+- Field and static-field initializer expressions cannot suspend; an `await`
+  of an unresolved `thunk` there throws `RuntimeException`.
+- If a statement containing a suspending call is re-executed on resume, the
+  callee and all of its argument expressions are re-evaluated from scratch —
+  an argument expression with side effects (e.g. `foo(sideEffect())`) runs
+  twice across the suspend/resume cycle. Bind such expressions to a local
+  first, e.g. `var a = sideEffect(); var y = foo(a);`.
+
+`await [...]` ("whenAll") where any element is a genuinely in-flight
+(not-yet-settled, non-replayed) operation is not yet supported by the cursor
+evaluator — see docs/ASYNC_AWAIT_DESIGN.md for current status and follow-up
+plans.
 
 ---
 

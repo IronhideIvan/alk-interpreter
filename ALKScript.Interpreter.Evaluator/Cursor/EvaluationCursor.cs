@@ -69,10 +69,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
   /// — substitutes the resumed value for the <c>await</c> that suspended, and
   /// continues normal execution from there.
   ///
-  /// A called function/constructor body that itself needs to suspend is not
-  /// yet supported (<see cref="CursorCallInvoker"/> throws) — only the
-  /// outermost statement sequence passed to <see cref="Start"/> can suspend
-  /// in this milestone.
+  /// A called function/constructor body may itself suspend — its
+  /// <see cref="ExecuteBlock"/> call participates in the same flat trail as
+  /// any other block, with no dedicated trail entry of its own. Field/
+  /// static-field initializers and native array-method callbacks remain
+  /// restricted (see <see cref="CursorCallInvoker"/>'s <c>DisallowSuspension</c>).
   /// </summary>
   internal sealed class EvaluationCursor
   {
@@ -153,6 +154,15 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
     /// <summary>Whether the next <see cref="AwaitExpr"/> reached should consume <see cref="TakeResumeValue"/> instead of evaluating its operand.</summary>
     public bool HasResumeValue => _resumeValue != null;
+
+    /// <summary>
+    /// Returns the environment of the next (root-to-leaf) entry of the resume
+    /// trail without consuming it, or <c>null</c> if not <see cref="IsResuming"/>.
+    /// Used by <see cref="CursorCallInvoker.Construct"/> to recover the
+    /// <c>this</c> instance a suspended constructor body is about to resume
+    /// into, before <see cref="ExecuteBlock"/> itself pops the entry.
+    /// </summary>
+    public ScriptEnvironment? PeekResumeEnvironment() => IsResuming ? _trail[_resumeCursor].Environment : null;
 
     /// <summary>
     /// Pops and returns the next (root-to-leaf) entry of the resume trail.

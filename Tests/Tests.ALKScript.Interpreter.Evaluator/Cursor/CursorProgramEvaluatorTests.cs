@@ -114,6 +114,169 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
     Assert.Equal(9L, Assert.IsType<IntValue>(evaluator.Log[0].Result!).Value);
   }
 
+  [Fact]
+  public void Evaluate_FunctionSuspendsMidBody_ReturnsAwaitingThenResumes()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction int foo() {{\n  var x = await fetch();\n  return x + 1;\n}}\nvar y = foo();\nrecord(y);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var source1 = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(_ => source1.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+    Assert.Empty(recorded);
+
+    var result = evaluator.Resume(new IntValue(41));
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(42L, Assert.IsType<IntValue>(recorded[0]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_MethodSuspendsMidBody_ThisSurvivesResume()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> fetch();\nclass Box {{\n  public int v;\n  new(int v) {{\n    this.v = v;\n  }}\n  public function int getPlusFetched() {{\n    var x = await fetch();\n    return this.v + x;\n  }}\n}}\nvar b = new Box(5);\nvar y = b.getPlusFetched();\nrecord(y);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var source1 = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(_ => source1.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+    Assert.Empty(recorded);
+
+    var result = evaluator.Resume(new IntValue(10));
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(15L, Assert.IsType<IntValue>(recorded[0]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_ConstructorSuspendsMidBody_ReturnsAwaitingThenResumes()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> fetch();\nclass Box {{\n  public int v;\n  new() {{\n    var x = await fetch();\n    this.v = x;\n  }}\n}}\nvar b = new Box();\nrecord(b.v);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var source1 = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(_ => source1.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+    Assert.Empty(recorded);
+
+    var result = evaluator.Resume(new IntValue(10));
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(10L, Assert.IsType<IntValue>(recorded[0]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_FieldInitializerAwait_StillThrowsRuntimeException()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> fetch();\nclass Box {{\n  public int v = await fetch();\n}}\nvar b = new Box();\nrecord(b.v);";
+
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => NullValue.Instance
+    };
+
+    var source1 = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(_ => source1.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Throws<RuntimeException>(() => evaluator.Evaluate(graph));
+  }
+
+  [Fact]
+  public void Evaluate_NestedCallSuspends_PropagatesThroughBothFrames()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction int inner() {{\n  var x = await fetch();\n  return x + 1;\n}}\nfunction int outer() {{\n  var y = inner();\n  return y + 1;\n}}\nvar z = outer();\nrecord(z);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var source1 = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(_ => source1.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+    Assert.Empty(recorded);
+
+    var result = evaluator.Resume(new IntValue(10));
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(12L, Assert.IsType<IntValue>(recorded[0]).Value);
+  }
+
+  /// <summary>
+  /// Pins the documented limitation (docs/ASYNC_AWAIT_DESIGN.md Addendum 3):
+  /// when the statement containing a suspending call is re-executed on
+  /// resume, its argument expressions are re-evaluated from scratch. Here
+  /// <c>sideEffect()</c> runs again first (so <c>calls</c> ends at 2) —
+  /// while doing so it itself runs through a fresh call frame that is
+  /// still "resuming" (the resume trail hasn't been fully unwound yet), so
+  /// it consumes the trail entry that was meant for <c>withAwait</c>'s
+  /// suspended body. <c>withAwait</c> is then entered fresh with the
+  /// *second* invocation's argument (<c>v == 2</c>), so the result is
+  /// <c>v + x == 2 + 10 == 12</c>, not the <c>11</c> a naive reading of the
+  /// trail might suggest.
+  /// </summary>
+  [Fact]
+  public void Evaluate_SuspendingCallWithSideEffectingArgument_ArgumentRunsTwice()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> fetch();\nvar calls = 0;\nfunction int sideEffect() {{\n  calls = calls + 1;\n  return calls;\n}}\nfunction int withAwait(int v) {{\n  var x = await fetch();\n  return v + x;\n}}\nvar y = withAwait(sideEffect());\nrecord(y);\nrecord(calls);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var source1 = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(_ => source1.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+    Assert.Empty(recorded);
+
+    var result = evaluator.Resume(new IntValue(10));
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(12L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
   private sealed class FuncBinder : IAsyncOperationBinder
   {
     private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;

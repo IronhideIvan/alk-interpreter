@@ -7,15 +7,16 @@ using ALKScript.Interpreter.Common.Token;
 namespace ALKScript.Interpreter.Evaluator.Cursor
 {
   /// <summary>
-  /// Cursor-evaluator counterpart to <see cref="CallInvoker"/> (Step 4 of the
-  /// cursor-rewrite plan): resolves a callee to an invocation, binds arguments
-  /// to parameters, and runs constructors for <c>new</c> expressions. As with
-  /// the rest of the cursor evaluator, every <see cref="StepResult"/> here is
-  /// currently <see cref="StepResult.Completed"/> — function/constructor
-  /// bodies cannot themselves suspend until <c>await</c> (Step 6) is wired up
-  /// — but every sub-evaluation is routed through <see cref="EvaluationCursor"/>
-  /// and propagated with the mechanical "if (step.IsAwaiting) return step;"
-  /// pattern so later steps compose correctly.
+  /// Cursor-evaluator counterpart to <see cref="CallInvoker"/>: resolves a
+  /// callee to an invocation, binds arguments to parameters, and runs
+  /// constructors for <c>new</c> expressions. Function, method, and
+  /// constructor bodies (including <c>base(...)</c> super-constructor body
+  /// recursion) may themselves suspend via <c>await</c> — the resume trail
+  /// is a single flat list spanning all nested <see cref="EvaluationCursor.ExecuteBlock"/>
+  /// calls, so a suspending call simply propagates <see cref="StepResult.IsAwaiting"/>
+  /// up via the mechanical "if (step.IsAwaiting) return step;" pattern. Field
+  /// initializers and native array-method callbacks remain restricted — see
+  /// <see cref="DisallowSuspension"/>.
   /// </summary>
   internal sealed class CursorCallInvoker
   {
@@ -27,9 +28,12 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     }
 
     /// <summary>
-    /// The resume trail only spans the outermost <see cref="EvaluationCursor.Start"/>
-    /// body — a called function/constructor body that itself needs to suspend
-    /// is not yet supported in this milestone.
+    /// Used for the two remaining positions where suspension is not
+    /// supported: field/static-field initializers (<see cref="InitializeFields"/>,
+    /// which run outside the <see cref="EvaluationCursor.ExecuteBlock"/> resume
+    /// trail) and native array-method callbacks (<see cref="CursorNativeFunctionValue"/>).
+    /// Function, method, and constructor bodies are no longer restricted —
+    /// they participate in the resume trail like any other block.
     /// </summary>
     private static StepResult DisallowSuspension(StepResult step, ALKScriptToken site)
     {
@@ -69,7 +73,24 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
     public StepResult Construct(ClassValue classValue, IReadOnlyList<ALKScriptValue> arguments, IReadOnlyList<TypeNode> typeArguments, ALKScriptToken site)
     {
-      var instance = new InstanceValue(classValue, BuildTypeArgumentMap(classValue.Declaration, typeArguments, site));
+      // If a constructor body previously suspended mid-construction, this
+      // `new` expression is being re-evaluated on resume: reuse the original
+      // instance (recovered from the resume trail's captured "this") rather
+      // than a freshly-allocated one, so field mutations the constructor body
+      // performs after resuming land on the instance ultimately returned here.
+      InstanceValue instance;
+      if (_cursor.IsResuming
+        && _cursor.PeekResumeEnvironment() is { } resumeEnvironment
+        && resumeEnvironment.TryGet("this", out var existingThis)
+        && existingThis is InstanceValue existingInstance
+        && existingInstance.Class == classValue)
+      {
+        instance = existingInstance;
+      }
+      else
+      {
+        instance = new InstanceValue(classValue, BuildTypeArgumentMap(classValue.Declaration, typeArguments, site));
+      }
 
       // Initialize fields from the whole hierarchy, base class first, so that
       // derived-class initializers can rely on base fields already being set.
@@ -102,7 +123,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           constructorEnvironment.Define(parameter.Name, arguments[i], parameter.Type);
         }
 
-        DisallowSuspension(_cursor.ExecuteBlock(constructor.Body.Statements, constructorEnvironment), site);
+        var bodyStep = _cursor.ExecuteBlock(constructor.Body.Statements, constructorEnvironment);
+        if (bodyStep.IsAwaiting) return bodyStep;
 
         // A bare "return;" inside a constructor simply ends construction early;
         // a "throw" is left pending so it propagates to the caller.
@@ -216,7 +238,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
     private StepResult RunBody(FunctionValue function, ScriptEnvironment callEnvironment, ALKScriptToken site)
     {
-      DisallowSuspension(_cursor.ExecuteBlock(function.Declaration.Body!.Statements, callEnvironment), site);
+      var step = _cursor.ExecuteBlock(function.Declaration.Body!.Statements, callEnvironment);
+      if (step.IsAwaiting) return step;
 
       // "return" is consumed here — it unwinds no further than the call that
       // produced it. A "throw" is left pending so it propagates to the caller.
@@ -263,7 +286,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         env.Define(parameter.Name, arguments[i], parameter.Type);
       }
 
-      DisallowSuspension(_cursor.ExecuteBlock(constructor.Body.Statements, env), site);
+      var step = _cursor.ExecuteBlock(constructor.Body.Statements, env);
+      if (step.IsAwaiting) return step;
 
       if (_cursor.Signal is { Kind: SignalKind.Return })
       {

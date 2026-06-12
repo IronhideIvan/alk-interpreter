@@ -28,9 +28,6 @@ namespace Tests.ALKScript.Interpreter.Evaluator.Cursor;
 ///   <c>Evaluate_AwaitOnArrayWhereOneFaults_*</c>,
 ///   <c>Evaluate_AwaitOnArrayWhereBothFault_*</c>,
 ///   <c>Evaluate_AwaitOnArrayFault_*</c> in <c>AsyncEvaluationTests.cs</c>.
-/// - <c>await</c> suspending inside a called function/constructor body
-///   (<see cref="ALKScript.Interpreter.Evaluator.Cursor.CursorCallInvoker"/>'s
-///   "DisallowSuspension" guard).
 /// - Native array-method callbacks (map/filter/etc.) that themselves
 ///   <c>await</c> (plan §7) — not used by any existing test.
 /// </summary>
@@ -180,6 +177,12 @@ public class CursorDifferentialTests : CursorEvaluatorTestBase
     {
       Assert.Equal(oldRecorded[i].ToString(), newRecorded[i].ToString());
     }
+  }
+
+  [Fact]
+  public void FunctionBody_AwaitOnAlreadyResolvedValue_DoesNotSuspend()
+  {
+    AssertSameResult($"{RecordDeclaration}\nfunction int foo() {{\n  return await 1;\n}}\nrecord(foo());");
   }
 
   [Fact]
