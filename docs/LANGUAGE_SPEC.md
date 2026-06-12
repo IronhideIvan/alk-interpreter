@@ -780,8 +780,9 @@ not-yet-resolved `thunk`/`thunk<T>` appears in one of these positions:
 - the entire initializer of a variable declaration (`var x = await ...;`);
 - the entire value of a `return` or `throw` statement;
 - the entire expression of an expression statement (`await ...;`);
-- an element of `await [expr1, expr2, ...]` ("whenAll") whose value is
-  already resolved by the time it's reached.
+- the entire `await [expr1, expr2, ...]` ("whenAll") expression, when used in
+  one of the three positions above — any element may be a genuinely in-flight
+  operation; the whole expression suspends until all of them settle.
 
 `await` remains a universally-valid prefix operator everywhere else in an
 expression (e.g. as an operand of a binary operator, inside a call argument,
@@ -809,11 +810,6 @@ restrictions remain, tracked in docs/ASYNC_AWAIT_DESIGN.md:
   an argument expression with side effects (e.g. `foo(sideEffect())`) runs
   twice across the suspend/resume cycle. Bind such expressions to a local
   first, e.g. `var a = sideEffect(); var y = foo(a);`.
-
-`await [...]` ("whenAll") where any element is a genuinely in-flight
-(not-yet-settled, non-replayed) operation is not yet supported by the cursor
-evaluator — see docs/ASYNC_AWAIT_DESIGN.md for current status and follow-up
-plans.
 
 ---
 

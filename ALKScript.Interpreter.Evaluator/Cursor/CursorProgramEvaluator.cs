@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Ast;
@@ -9,10 +10,42 @@ using ALKScript.Interpreter.Common.Modules;
 namespace ALKScript.Interpreter.Evaluator.Cursor
 {
   /// <summary>The outcome of <see cref="CursorProgramEvaluator.Evaluate"/>/<see cref="CursorProgramEvaluator.Resume"/>/<see cref="CursorProgramEvaluator.ResumeFaulted"/>.</summary>
-  internal enum ProgramRunResult
+  public enum ProgramRunResult
   {
     Completed,
     Awaiting,
+  }
+
+  /// <summary>
+  /// A "Phase A" (replay-based) snapshot of a suspended
+  /// <see cref="CursorProgramEvaluator"/> run (docs/ASYNC_AWAIT_DESIGN.md
+  /// Addendum 3): the record-and-replay <see cref="Log"/> accumulated up to
+  /// the point of suspension, plus the <see cref="Phase"/>/<see cref="ModuleIndex"/>
+  /// the run had reached (informational only — <see cref="CursorProgramEvaluator.Restore"/>
+  /// re-derives both by re-running <see cref="ModuleGraph.GlobalPreludes"/>
+  /// and modules from the start with <see cref="Log"/> as the replay log).
+  /// Uses runtime <see cref="OperationLogEntry"/>/<see cref="ALKScriptValue"/>
+  /// types directly — converting this to/from a wire format is
+  /// <c>ALKScript.Interpreter.Serialization</c>'s responsibility, not this
+  /// project's.
+  /// </summary>
+  public sealed class CursorCaptureState
+  {
+    /// <summary>0 = was running global preludes, 1 = was running modules, 2 = finalizing. See <see cref="CursorProgramEvaluator"/>'s private <c>_phase</c>.</summary>
+    public int Phase { get; }
+
+    /// <summary>Index into the current phase's sequence at the point of suspension.</summary>
+    public int ModuleIndex { get; }
+
+    /// <summary>The record-and-replay log accumulated up to the point of suspension.</summary>
+    public IReadOnlyList<OperationLogEntry> Log { get; }
+
+    public CursorCaptureState(int phase, int moduleIndex, IReadOnlyList<OperationLogEntry> log)
+    {
+      Phase = phase;
+      ModuleIndex = moduleIndex;
+      Log = log;
+    }
   }
 
   /// <summary>
@@ -32,7 +65,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
   /// <see cref="ProgramEvaluator.EvaluateCore"/>'s recursive <c>ExecuteModule</c>
   /// walk did.
   /// </summary>
-  internal sealed class CursorProgramEvaluator
+  public sealed class CursorProgramEvaluator
   {
     private readonly EvaluationCursor _cursor;
     private readonly IFunctionValueFactory _functionValueFactory;
@@ -81,6 +114,55 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       _index = 0;
 
       return Advance();
+    }
+
+    /// <summary>
+    /// Captures a "Phase A" (replay-based) snapshot of this suspended run
+    /// (docs/ASYNC_AWAIT_DESIGN.md Addendum 3) for later <see cref="Restore"/>.
+    /// Only valid while <see cref="PendingAwait"/> is non-null.
+    /// </summary>
+    public CursorCaptureState Capture()
+    {
+      if (PendingAwait == null)
+      {
+        throw new InvalidOperationException("CursorProgramEvaluator.Capture called while not awaiting.");
+      }
+
+      return new CursorCaptureState(_phase, _index, _cursor.Capture());
+    }
+
+    /// <summary>
+    /// Reconstructs a suspended run from <paramref name="state"/>: builds a
+    /// fresh <see cref="CursorProgramEvaluator"/> seeded with
+    /// <see cref="CursorCaptureState.Log"/> as its replay log, then runs
+    /// <see cref="Evaluate"/> against <paramref name="graph"/> from the
+    /// start. Every <c>await</c>/<c>whenAll</c> site that has a corresponding
+    /// replay-log entry resolves instantly via the replay log instead of
+    /// suspending, until the log is exhausted — at which point the run
+    /// either suspends again at the same logical point as when
+    /// <paramref name="state"/> was captured (returning
+    /// <see cref="ProgramRunResult.Awaiting"/>, ready for
+    /// <see cref="Resume"/>/<see cref="ResumeFaulted"/>), or, if
+    /// <paramref name="state"/> was captured at the run's final suspension
+    /// point, completes (<see cref="ProgramRunResult.Completed"/>) — both are
+    /// valid outcomes.
+    ///
+    /// <paramref name="graph"/> must be an equivalent module graph to the one
+    /// the original run was evaluating (rebuilt from the same source files/
+    /// module identifiers) — <see cref="CursorCaptureState"/> does not
+    /// capture the AST/module graph itself.
+    /// </summary>
+    public static CursorProgramEvaluator Restore(ModuleGraph graph, IFunctionValueFactory functionValueFactory, CursorCaptureState state, out ProgramRunResult result)
+    {
+      var evaluator = new CursorProgramEvaluator(functionValueFactory, state.Log);
+      result = evaluator.Evaluate(graph);
+      return evaluator;
+    }
+
+    /// <summary>As <see cref="Restore(ModuleGraph, IFunctionValueFactory, CursorCaptureState, out ProgramRunResult)"/>, constructing the <see cref="IFunctionValueFactory"/> from native bindings.</summary>
+    public static CursorProgramEvaluator Restore(ModuleGraph graph, CursorCaptureState state, out ProgramRunResult result, ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, IAsyncOperationBinder? operationBinder = null)
+    {
+      return Restore(graph, new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder), state, out result);
     }
 
     /// <summary>Resumes a suspended segment with the settled result of the pending <c>await</c>.</summary>

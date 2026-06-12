@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
@@ -7,19 +9,77 @@ using ALKScript.Interpreter.Common.Token;
 namespace ALKScript.Interpreter.Evaluator.Cursor
 {
   /// <summary>
+  /// One element of a composite <c>await [a, b, c]</c> suspension (see
+  /// <see cref="AwaitHandle.ForComposite"/>). Exactly one of
+  /// <see cref="Resolved"/>, <see cref="Task"/>, or <see cref="ReplayedFaultMessage"/>
+  /// is set: <see cref="Resolved"/> for an element that was already a plain
+  /// value or settled (successfully) via the replay log; <see cref="Task"/>
+  /// for a live (possibly still-pending) operation — paired with
+  /// <see cref="Operation"/> if it came from a <see cref="PendingOperationValue"/>
+  /// (so its settled outcome can be recorded to the replay log);
+  /// <see cref="ReplayedFaultMessage"/> for an element whose outcome was
+  /// already replayed as a fault (already recorded, so it is not re-recorded
+  /// or re-reported when resolved).
+  /// </summary>
+  public sealed class AwaitElement
+  {
+    public ALKScriptValue? Resolved { get; }
+
+    public Task<ALKScriptValue>? Task { get; }
+
+    public PendingOperation? Operation { get; }
+
+    public TypeNode? ElementType { get; }
+
+    public string? ReplayedFaultMessage { get; }
+
+    private AwaitElement(ALKScriptValue? resolved, Task<ALKScriptValue>? task, PendingOperation? operation, TypeNode? elementType, string? replayedFaultMessage)
+    {
+      Resolved = resolved;
+      Task = task;
+      Operation = operation;
+      ElementType = elementType;
+      ReplayedFaultMessage = replayedFaultMessage;
+    }
+
+    public static AwaitElement ForResolved(ALKScriptValue value, TypeNode? elementType) =>
+      new AwaitElement(value, task: null, operation: null, elementType, replayedFaultMessage: null);
+
+    public static AwaitElement ForTask(Task<ALKScriptValue> task, TypeNode? elementType, PendingOperation? operation = null) =>
+      new AwaitElement(resolved: null, task, operation, elementType, replayedFaultMessage: null);
+
+    public static AwaitElement ForReplayedFault(string faultMessage, TypeNode? elementType) =>
+      new AwaitElement(resolved: null, task: null, operation: null, elementType, faultMessage);
+
+    /// <summary>Whether this element is a live operation that has not yet settled.</summary>
+    public bool NeedsSuspend => Task != null && !Task.IsCompleted;
+  }
+
+  /// <summary>
   /// Identifies what a suspended <see cref="EvaluationCursor"/> is parked on
   /// when <see cref="StepResult.IsAwaiting"/> is true.
   ///
-  /// Exactly one of <see cref="Operation"/> or <see cref="Task"/> is set:
-  /// <see cref="Operation"/> for a not-yet-started <c>async native</c>
-  /// (<see cref="PendingOperationValue"/>); <see cref="Task"/> for an
-  /// already-started/completed operation (<see cref="ThunkValue"/>, or a
+  /// For a single-element <c>await</c>, exactly one of <see cref="Operation"/>
+  /// or <see cref="Task"/> is set: <see cref="Operation"/> for a not-yet-started
+  /// <c>async native</c> (<see cref="PendingOperationValue"/>); <see cref="Task"/>
+  /// for an already-started/completed operation (<see cref="ThunkValue"/>, or a
   /// <see cref="PendingOperationValue"/> once <see cref="PendingOperationValue.Start"/>
   /// has been called). <see cref="ElementType"/> carries the declared
   /// <c>thunk&lt;T&gt;</c> element type through to <see cref="EvaluationCursor.Resume"/>
   /// for <see cref="TypeChecking.MatchesType"/> validation.
+  ///
+  /// For a composite <c>await [a, b, c]</c> (see <see cref="ForComposite"/>),
+  /// <see cref="CompositeElements"/> is set instead and <see cref="Operation"/>/
+  /// <see cref="Task"/>/<see cref="ElementType"/> are all <c>null</c> — the host
+  /// awaits <see cref="CompositeTask"/> (which settles only once every live
+  /// element has completed, mirroring <see cref="Task.WhenAll"/>'s run-to-
+  /// completion semantics) and then calls <see cref="EvaluationCursor.Resume"/>
+  /// with any value (e.g. <see cref="NullValue.Instance"/>) — per-element
+  /// results/faults are read directly off <see cref="CompositeElements"/>'
+  /// stored tasks. <see cref="EvaluationCursor.ResumeFaulted"/> is not valid
+  /// for a composite handle.
   /// </summary>
-  internal sealed class AwaitHandle
+  public sealed class AwaitHandle
   {
     public PendingOperation? Operation { get; }
 
@@ -30,12 +90,25 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// <summary>The <c>await</c> keyword token, used to report a type mismatch on <see cref="EvaluationCursor.Resume"/>.</summary>
     public ALKScriptToken Site { get; }
 
-    private AwaitHandle(PendingOperation? operation, Task<ALKScriptValue>? task, TypeNode? elementType, ALKScriptToken site)
+    /// <summary>Set only for a composite <c>await [a, b, c]</c> suspension; <c>null</c> for a single-element <c>await</c>.</summary>
+    public IReadOnlyList<AwaitElement>? CompositeElements { get; }
+
+    /// <summary>
+    /// Set only for a composite <c>await [a, b, c]</c> suspension: a
+    /// <see cref="Task.WhenAll"/> over every live element's task, which
+    /// therefore settles (successfully or faulted) only once all of them have
+    /// completed. The host awaits this and then calls <see cref="EvaluationCursor.Resume"/>.
+    /// </summary>
+    public Task? CompositeTask { get; }
+
+    private AwaitHandle(PendingOperation? operation, Task<ALKScriptValue>? task, TypeNode? elementType, ALKScriptToken site, IReadOnlyList<AwaitElement>? compositeElements = null, Task? compositeTask = null)
     {
       Operation = operation;
       Task = task;
       ElementType = elementType;
       Site = site;
+      CompositeElements = compositeElements;
+      CompositeTask = compositeTask;
     }
 
     public static AwaitHandle ForTask(Task<ALKScriptValue> task, TypeNode? elementType, ALKScriptToken site) =>
@@ -53,5 +126,18 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// </summary>
     public static AwaitHandle ForPendingTask(Task<ALKScriptValue> task, PendingOperation operation, TypeNode? elementType, ALKScriptToken site) =>
       new AwaitHandle(operation, task, elementType, site);
+
+    /// <summary>
+    /// A composite <c>await [a, b, c]</c> where one or more <paramref name="elements"/>
+    /// are live operations that have not yet settled.
+    /// <see cref="CompositeTask"/> is a <see cref="Task.WhenAll"/> over those
+    /// elements' tasks.
+    /// </summary>
+    public static AwaitHandle ForComposite(IReadOnlyList<AwaitElement> elements, ALKScriptToken site)
+    {
+      var liveTasks = elements.Where(e => e.Task != null).Select(e => e.Task!).ToArray();
+      Task compositeTask = System.Threading.Tasks.Task.WhenAll(liveTasks);
+      return new AwaitHandle(operation: null, task: null, elementType: null, site, compositeElements: elements, compositeTask: compositeTask);
+    }
   }
 }

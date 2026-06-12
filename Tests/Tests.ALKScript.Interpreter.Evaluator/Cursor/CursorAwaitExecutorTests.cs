@@ -274,12 +274,12 @@ public class CursorAwaitExecutorTests
   }
 
   [Fact]
-  public void Eval_AwaitArrayWithUnresolvedElement_ThrowsRuntimeException()
+  public void Eval_AwaitArrayWithUnresolvedElement_ReturnsAwaitingThenResumesWithArrayOfResolvedValues()
   {
     var cursor = MakeCursor();
     var environment = new ScriptEnvironment();
     environment.Define("a", ThunkValue.FromResult(new IntValue(1)));
-    var (pending, _) = PendingThunk();
+    var (pending, source) = PendingThunk();
     environment.Define("b", pending);
 
     var statements = new List<Stmt>
@@ -290,7 +290,18 @@ public class CursorAwaitExecutorTests
         new AwaitExpr(Nodes.Token(ALKScriptTokenType.Await, "await"), new ArrayLiteralExpr(new List<Expr> { Nodes.Ident("a"), Nodes.Ident("b") }))),
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => cursor.Start(statements, environment));
-    Assert.Contains("cannot suspend", exception.Message);
+    var startResult = cursor.Start(statements, environment);
+
+    Assert.Equal(RunResult.Awaiting, startResult);
+    Assert.NotNull(cursor.PendingAwait!.CompositeElements);
+
+    source.SetResult(new IntValue(2));
+    var result = cursor.Resume(NullValue.Instance);
+
+    Assert.Equal(RunResult.Completed, result);
+    Assert.True(environment.TryGet("results", out var value));
+    var array = Assert.IsType<ArrayValue>(value);
+    Assert.Equal(1L, Assert.IsType<IntValue>(array.Items[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(array.Items[1]).Value);
   }
 }

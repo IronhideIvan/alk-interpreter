@@ -100,6 +100,9 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// <summary>The value to substitute for the <c>await</c> that suspended, set by <see cref="Resume"/>.</summary>
     private ALKScriptValue? _resumeValue;
 
+    /// <summary>The composite elements of a resumed <c>await [a, b, c]</c>, set by <see cref="Resume"/> when <see cref="AwaitHandle.CompositeElements"/> was set.</summary>
+    private IReadOnlyList<AwaitElement>? _resumeComposite;
+
     /// <summary>
     /// The record-and-replay log (docs/ASYNC_AWAIT_DESIGN.md decision #17),
     /// carried over unchanged from the old evaluator's <c>IEvaluationContext.Log</c>/
@@ -137,6 +140,25 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
     /// <summary>Appends a newly-settled operation's outcome to the log for future replay.</summary>
     public void RecordEntry(OperationLogEntry entry) => _log.Add(entry);
+
+    /// <summary>
+    /// Snapshots the record-and-replay log accumulated so far, for use by
+    /// <see cref="CursorProgramEvaluator.Capture"/> (docs/ASYNC_AWAIT_DESIGN.md
+    /// Addendum 3, "Phase A" Capture/Restore). Only valid while suspended
+    /// (<see cref="PendingAwait"/> is non-null) — the resulting log, fed back
+    /// into a fresh <see cref="EvaluationCursor"/>'s <c>replayLog</c>
+    /// constructor parameter and re-run from the start, replays back to this
+    /// exact suspension point.
+    /// </summary>
+    public IReadOnlyList<OperationLogEntry> Capture()
+    {
+      if (PendingAwait == null)
+      {
+        throw new InvalidOperationException("EvaluationCursor.Capture called while not awaiting.");
+      }
+
+      return new List<OperationLogEntry>(_log);
+    }
 
     /// <summary>
     /// The pending non-local exit (break/continue/return/thrown/cancelled), if
@@ -204,6 +226,25 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       var value = _resumeValue ?? NullValue.Instance;
       _resumeValue = null;
       return value;
+    }
+
+    /// <summary>
+    /// If a composite <c>await [a, b, c]</c> just resumed, consumes and
+    /// returns its <see cref="AwaitElement"/>s (whose tasks are now all
+    /// settled) and returns <c>true</c>. Must be called at most once per
+    /// resume, mirroring <see cref="TakeResumeValue"/>.
+    /// </summary>
+    public bool TryTakeResumeComposite(out IReadOnlyList<AwaitElement> elements)
+    {
+      if (_resumeComposite != null)
+      {
+        elements = _resumeComposite;
+        _resumeComposite = null;
+        return true;
+      }
+
+      elements = System.Array.Empty<AwaitElement>();
+      return false;
     }
 
     /// <summary>
@@ -311,6 +352,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     {
       var pending = PendingAwait ?? throw new InvalidOperationException("EvaluationCursor.Resume called while not awaiting.");
 
+      if (pending.CompositeElements != null)
+      {
+        _resumeComposite = pending.CompositeElements;
+        _resumeCursor = _trail.Count - 1;
+        PendingAwait = null;
+        return Run();
+      }
+
       if (pending.ElementType != null && !TypeChecking.MatchesType(value, pending.ElementType, _rootEnvironment!, pending.Site))
       {
         throw new RuntimeException(pending.Site, $"Operation declared 'thunk<{pending.ElementType}>' resolved to a value of type '{value.TypeName}', expected '{pending.ElementType}'.");
@@ -335,6 +384,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// </summary>
     public RunResult ResumeFaulted(string faultMessage)
     {
+      if (PendingAwait?.CompositeElements != null)
+      {
+        throw new InvalidOperationException("ResumeFaulted is not valid for a composite 'await [...]' suspension — await PendingAwait.CompositeTask (which settles only once every element has completed) and call Resume(NullValue.Instance) instead.");
+      }
+
       if (PendingAwait?.Operation != null)
       {
         _log.Add(OperationLogEntry.FromFault(PendingAwait.Operation, faultMessage));

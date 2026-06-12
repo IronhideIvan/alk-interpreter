@@ -482,14 +482,69 @@ with a hand-rolled, synchronous, resumable traverser:
   newly re-evaluated argument — so the resumed `withAwait` body runs with the
   *second* call's argument value, not the first's. Binding the argument to a
   local first avoids this entirely.
-- `await [a, b, c]` ("whenAll") only handles the case where every element is
-  already resolved; an in-flight element throws `RuntimeException`. The
-  composite whenAll suspension model (per-slot `Resume`, fault aggregation) is
-  a follow-up plan.
-- Full serialization (`Capture`/`Restore` of suspended evaluation state,
-  including `InstanceValue`/`FunctionValue`/class-level environment bindings)
-  is a follow-up plan; `EvaluationCursor`'s resume trail is shaped for this but
-  doesn't yet implement it.
+- `await [a, b, c]` ("whenAll") may now suspend when one or more elements are
+  genuinely in-flight. `EvalWhenAll` classifies each element exactly as the
+  old evaluator's `EvalWhenAll` did (replay-log lookup for `PendingOperationValue`,
+  else `.Start()`/`.Task` for a live operation, else already-resolved). If
+  every element is already settled it resolves synchronously; otherwise it
+  returns `StepResult.Awaiting` with a *composite* `AwaitHandle`
+  (`AwaitHandle.ForComposite`) whose `CompositeElements` holds one `AwaitElement`
+  per array element and whose `CompositeTask` is a `Task.WhenAll` over the live
+  elements' tasks — settling, like `Task.WhenAll`, only once *all* of them have
+  completed (run-to-completion). The host awaits `CompositeTask` and then calls
+  `Resume(NullValue.Instance)` (the passed value is ignored for a composite
+  handle; `ResumeFaulted` is invalid for one). `EvaluationCursor.Resume` stashes
+  `CompositeElements` for `EvalAwait` to consume via `TryTakeResumeComposite`,
+  which re-enters the same `ResolveWhenAll` helper used for the synchronous
+  case: it reads each element's settled task, records `OperationLogEntry`
+  results/faults to the replay log and reports faults to the host
+  (`ReportOperationFaulted`) in source order, aggregates any faults into a
+  single `Signal.Thrown` (one message verbatim, or `"Multiple operations
+  failed: ..."` for more than one), and otherwise validates each resolved
+  value against its declared element type and returns the `ArrayValue`.
+- **Capture/Restore ("Phase A", replay-based)**: `EvaluationCursor.Capture()`
+  and `CursorProgramEvaluator.Capture()`/`Restore()` snapshot and reconstruct
+  a suspended run by reusing the record-and-replay log almost entirely as-is.
+  `Capture()` (valid only while `PendingAwait != null`) returns a
+  `CursorCaptureState` — `{Phase, ModuleIndex, Log}`, the operation log
+  recorded so far via `RecordEntry`. `Restore(graph, ..., state, out result)`
+  builds a fresh `CursorProgramEvaluator` seeded with `state.Log` as its
+  replay log and calls `Evaluate(graph)` from scratch: every `await`/`whenAll`
+  site with a corresponding replay-log entry resolves instantly via
+  `TryReplayNext()` until the log is exhausted, at which point the run
+  suspends again at the same logical point (`ProgramRunResult.Awaiting`,
+  ready for `Resume`/`ResumeFaulted`) — or, if the captured state was the
+  run's final suspension, completes (`ProgramRunResult.Completed`), both
+  valid outcomes. The caller must supply an equivalent `ModuleGraph` (rebuilt
+  from the same source files/module identifiers); Phase A does not serialize
+  the AST/module graph itself.
+
+  These types use plain runtime `OperationLogEntry`/`ALKScriptValue` DTOs and
+  carry no serialization-format dependency. A separate project,
+  `ALKScript.Interpreter.Serialization`, owns converting them to/from a wire
+  format: `OperationLogEntrySerializer`/`SerializedValue` (JSON via
+  `System.Text.Json`) and the public `CursorStateSerializer.Capture`/`Restore`
+  (`byte[]` round trip). Its main limitation is that `SerializedValue`
+  restricts values that ever cross the log boundary (an `await`'s recorded
+  result) to `IntValue`/`FloatValue`/`StringValue`/`BoolValue`/`NullValue`/
+  `ArrayValue` of those (recursively) — any other runtime value
+  (`InstanceValue`/`FunctionValue`/`ThunkValue`/`PendingOperationValue`/
+  `ClassValue`/etc.) throws `NotSupportedException` at serialize time. A host
+  that needs a different wire format, or to lift this restriction, can call
+  `CursorProgramEvaluator.Capture`/`Restore` directly and write its own
+  serializer against `CursorCaptureState`/`OperationLogEntry`.
+
+  **Deferred follow-ups** (not implemented):
+  - **Phase B** ("structural snapshot"): O(1) restore by serializing the live
+    `_trail`/environment/heap graph directly via AST-node references
+    (`(moduleIdentifier, declarationName)`, `(classRef, memberName)`, etc.)
+    to reconstruct `InstanceValue`/`ClassValue`/`FunctionValue`/closures
+    without re-running anything — and would lift Phase A's primitive-value
+    restriction. Only worth pursuing if Phase A's O(total-log) replay cost
+    proves insufficient in practice.
+  - **Phase C**: reconstructing mid-flight `PendingOperationValue`/`ThunkValue`
+    held in *other* local variables (not the suspending await's own operand)
+    as fresh not-yet-started operations on `Restore`.
 - Native array-method callbacks (`map`/`filter`, etc.) that themselves `await`
   are not supported — these run via `cursor.Call(...)` and a callback
   returning `IsAwaiting` is unhandled.

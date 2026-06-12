@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ALKScript.Interpreter.Common\ALKScript.Interpreter.Common.csproj" />
+    <ProjectReference Include="..\ALKScript.Interpreter.Evaluator\ALKScript.Interpreter.Evaluator.csproj" />
+  </ItemGroup>
+
+</Project>

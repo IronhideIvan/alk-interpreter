@@ -1305,6 +1305,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         return StepResult.Completed(_cursor.TakeResumeValue());
       }
 
+      if (_cursor.TryTakeResumeComposite(out var compositeElements))
+      {
+        return ResolveWhenAll(compositeElements, environment, expression.Keyword);
+      }
+
       var operandStep = _cursor.Eval(expression.Operand, environment);
       if (operandStep.IsAwaiting) return operandStep;
       var operand = operandStep.Value!;
@@ -1402,34 +1407,154 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     }
 
     /// <summary>
-    /// Step 7 of the cursor-rewrite plan: <c>await [a, b, c]</c>, restricted
-    /// to the case where every element is already resolved (an already-
-    /// completed <see cref="ThunkValue"/>, or a <see cref="PendingOperationValue"/>
-    /// whose <see cref="PendingOperationValue.Start"/> resolves synchronously).
-    /// If any element would need to actually suspend, throws
-    /// <see cref="RuntimeException"/> — the composite "whenAll" suspension
-    /// model is a follow-up plan.
+    /// <c>await [a, b, c]</c> — sugar for "whenAll" (docs/ASYNC_AWAIT_DESIGN.md
+    /// decision #13). Classifies each element exactly as the old evaluator's
+    /// <c>EvalWhenAll</c> did: a <see cref="PendingOperationValue"/> is tried
+    /// against the replay log first (consuming the next entry positionally),
+    /// otherwise started live; a <see cref="ThunkValue"/> contributes its
+    /// (possibly still-pending) task; anything else is already resolved. If
+    /// every element is already settled, resolves synchronously via
+    /// <see cref="ResolveWhenAll"/>. Otherwise — if <paramref name="allowSuspend"/> —
+    /// returns <see cref="StepResult.Awaiting"/> with a composite
+    /// <see cref="AwaitHandle"/> (see <see cref="AwaitHandle.ForComposite"/>);
+    /// <see cref="EvalAwait"/>'s <see cref="EvaluationCursor.TryTakeResumeComposite"/>
+    /// branch later resolves it via the same <see cref="ResolveWhenAll"/>.
     /// </summary>
     private StepResult EvalWhenAll(IReadOnlyList<ALKScriptValue> items, ScriptEnvironment environment, ALKScriptToken site, bool allowSuspend)
     {
-      var results = new List<ALKScriptValue>(items.Count);
+      var elements = new AwaitElement[items.Count];
 
-      foreach (var item in items)
+      for (int i = 0; i < items.Count; i++)
       {
-        var step = AwaitIfNeeded(item, environment, site, allowSuspend: false);
-        if (step.IsAwaiting)
+        switch (items[i])
         {
-          throw new RuntimeException(site, "'await' of an array with an in-flight operation is not yet supported by the cursor evaluator.");
-        }
+          case PendingOperationValue pending:
+            var entry = _cursor.TryReplayNext();
+            if (entry != null)
+            {
+              pending.MarkReplayed();
+              elements[i] = entry.IsFaulted
+                ? AwaitElement.ForReplayedFault(entry.FaultMessage!, pending.ElementType)
+                : AwaitElement.ForResolved(entry.Result!, pending.ElementType);
+            }
+            else
+            {
+              elements[i] = AwaitElement.ForTask(pending.Start(), pending.ElementType, pending.Operation);
+            }
+            break;
 
-        results.Add(step.Value!);
+          case ThunkValue thunkValue:
+            elements[i] = AwaitElement.ForTask(thunkValue.Task, thunkValue.ElementType);
+            break;
 
-        if (_cursor.Signal != null)
-        {
-          return StepResult.Completed(NullValue.Instance);
+          default:
+            elements[i] = AwaitElement.ForResolved(items[i], elementType: null);
+            break;
         }
       }
 
+      var needsSuspend = false;
+      foreach (var element in elements)
+      {
+        if (element.NeedsSuspend) { needsSuspend = true; break; }
+      }
+
+      if (!needsSuspend)
+      {
+        return ResolveWhenAll(elements, environment, site);
+      }
+
+      if (!allowSuspend)
+      {
+        throw new RuntimeException(site, "'await' in this expression position cannot suspend on an array with an in-flight operation — rewrite as 'var t = await [...];' first.");
+      }
+
+      return StepResult.Awaiting(AwaitHandle.ForComposite(elements, site));
+    }
+
+    /// <summary>
+    /// Resolves a fully-settled set of <paramref name="elements"/> into the
+    /// result of <c>await [a, b, c]</c>: each live element's task is
+    /// inspected via <c>.IsFaulted</c>/<c>.Result</c> (guaranteed complete by
+    /// this point — either it never needed to suspend, or the host has
+    /// awaited <see cref="AwaitHandle.CompositeTask"/>), with results/faults
+    /// recorded to the replay log (and faults reported to the host) in
+    /// source order, mirroring the old evaluator's <c>EvalWhenAll</c>. Any
+    /// faults are aggregated into a single <see cref="Signal.Thrown"/>
+    /// (one message verbatim, or "Multiple operations failed: ..." for more
+    /// than one); otherwise each resolved value is validated against its
+    /// declared element type and the whole array is returned.
+    /// </summary>
+    private StepResult ResolveWhenAll(IReadOnlyList<AwaitElement> elements, ScriptEnvironment environment, ALKScriptToken site)
+    {
+      var count = elements.Count;
+      var resolved = new ALKScriptValue?[count];
+      var faultMessages = new string?[count];
+
+      for (int i = 0; i < count; i++)
+      {
+        var element = elements[i];
+
+        if (element.Resolved != null)
+        {
+          resolved[i] = element.Resolved;
+          continue;
+        }
+
+        if (element.ReplayedFaultMessage != null)
+        {
+          faultMessages[i] = element.ReplayedFaultMessage;
+          continue;
+        }
+
+        var task = element.Task!;
+        if (task.IsFaulted)
+        {
+          var exception = task.Exception!.GetBaseException();
+          if (exception is RuntimeException) throw exception;
+
+          faultMessages[i] = exception.Message;
+          if (element.Operation != null)
+          {
+            _cursor.RecordEntry(OperationLogEntry.FromFault(element.Operation, exception.Message));
+            _functionValueFactory.ReportOperationFaulted(element.Operation, exception);
+          }
+        }
+        else
+        {
+          resolved[i] = task.Result;
+          if (element.Operation != null)
+          {
+            _cursor.RecordEntry(OperationLogEntry.FromResult(element.Operation, resolved[i]!));
+          }
+        }
+      }
+
+      var allFaults = new List<string>();
+      for (int i = 0; i < count; i++)
+      {
+        if (faultMessages[i] != null) allFaults.Add(faultMessages[i]!);
+      }
+
+      if (allFaults.Count > 0)
+      {
+        var message = allFaults.Count == 1
+          ? allFaults[0]
+          : $"Multiple operations failed: {string.Join("; ", allFaults)}";
+        _cursor.Signal = Signal.Thrown(new StringValue(message));
+        return StepResult.Completed(NullValue.Instance);
+      }
+
+      for (int i = 0; i < count; i++)
+      {
+        if (resolved[i] != null)
+        {
+          ValidateThunkResult(resolved[i]!, elements[i].ElementType, environment, site);
+        }
+      }
+
+      var results = new List<ALKScriptValue>(count);
+      for (int i = 0; i < count; i++) results.Add(resolved[i] ?? NullValue.Instance);
       return StepResult.Completed(new ArrayValue(results));
     }
 

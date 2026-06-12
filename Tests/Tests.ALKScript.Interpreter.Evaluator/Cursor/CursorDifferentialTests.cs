@@ -22,12 +22,16 @@ namespace Tests.ALKScript.Interpreter.Evaluator.Cursor;
 /// in scope):
 /// - <c>await</c> in a disallowed expression position with a genuinely
 ///   unresolved <c>thunk</c> (§4).
-/// - <c>await [a, b, ...]</c> ("whenAll") where any element is a
-///   genuinely in-flight (non-replayed, not-yet-completed) operation (§6) —
-///   e.g. <c>Evaluate_AwaitOnArrayOfPendingOperations_*</c>,
-///   <c>Evaluate_AwaitOnArrayWhereOneFaults_*</c>,
-///   <c>Evaluate_AwaitOnArrayWhereBothFault_*</c>,
-///   <c>Evaluate_AwaitOnArrayFault_*</c> in <c>AsyncEvaluationTests.cs</c>.
+/// - Any genuinely-suspending run (including composite <c>await [a, b, ...]</c>
+///   ("whenAll") with an in-flight element, per §6 — now supported, see
+///   <c>Cursor/CursorProgramEvaluatorTests.cs</c>'s
+///   <c>Evaluate_AwaitOnArrayOfPendingOperations_*</c>/
+///   <c>Evaluate_AwaitOnArrayWhereOneFaults_*</c>/
+///   <c>Evaluate_AwaitOnArrayWhereBothFault_*</c>/
+///   <c>Evaluate_AwaitOnArrayFault_*</c>): <see cref="CursorEvaluatorTestBase.AssertSameResult"/>
+///   has no suspend/resume driving loop, so any script that suspends must
+///   run to <c>Completed</c> synchronously (e.g. all <c>thunk</c>s already
+///   resolved) to be used here.
 /// - Native array-method callbacks (map/filter/etc.) that themselves
 ///   <c>await</c> (plan §7) — not used by any existing test.
 /// </summary>

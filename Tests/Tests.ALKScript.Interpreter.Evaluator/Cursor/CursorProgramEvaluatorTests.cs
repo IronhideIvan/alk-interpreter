@@ -277,9 +277,193 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
     Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
   }
 
+  // ---------------------------------------------------------------------
+  // Composite whenAll suspension — await [a, b, ...] where one or more
+  // elements are genuinely in-flight (Step 11 of the cursor-rewrite plan).
+  // ---------------------------------------------------------------------
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayOfPendingOperations_ReturnsAwaitingThenResumesWithArrayOfResolvedValues()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> fetchA();\nnative function thunk<int> fetchB();\nvar results = await [fetchA(), fetchB()];\nrecord(results[0]);\nrecord(results[1]);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var sourceA = new TaskCompletionSource<ALKScriptValue>();
+    var sourceB = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(op => op.Name == "fetchA" ? sourceA.Task : sourceB.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+    Assert.Empty(recorded);
+    Assert.NotNull(evaluator.PendingAwait!.CompositeElements);
+    Assert.Equal(2, evaluator.PendingAwait!.CompositeElements!.Count);
+
+    sourceA.SetResult(new IntValue(1));
+    sourceB.SetResult(new IntValue(2));
+
+    var result = evaluator.Resume(NullValue.Instance);
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
+    Assert.Equal(2, evaluator.Log.Count);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayWhereOneFaults_SurfacesAggregateThrownSignal()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> ok();\nnative function thunk<int> fail();\ntry {{\n  await [ok(), fail()];\n}} catch (string e) {{\n  record(e);\n}}";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var sourceOk = new TaskCompletionSource<ALKScriptValue>();
+    var sourceFail = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(op => op.Name == "ok" ? sourceOk.Task : sourceFail.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+
+    sourceOk.SetResult(new IntValue(99));
+    sourceFail.SetException(new InvalidOperationException("boom"));
+
+    var result = evaluator.Resume(NullValue.Instance);
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    var fault = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Equal("boom", fault.Value);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayWhereBothFault_AggregatesMessages()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> a();\nnative function thunk<int> b();\ntry {{\n  await [a(), b()];\n}} catch (string e) {{\n  record(e);\n}}";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var sourceA = new TaskCompletionSource<ALKScriptValue>();
+    var sourceB = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(op => op.Name == "a" ? sourceA.Task : sourceB.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+
+    sourceA.SetException(new InvalidOperationException("fault-a"));
+    sourceB.SetException(new InvalidOperationException("fault-b"));
+
+    var result = evaluator.Resume(NullValue.Instance);
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    var fault = Assert.IsType<StringValue>(Assert.Single(recorded));
+    Assert.Contains("fault-a", fault.Value);
+    Assert.Contains("fault-b", fault.Value);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayFault_ReportsEachFaultedOperationToHost()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> a();\nnative function thunk<int> b();\ntry {{\n  await [a(), b()];\n}} catch (string e) {{\n}}";
+
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => NullValue.Instance
+    };
+
+    var sourceA = new TaskCompletionSource<ALKScriptValue>();
+    var sourceB = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(op => op.Name == "a" ? sourceA.Task : sourceB.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+
+    sourceA.SetException(new InvalidOperationException("fault-a"));
+    sourceB.SetException(new InvalidOperationException("fault-b"));
+
+    Assert.Equal(ProgramRunResult.Completed, evaluator.Resume(NullValue.Instance));
+
+    Assert.Equal(2, binder.ReportedFaults.Count);
+    Assert.Contains(binder.ReportedFaults, f => f.Operation.Name == "a");
+    Assert.Contains(binder.ReportedFaults, f => f.Operation.Name == "b");
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayWithMixOfResolvedAndPendingElements_ResolvesAfterResume()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> resolved();\nnative function thunk<int> pending();\nvar results = await [resolved(), pending()];\nrecord(results[0]);\nrecord(results[1]);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var sourcePending = new TaskCompletionSource<ALKScriptValue>();
+    var binder = new FuncBinder(op => op.Name == "resolved"
+      ? Task.FromResult<ALKScriptValue>(new IntValue(5))
+      : sourcePending.Task);
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+
+    sourcePending.SetResult(new IntValue(6));
+
+    var result = evaluator.Resume(NullValue.Instance);
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(5L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(6L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
+  [Fact]
+  public void Evaluate_AwaitOnArrayAllAlreadyResolved_DoesNotSuspend()
+  {
+    var source = $"{RecordDeclaration}\nnative function thunk<int> a();\nnative function thunk<int> b();\nvar results = await [a(), b()];\nrecord(results[0]);\nrecord(results[1]);";
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    var binder = new FuncBinder(op => op.Name == "a"
+      ? Task.FromResult<ALKScriptValue>(new IntValue(1))
+      : Task.FromResult<ALKScriptValue>(new IntValue(2)));
+
+    var graph = LoadGraph(source);
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+
+    Assert.Equal(ProgramRunResult.Completed, evaluator.Evaluate(graph));
+    Assert.Equal(1L, Assert.IsType<IntValue>(recorded[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
+  }
+
   private sealed class FuncBinder : IAsyncOperationBinder
   {
     private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+
+    internal readonly List<(PendingOperation Operation, Exception Fault)> ReportedFaults = new List<(PendingOperation, Exception)>();
 
     internal FuncBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
 
@@ -291,7 +475,6 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
     }
 
     public void OnOperationFaulted(PendingOperation operation, Exception fault)
-    {
-    }
+      => ReportedFaults.Add((operation, fault));
   }
 }
