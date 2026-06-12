@@ -172,6 +172,27 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// </summary>
     public IReadOnlyDictionary<string, ALKScriptValue> OwnBindings => _values;
 
+    /// <summary>The enclosing scope, or null for a root (module/global) scope. Used by structural Capture/Restore.</summary>
+    internal ScriptEnvironment? Enclosing => _enclosing;
+
+    /// <summary>The declared types of bindings defined directly in this scope (see <see cref="OwnBindings"/>). Used by structural Capture/Restore.</summary>
+    internal IReadOnlyDictionary<string, TypeNode?> OwnTypes => _types;
+
+    /// <summary>The names of bindings declared <c>const</c> directly in this scope (see <see cref="OwnBindings"/>). Used by structural Capture/Restore.</summary>
+    internal IReadOnlyCollection<string> OwnConsts => _consts;
+
+    /// <summary>The <see cref="CurrentClass"/> set directly on this scope (not walked up the chain). Used by structural Capture/Restore.</summary>
+    internal ClassValue? OwnCurrentClass => _currentClass;
+
+    /// <summary>The <see cref="CurrentFunctionReturnType"/> set directly on this scope (not walked up the chain). Used by structural Capture/Restore.</summary>
+    internal TypeNode? OwnCurrentFunctionReturnType => _currentFunctionReturnType;
+
+    /// <summary>The <see cref="CurrentTypeArguments"/> set directly on this scope (not walked up the chain). Used by structural Capture/Restore.</summary>
+    internal IReadOnlyDictionary<string, TypeNode>? OwnCurrentTypeArguments => _currentTypeArguments;
+
+    /// <summary>The <see cref="IsInConstructor"/> flag set directly on this scope (not walked up the chain). Used by structural Capture/Restore.</summary>
+    internal bool OwnIsInConstructor => _isInConstructor;
+
     /// <summary>Looks up <paramref name="name"/> in this scope or, failing that, any enclosing scope.</summary>
     public bool TryGet(string name, out ALKScriptValue value)
     {

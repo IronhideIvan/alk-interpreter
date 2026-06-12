@@ -72,6 +72,16 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     /// </summary>
     public Task<ALKScriptValue> Start() => _started ??= _binder.Start(Operation);
 
+    /// <summary>
+    /// Marks this operation as already started with <paramref name="task"/> —
+    /// used by "Phase B" structural Restore (docs/ASYNC_AWAIT_DESIGN.md
+    /// Addendum 3, Step 14) when <see cref="IAsyncOperationBinder.Start"/> was
+    /// already called directly to reissue a captured suspension, so
+    /// <see cref="Start"/> doesn't call it again and <see cref="HasStarted"/>
+    /// correctly reports <c>true</c> for end-of-script "Discard" sweeping.
+    /// </summary>
+    internal void MarkStarted(Task<ALKScriptValue> task) => _started = task;
+
     public override string TypeName => "thunk";
 
     public override string ToString() =>

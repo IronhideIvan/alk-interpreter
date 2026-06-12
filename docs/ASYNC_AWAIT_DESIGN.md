@@ -534,17 +534,99 @@ with a hand-rolled, synchronous, resumable traverser:
   `CursorProgramEvaluator.Capture`/`Restore` directly and write its own
   serializer against `CursorCaptureState`/`OperationLogEntry`.
 
-  **Deferred follow-ups** (not implemented):
-  - **Phase B** ("structural snapshot"): O(1) restore by serializing the live
-    `_trail`/environment/heap graph directly via AST-node references
-    (`(moduleIdentifier, declarationName)`, `(classRef, memberName)`, etc.)
-    to reconstruct `InstanceValue`/`ClassValue`/`FunctionValue`/closures
-    without re-running anything — and would lift Phase A's primitive-value
-    restriction. Only worth pursuing if Phase A's O(total-log) replay cost
-    proves insufficient in practice.
-  - **Phase C**: reconstructing mid-flight `PendingOperationValue`/`ThunkValue`
-    held in *other* local variables (not the suspending await's own operand)
-    as fresh not-yet-started operations on `Restore`.
+  **Deferred follow-ups**:
+  - **Phase B** ("structural snapshot") — **implemented**, see below.
+  - **Phase C** (not implemented): reconstructing mid-flight
+    `PendingOperationValue`/`ThunkValue` held in *other* local variables (not
+    the suspending await's own operand) as fresh not-yet-started operations
+    on `Restore`.
+
+**Capture/Restore ("Phase B", structural-snapshot)**: a second, additive
+Capture/Restore pair giving O(1) restore independent of a run's history
+length, and lifting Phase A's primitive-only restriction for values reachable
+from the suspended trail. A host opts into either Phase A or Phase B; neither
+affects the other's types or behavior.
+
+- `EvaluationCursor.CaptureStructural()` (valid only while `PendingAwait !=
+  null`) walks the live suspended `_trail`, each frame's `ScriptEnvironment`
+  chain, and any heap objects reachable from them, producing a
+  `CursorStructuralCaptureState` — `{ModuleKey, Heap, StaticFields,
+  Environments, Trail, RootEnvironmentId, Signal, PendingAwait}`. Every
+  reference into this graph is one of:
+  - `CapturedHeapValue.Primitive` — an int/float/string/bool/null/array value,
+    stored inline (as Phase A's `SerializedValue`).
+  - `CapturedHeapValue.AstRef` — a reference to a top-level `ClassValue`/
+    `InterfaceValue`/`EnumTypeValue`/free-standing `FunctionValue`, addressed
+    by `AstReference` (`{ModuleKey, Path}` — `"module:<identifier>"` or
+    `"prelude:<index>"` plus a dotted path like `"Animal"`, `"Animal.speak"`,
+    `"Animal.<ctor>"`, `"Color.Red"`, or `"<lambda>@12:8"` for a lambda
+    addressed by its `=>` token's position). `RestoreStructural` doesn't
+    serialize these declarations — it re-runs each module's declaration
+    prefix first (see "decls-before-statements" below), which re-creates
+    exactly one instance of each, and `AstResolver` looks it up by address.
+  - `CapturedHeapValue.HeapRef` — an index into `CursorStructuralCaptureState.Heap`,
+    for `InstanceValue`/`BaseValue` objects. Two-pass capture (assign ids,
+    then fill payloads) means cyclic object graphs (`a.next = b; b.next = a;`)
+    round-trip with reference identity preserved.
+  - `CapturedHeapValue.Method` — a bound method value (`obj.method`): an
+    `AstReference` to the method (`"<ClassName>.<methodName>"`) paired with a
+    `HeapRef` to the bound instance.
+  - `ClassValue.StaticFields` shared mutable state is captured separately as
+    `CapturedClassStaticFields` (keyed by the class's `AstReference`) and
+    grafted onto the `ClassValue` that the declaration-prefix run re-creates.
+  - The cursor's own `PendingAwait` is captured as `CapturedPendingAwait`: for
+    a single-element `await`, its `PendingOperation` (name + primitive
+    arguments) and `ElementType`; for a composite `await [a, b, c]`, a
+    `CapturedAwaitElement` per array element — `Resolved` (already-settled
+    value), `Reissue` (a live, not-yet-settled operation), or `Fault` (a
+    faulted/replayed-fault element).
+- `CursorProgramEvaluator.RestoreStructural(graph, state, out result, ...)`:
+  (1) runs each module's/prelude's declaration prefix only (collecting the
+  resulting module-scope `ScriptEnvironment`s, discarding any trail/
+  `PendingAwait`/`Signal` that run produced — declaration prefixes that
+  themselves contain top-level statements are covered by the
+  decls-before-statements precondition below); (2)
+  `EvaluationCursor.RestoreSuspendedState` grafts the captured
+  heap/environments/trail/`Signal`/`PendingAwait` on top, resolving
+  `CapturedEnvironment.ModuleRef` entries against the environments from step
+  1 instead of allocating new ones; (3) for `PendingAwait`, **reissues** every
+  `Reissue` operation immediately via `IAsyncOperationBinder.Start` (matching
+  `AwaitHandle.ForComposite`'s existing eager `Task.WhenAll` semantics for the
+  composite case) — the in-flight operation's own progress is the host's
+  concern, not part of this snapshot, so Restore restarts it from scratch.
+  Returns `ProgramRunResult.Awaiting` (ready for `Resume`/`ResumeFaulted`), or
+  `Completed` if the captured state had no `PendingAwait` (a
+  captured-at-completion edge case, mirrors Phase A).
+  - Reissued operations are registered with `FunctionValueFactory` via
+    `PendingOperationValue.MarkStarted`/`IFunctionValueFactory.RegisterRestored`
+    so that, if the restored run suspends again and is never resumed,
+    end-of-script `DiscardPending` does not double-start/double-discard them.
+- **decls-before-statements precondition**: `CaptureStructural` validates,
+  per module/prelude, that every class/interface/enum/function/import/export
+  declaration precedes all of that module's top-level statements (top-level
+  `var` declarations may freely interleave with statements — they're always
+  restored via the captured environment regardless of position). Violating
+  this throws `NotSupportedException` at Capture time, with a message
+  pointing at this section. This is required because step 1 of
+  `RestoreStructural` re-runs the declaration prefix to reconstruct
+  `ClassValue`/`FunctionValue`/etc. instances before grafting the captured
+  trail — there's no AST-only shortcut to construct these without execution,
+  so they must all be establishable before any top-level statement could have
+  produced the suspension being restored. See also docs/LANGUAGE_SPEC.md §8.1.
+- **Exclusions** (`NotSupportedException` at Capture time): `NativeFunctionValue`/
+  `NativeAsyncFunctionValue`, and any reachable `ThunkValue`/`PendingOperationValue`
+  other than the cursor's own `PendingAwait` (Phase C scope) — these are
+  thrown by `CapturedHeapValue`'s conversion for any non-module-scope binding
+  (module-scope bindings of these types are silently skipped, since the
+  declaration-prefix run recreates the same `var` initializer regardless).
+- `ALKScript.Interpreter.Serialization.CursorStructuralStateSerializer.Capture`/
+  `Restore` provide the JSON `byte[]` round trip, mirroring
+  `CursorStateSerializer` — `SerializedStructuralCaptureState` and its nested
+  DTOs (`SerializedHeapEntry`, `SerializedEnvironment`, `SerializedTrailEntry`,
+  `SerializedPendingAwait`, `SerializedAwaitElement`, `SerializedAstReference`,
+  `SerializedToken`, `SerializedTypeNode`) convert every type above to/from
+  its wire shape, reusing `SerializedValue`/`SerializedOperation` for
+  primitives and operation descriptors.
 - Native array-method callbacks (`map`/`filter`, etc.) that themselves `await`
   are not supported — these run via `cursor.Call(...)` and a callback
   returning `IsAwaiting` is unhandled.

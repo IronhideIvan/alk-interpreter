@@ -165,6 +165,11 @@ namespace ALKScript.Interpreter.Evaluator
       _operationBinder?.OnOperationFaulted(operation, fault);
     }
 
+    public void RegisterRestored(PendingOperationValue operation)
+    {
+      _created.Add(operation);
+    }
+
     /// <summary>
     /// Methods and functions share evaluation logic but not an AST type;
     /// this adapts a <see cref="MethodDecl"/> to the <see cref="FunctionDecl"/>

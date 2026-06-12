@@ -55,5 +55,15 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// faulted member of a <c>await [a, b, …]</c>. No-op if no binder.
     /// </summary>
     void ReportOperationFaulted(PendingOperation operation, Exception fault);
+
+    /// <summary>
+    /// Registers <paramref name="operation"/> — already started via
+    /// <see cref="IAsyncOperationBinder.Start"/> while reissuing a captured
+    /// suspension on "Phase B" structural Restore (docs/ASYNC_AWAIT_DESIGN.md
+    /// Addendum 3, Step 14) — so end-of-script <see cref="DiscardPending"/>
+    /// accounts for it the same as any other operation created during this
+    /// run.
+    /// </summary>
+    void RegisterRestored(PendingOperationValue operation);
   }
 }

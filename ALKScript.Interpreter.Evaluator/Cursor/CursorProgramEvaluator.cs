@@ -165,6 +165,125 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       return Restore(graph, new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder), state, out result);
     }
 
+    /// <summary>
+    /// Captures a "Phase B" structural snapshot of this suspended run
+    /// (docs/ASYNC_AWAIT_DESIGN.md Addendum 3) for later
+    /// <see cref="RestoreStructural"/>. Only valid while
+    /// <see cref="PendingAwait"/> is non-null — see
+    /// <see cref="EvaluationCursor.CaptureStructural"/> for the full set of
+    /// restrictions on this milestone.
+    /// </summary>
+    public CursorStructuralCaptureState CaptureStructural()
+    {
+      var moduleKeys = new Dictionary<ScriptEnvironment, string>(ReferenceEqualityComparer<ScriptEnvironment>.Instance)
+      {
+        [_globals!] = "globals",
+      };
+
+      foreach (var entry in _moduleEnvs!)
+      {
+        moduleKeys[entry.Value] = AstReference.ForModule(entry.Key);
+      }
+
+      return _cursor.CaptureStructural(_graph!, moduleKeys);
+    }
+
+    /// <summary>
+    /// Reconstructs a suspended run from <paramref name="state"/>: builds a
+    /// fresh <see cref="CursorProgramEvaluator"/>, runs every global prelude's
+    /// and module's declaration prefix (<see cref="ModuleDeclarationPrefix.GetDeclarationPrefix"/>)
+    /// to completion to populate <see cref="ClassValue"/>/<see cref="FunctionValue"/>/
+    /// etc bindings, then grafts <paramref name="state"/>'s captured trail/
+    /// environments/heap/<see cref="PendingAwait"/>/<see cref="Signal"/> on top
+    /// (<see cref="EvaluationCursor.RestoreSuspendedState"/>).
+    ///
+    /// <paramref name="graph"/> must be an equivalent module graph to the one
+    /// the original run was evaluating, and must satisfy the
+    /// "decls-before-statements" precondition for every module/prelude
+    /// reachable from <paramref name="state"/>'s trail
+    /// (docs/ASYNC_AWAIT_DESIGN.md Addendum 3).
+    /// </summary>
+    public static CursorProgramEvaluator RestoreStructural(ModuleGraph graph, IFunctionValueFactory functionValueFactory, CursorStructuralCaptureState state, out ProgramRunResult result, IAsyncOperationBinder? operationBinder = null)
+    {
+      var evaluator = new CursorProgramEvaluator(functionValueFactory);
+      evaluator.EvaluateDeclarationsOnly(graph);
+
+      var moduleEnvironments = new Dictionary<string, ScriptEnvironment>
+      {
+        ["globals"] = evaluator._globals!,
+      };
+
+      foreach (var entry in evaluator._moduleEnvs!)
+      {
+        moduleEnvironments[AstReference.ForModule(entry.Key)] = entry.Value;
+      }
+
+      var runResult = evaluator._cursor.RestoreSuspendedState(state, moduleEnvironments, graph, operationBinder);
+      result = runResult == RunResult.Awaiting ? ProgramRunResult.Awaiting : ProgramRunResult.Completed;
+
+      // Whether grafted as Awaiting (ready for Resume/ResumeFaulted) or
+      // Completed, traversal is finished — AfterSegmentCompleted/Advance
+      // should finalize (Finish) rather than start any further segment.
+      evaluator._phase = 2;
+      evaluator._index = 0;
+
+      return evaluator;
+    }
+
+    /// <summary>As <see cref="RestoreStructural(ModuleGraph, IFunctionValueFactory, CursorStructuralCaptureState, out ProgramRunResult, IAsyncOperationBinder?)"/>, constructing the <see cref="IFunctionValueFactory"/> from native bindings.</summary>
+    public static CursorProgramEvaluator RestoreStructural(ModuleGraph graph, CursorStructuralCaptureState state, out ProgramRunResult result, ScriptNativeBindings? nativeBindings = null, ScriptNativeMethodBindings? nativeMethodBindings = null, IAsyncOperationBinder? operationBinder = null)
+    {
+      return RestoreStructural(graph, new FunctionValueFactory(nativeBindings, nativeMethodBindings, operationBinder), state, out result, operationBinder);
+    }
+
+    /// <summary>
+    /// Runs only the "decls-before-statements" prefix
+    /// (<see cref="ModuleDeclarationPrefix.GetDeclarationPrefix"/>) of every
+    /// global prelude and, in dependency order, every module reachable from
+    /// <see cref="ModuleGraph.EntryModule"/> — populating
+    /// <see cref="_globals"/>/<see cref="_moduleEnvs"/> with the
+    /// <see cref="ClassValue"/>/<see cref="FunctionValue"/>/etc bindings
+    /// <see cref="RestoreStructural"/> needs before it can graft a captured
+    /// trail on top. Each prefix must run to completion without suspending —
+    /// throws <see cref="NotSupportedException"/> otherwise.
+    /// </summary>
+    private void EvaluateDeclarationsOnly(ModuleGraph graph)
+    {
+      _graph = graph;
+      _globals = new ScriptEnvironment();
+      _moduleOrder = TopoOrder(graph);
+      _moduleEnvs = new Dictionary<string, ScriptEnvironment>();
+
+      foreach (var prelude in graph.GlobalPreludes)
+      {
+        var prefix = ModuleDeclarationPrefix.GetDeclarationPrefix(prelude.Declarations);
+        if (_cursor.Start(prefix, _globals) == RunResult.Awaiting)
+        {
+          throw new NotSupportedException(
+            "CursorProgramEvaluator.RestoreStructural: a global prelude's declaration prefix suspended on 'await' — " +
+            "structural Restore requires every declaration prefix to run to completion synchronously.");
+        }
+
+        _cursor.Signal = null;
+      }
+
+      foreach (var module in _moduleOrder)
+      {
+        var env = GetOrCreateModuleEnv(module);
+        BindModuleDependencies(module, env);
+
+        var prefix = ModuleDeclarationPrefix.GetDeclarationPrefix(module.Program.Declarations);
+        if (_cursor.Start(prefix, env) == RunResult.Awaiting)
+        {
+          throw new NotSupportedException(
+            $"CursorProgramEvaluator.RestoreStructural: module '{module.Identifier}'s declaration prefix suspended on 'await' — " +
+            "structural Restore requires every declaration prefix to run to completion synchronously.");
+        }
+
+        _cursor.Signal = null;
+      }
+    }
+
     /// <summary>Resumes a suspended segment with the settled result of the pending <c>await</c>.</summary>
     public ProgramRunResult Resume(ALKScriptValue value)
     {
