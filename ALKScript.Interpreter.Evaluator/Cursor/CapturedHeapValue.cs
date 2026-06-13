@@ -84,6 +84,24 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     }
 
     /// <summary>
+    /// A reference to a <see cref="CursorStructuralCaptureState.PendingOperations"/>
+    /// entry — a <c>PendingOperationValue</c>/<c>ThunkValue</c> held in a local
+    /// variable, addressed by index so the same instance referenced from
+    /// multiple places (e.g. a local <c>op</c> and the suspending
+    /// <c>await</c>'s own operand) round-trips as a single reconstructed
+    /// instance ("Phase C", docs/ASYNC_AWAIT_DESIGN.md Addendum 3).
+    /// </summary>
+    public sealed class PendingOpRef : CapturedHeapValue
+    {
+      public int Id { get; }
+
+      public PendingOpRef(int id)
+      {
+        Id = id;
+      }
+    }
+
+    /// <summary>
     /// Wraps <paramref name="value"/> as a <see cref="Primitive"/>, throwing
     /// <see cref="NotSupportedException"/> if it (or, for an array, any of its
     /// elements, recursively) is not an int/float/string/bool/null/array value.

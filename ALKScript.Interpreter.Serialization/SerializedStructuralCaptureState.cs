@@ -69,6 +69,8 @@ namespace ALKScript.Interpreter.Serialization
 
     public int? MethodInstanceId { get; set; }
 
+    public int? PendingOpRefId { get; set; }
+
     public static SerializedHeapValue From(CapturedHeapValue value)
     {
       switch (value)
@@ -89,6 +91,9 @@ namespace ALKScript.Interpreter.Serialization
             MethodRef = SerializedAstReference.From(method.Reference),
             MethodInstanceId = method.Instance.Id,
           };
+
+        case CapturedHeapValue.PendingOpRef pendingOpRef:
+          return new SerializedHeapValue { Kind = "pendingopref", PendingOpRefId = pendingOpRef.Id };
 
         default:
           throw new NotSupportedException($"Cannot serialize captured heap value of type '{value.GetType().Name}'.");
@@ -112,6 +117,9 @@ namespace ALKScript.Interpreter.Serialization
           var methodRef = MethodRef ?? throw new FormatException("Serialized 'method' heap value is missing MethodRef.");
           var instanceId = MethodInstanceId ?? throw new FormatException("Serialized 'method' heap value is missing MethodInstanceId.");
           return new CapturedHeapValue.Method(methodRef.ToAstReference(), new CapturedHeapValue.HeapRef(instanceId));
+
+        case "pendingopref":
+          return new CapturedHeapValue.PendingOpRef(PendingOpRefId ?? throw new FormatException("Serialized 'pendingopref' heap value is missing PendingOpRefId."));
 
         default:
           throw new FormatException($"Unknown serialized heap value kind '{Kind}'.");
@@ -351,6 +359,8 @@ namespace ALKScript.Interpreter.Serialization
   {
     public SerializedOperation? Operation { get; set; }
 
+    public int? OperationRef { get; set; }
+
     public SerializedTypeNode? ElementType { get; set; }
 
     public SerializedToken Site { get; set; } = new();
@@ -360,6 +370,7 @@ namespace ALKScript.Interpreter.Serialization
     public static SerializedPendingAwait From(CapturedPendingAwait pendingAwait) => new SerializedPendingAwait
     {
       Operation = pendingAwait.Operation != null ? SerializedOperation.FromOperation(pendingAwait.Operation) : null,
+      OperationRef = pendingAwait.OperationRef,
       ElementType = pendingAwait.ElementType != null ? SerializedTypeNode.From(pendingAwait.ElementType) : null,
       Site = SerializedToken.From(pendingAwait.Site),
       CompositeElements = pendingAwait.CompositeElements?.Select(SerializedAwaitElement.From).ToList(),
@@ -368,10 +379,29 @@ namespace ALKScript.Interpreter.Serialization
     public CapturedPendingAwait ToCapturedPendingAwait() => new CapturedPendingAwait
     {
       Operation = Operation?.ToOperation(),
+      OperationRef = OperationRef,
       ElementType = ElementType?.ToTypeNode(),
       Site = Site.ToToken(),
       CompositeElements = CompositeElements?.Select(element => element.ToCapturedAwaitElement()).ToList(),
     };
+  }
+
+  /// <summary>JSON-friendly representation of a <see cref="CapturedPendingOperation"/>.</summary>
+  public sealed class SerializedPendingOperation
+  {
+    public SerializedAwaitElement Element { get; set; } = new();
+
+    public bool WasStarted { get; set; }
+
+    public static SerializedPendingOperation From(CapturedPendingOperation operation) => new SerializedPendingOperation
+    {
+      Element = SerializedAwaitElement.From(operation.Element),
+      WasStarted = operation.WasStarted,
+    };
+
+    public CapturedPendingOperation ToCapturedPendingOperation() => new CapturedPendingOperation(
+      Element.ToCapturedAwaitElement(),
+      WasStarted);
   }
 
   /// <summary>JSON-friendly representation of a <see cref="CursorStructuralCaptureState"/> — see <see cref="CursorStructuralStateSerializer"/>.</summary>
@@ -382,6 +412,8 @@ namespace ALKScript.Interpreter.Serialization
     public List<SerializedHeapEntry> Heap { get; set; } = new();
 
     public List<SerializedClassStaticFields> StaticFields { get; set; } = new();
+
+    public List<SerializedPendingOperation> PendingOperations { get; set; } = new();
 
     public List<SerializedEnvironment> Environments { get; set; } = new();
 
@@ -436,6 +468,7 @@ namespace ALKScript.Interpreter.Serialization
         ModuleKey = state.ModuleKey,
         Heap = state.Heap.Select(SerializedHeapEntry.From).ToList(),
         StaticFields = state.StaticFields.Select(SerializedClassStaticFields.From).ToList(),
+        PendingOperations = state.PendingOperations.Select(SerializedPendingOperation.From).ToList(),
         Environments = state.Environments.Select(SerializedEnvironment.From).ToList(),
         Trail = state.Trail.Select(SerializedTrailEntry.From).ToList(),
         RootEnvironmentId = state.RootEnvironmentId,
@@ -462,6 +495,7 @@ namespace ALKScript.Interpreter.Serialization
         ModuleKey = serialized.ModuleKey,
         Heap = serialized.Heap.Select(entry => entry.ToCapturedHeapEntry()).ToList(),
         StaticFields = serialized.StaticFields.Select(entry => entry.ToCapturedClassStaticFields()).ToList(),
+        PendingOperations = serialized.PendingOperations.Select(entry => entry.ToCapturedPendingOperation()).ToList(),
         Environments = serialized.Environments.Select(entry => entry.ToCapturedEnvironment()).ToList(),
         Trail = serialized.Trail.Select(entry => entry.ToCapturedTrailEntry()).ToList(),
         RootEnvironmentId = serialized.RootEnvironmentId,

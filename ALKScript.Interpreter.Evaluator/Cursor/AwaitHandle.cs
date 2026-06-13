@@ -33,23 +33,34 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
     public string? ReplayedFaultMessage { get; }
 
-    private AwaitElement(ALKScriptValue? resolved, Task<ALKScriptValue>? task, PendingOperation? operation, TypeNode? elementType, string? replayedFaultMessage)
+    /// <summary>
+    /// The <see cref="PendingOperationValue"/>/<see cref="ThunkValue"/> this
+    /// element's <see cref="Task"/> came from, if any — "Phase C" structural
+    /// Capture/Restore (docs/ASYNC_AWAIT_DESIGN.md Addendum 3) uses this for
+    /// reference-equality dedup against the same instance held in a local
+    /// variable. <c>null</c> for <see cref="ForResolved"/>/<see cref="ForReplayedFault"/>
+    /// elements (no live instance to dedup against).
+    /// </summary>
+    public ALKScriptValue? Source { get; }
+
+    private AwaitElement(ALKScriptValue? resolved, Task<ALKScriptValue>? task, PendingOperation? operation, TypeNode? elementType, string? replayedFaultMessage, ALKScriptValue? source)
     {
       Resolved = resolved;
       Task = task;
       Operation = operation;
       ElementType = elementType;
       ReplayedFaultMessage = replayedFaultMessage;
+      Source = source;
     }
 
     public static AwaitElement ForResolved(ALKScriptValue value, TypeNode? elementType) =>
-      new AwaitElement(value, task: null, operation: null, elementType, replayedFaultMessage: null);
+      new AwaitElement(value, task: null, operation: null, elementType, replayedFaultMessage: null, source: null);
 
-    public static AwaitElement ForTask(Task<ALKScriptValue> task, TypeNode? elementType, PendingOperation? operation = null) =>
-      new AwaitElement(resolved: null, task, operation, elementType, replayedFaultMessage: null);
+    public static AwaitElement ForTask(Task<ALKScriptValue> task, TypeNode? elementType, PendingOperation? operation = null, ALKScriptValue? source = null) =>
+      new AwaitElement(resolved: null, task, operation, elementType, replayedFaultMessage: null, source);
 
     public static AwaitElement ForReplayedFault(string faultMessage, TypeNode? elementType) =>
-      new AwaitElement(resolved: null, task: null, operation: null, elementType, faultMessage);
+      new AwaitElement(resolved: null, task: null, operation: null, elementType, faultMessage, source: null);
 
     /// <summary>Whether this element is a live operation that has not yet settled.</summary>
     public bool NeedsSuspend => Task != null && !Task.IsCompleted;
@@ -101,7 +112,17 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// </summary>
     public Task? CompositeTask { get; }
 
-    private AwaitHandle(PendingOperation? operation, Task<ALKScriptValue>? task, TypeNode? elementType, ALKScriptToken site, IReadOnlyList<AwaitElement>? compositeElements = null, Task? compositeTask = null)
+    /// <summary>
+    /// The <see cref="PendingOperationValue"/>/<see cref="ThunkValue"/> the
+    /// single-element <c>await</c>'s operand evaluated to, if any. "Phase C"
+    /// structural Capture/Restore (docs/ASYNC_AWAIT_DESIGN.md Addendum 3) uses
+    /// this for reference-equality dedup against the same instance held in a
+    /// local variable. <c>null</c> for a composite <c>await [a, b, c]</c>
+    /// (see <see cref="AwaitElement.Source"/> instead).
+    /// </summary>
+    public ALKScriptValue? Source { get; }
+
+    private AwaitHandle(PendingOperation? operation, Task<ALKScriptValue>? task, TypeNode? elementType, ALKScriptToken site, IReadOnlyList<AwaitElement>? compositeElements = null, Task? compositeTask = null, ALKScriptValue? source = null)
     {
       Operation = operation;
       Task = task;
@@ -109,13 +130,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       Site = site;
       CompositeElements = compositeElements;
       CompositeTask = compositeTask;
+      Source = source;
     }
 
-    public static AwaitHandle ForTask(Task<ALKScriptValue> task, TypeNode? elementType, ALKScriptToken site) =>
-      new AwaitHandle(operation: null, task, elementType, site);
+    public static AwaitHandle ForTask(Task<ALKScriptValue> task, TypeNode? elementType, ALKScriptToken site, ALKScriptValue? source = null) =>
+      new AwaitHandle(operation: null, task, elementType, site, source: source);
 
-    public static AwaitHandle ForOperation(PendingOperation operation, TypeNode? elementType, ALKScriptToken site) =>
-      new AwaitHandle(operation, task: null, elementType, site);
+    public static AwaitHandle ForOperation(PendingOperation operation, TypeNode? elementType, ALKScriptToken site, ALKScriptValue? source = null) =>
+      new AwaitHandle(operation, task: null, elementType, site, source: source);
 
     /// <summary>
     /// A <see cref="PendingOperationValue"/> whose <see cref="PendingOperationValue.Start"/>
@@ -124,8 +146,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// <see cref="EvaluationCursor.Resume"/>/<see cref="EvaluationCursor.ResumeFaulted"/>
     /// can append the settled outcome to the replay log).
     /// </summary>
-    public static AwaitHandle ForPendingTask(Task<ALKScriptValue> task, PendingOperation operation, TypeNode? elementType, ALKScriptToken site) =>
-      new AwaitHandle(operation, task, elementType, site);
+    public static AwaitHandle ForPendingTask(Task<ALKScriptValue> task, PendingOperation operation, TypeNode? elementType, ALKScriptToken site, ALKScriptValue? source = null) =>
+      new AwaitHandle(operation, task, elementType, site, source: source);
 
     /// <summary>
     /// A composite <c>await [a, b, c]</c> where one or more <paramref name="elements"/>

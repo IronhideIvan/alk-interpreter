@@ -22,6 +22,16 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
   {
     public PendingOperation? Operation { get; set; }
 
+    /// <summary>
+    /// For a single-element <c>await</c> ("Phase C",
+    /// docs/ASYNC_AWAIT_DESIGN.md Addendum 3): an index into
+    /// <see cref="CursorStructuralCaptureState.PendingOperations"/> for the
+    /// <c>PendingOperationValue</c>/<c>ThunkValue</c> the await operand
+    /// evaluated to. <c>null</c> for a composite <c>await [a, b, c]</c>
+    /// (<see cref="CompositeElements"/> is set instead).
+    /// </summary>
+    public int? OperationRef { get; set; }
+
     public TypeNode? ElementType { get; set; }
 
     /// <summary>The <c>await</c> keyword token (see <see cref="AwaitHandle.Site"/>) — serializable directly, see <see cref="ALKScriptToken"/>.</summary>

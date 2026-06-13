@@ -536,10 +536,10 @@ with a hand-rolled, synchronous, resumable traverser:
 
   **Deferred follow-ups**:
   - **Phase B** ("structural snapshot") — **implemented**, see below.
-  - **Phase C** (not implemented): reconstructing mid-flight
-    `PendingOperationValue`/`ThunkValue` held in *other* local variables (not
-    the suspending await's own operand) as fresh not-yet-started operations
-    on `Restore`.
+  - **Phase C** ("pending operations in locals") — **implemented**, see below:
+    reconstructing mid-flight `PendingOperationValue`/`ThunkValue` held in
+    *other* local variables (not just the suspending await's own operand) on
+    `Restore`.
 
 **Capture/Restore ("Phase B", structural-snapshot)**: a second, additive
 Capture/Restore pair giving O(1) restore independent of a run's history
@@ -575,11 +575,12 @@ affects the other's types or behavior.
     `CapturedClassStaticFields` (keyed by the class's `AstReference`) and
     grafted onto the `ClassValue` that the declaration-prefix run re-creates.
   - The cursor's own `PendingAwait` is captured as `CapturedPendingAwait`: for
-    a single-element `await`, its `PendingOperation` (name + primitive
-    arguments) and `ElementType`; for a composite `await [a, b, c]`, a
-    `CapturedAwaitElement` per array element — `Resolved` (already-settled
-    value), `Reissue` (a live, not-yet-settled operation), or `Fault` (a
-    faulted/replayed-fault element).
+    a single-element `await`, an `OperationRef` (see "Phase C" below) and
+    `ElementType`; for a composite `await [a, b, c]`, a `CapturedAwaitElement`
+    per array element — `Resolved` (already-settled value), `Reissue` (a live,
+    not-yet-settled operation), or `Fault` (a faulted/replayed-fault element).
+  - `CapturedHeapValue.PendingOpRef` — an index into
+    `CursorStructuralCaptureState.PendingOperations` (see "Phase C" below).
 - `CursorProgramEvaluator.RestoreStructural(graph, state, out result, ...)`:
   (1) runs each module's/prelude's declaration prefix only (collecting the
   resulting module-scope `ScriptEnvironment`s, discarding any trail/
@@ -614,11 +615,12 @@ affects the other's types or behavior.
   so they must all be establishable before any top-level statement could have
   produced the suspension being restored. See also docs/LANGUAGE_SPEC.md §8.1.
 - **Exclusions** (`NotSupportedException` at Capture time): `NativeFunctionValue`/
-  `NativeAsyncFunctionValue`, and any reachable `ThunkValue`/`PendingOperationValue`
-  other than the cursor's own `PendingAwait` (Phase C scope) — these are
-  thrown by `CapturedHeapValue`'s conversion for any non-module-scope binding
-  (module-scope bindings of these types are silently skipped, since the
-  declaration-prefix run recreates the same `var` initializer regardless).
+  `NativeAsyncFunctionValue` reachable from any non-module-scope binding —
+  these are thrown by `CapturedHeapValue`'s conversion (module-scope bindings
+  of these types are silently skipped, since the declaration-prefix run
+  recreates the same `var` initializer regardless). `PendingOperationValue`/
+  `ThunkValue` locals are handled by "Phase C" below, with its own narrower
+  exclusions.
 - `ALKScript.Interpreter.Serialization.CursorStructuralStateSerializer.Capture`/
   `Restore` provide the JSON `byte[]` round trip, mirroring
   `CursorStateSerializer` — `SerializedStructuralCaptureState` and its nested
@@ -627,6 +629,60 @@ affects the other's types or behavior.
   `SerializedToken`, `SerializedTypeNode`) convert every type above to/from
   its wire shape, reusing `SerializedValue`/`SerializedOperation` for
   primitives and operation descriptors.
+**Capture/Restore ("Phase C", pending operations in locals)**: closes Phase
+B's gap where any `PendingOperationValue`/`ThunkValue` reachable from a local
+variable other than the suspending await's own operand threw
+`NotSupportedException` — the game-dev pattern `var op = startLongTask(); ...
+await op;` (across many ticks, possibly Captured/Restored before the `await`
+is ever reached).
+
+- `CursorStructuralCaptureState.PendingOperations` is a new top-level table
+  (`List<CapturedPendingOperation>`), analogous to `Heap`. Every
+  `PendingOperationValue`/`ThunkValue` reachable from a local — and the
+  cursor's own awaited operand, via `CapturedPendingAwait.OperationRef` — is
+  captured here, two-pass-deduplicated by reference identity exactly like
+  `Heap`/`GetHeapId` (`pendingOpIds`/`GetPendingOpId`). The *same* underlying
+  instance referenced from both a local `op` and the suspending `await op`
+  resolves to a single shared table entry, so `Restore` reconstructs/reissues
+  it exactly once — `IAsyncOperationBinder.Start` is called once, not twice,
+  and `op`/the reissued await operand observably refer to the same
+  reconstructed operation.
+- Each `CapturedPendingOperation` is `{Element: CapturedAwaitElement,
+  WasStarted: bool}`, reusing Phase B's `CapturedAwaitElement` union:
+  - `Resolved` — a `ThunkValue` whose task already `RanToCompletion`, or a
+    `PendingOperationValue` whose started task has completed successfully.
+    Reconstructed via `ThunkValue.FromResult`.
+  - `Fault` — a `ThunkValue`/`PendingOperationValue` whose task is `Faulted`.
+    Reconstructed as a `ThunkValue` wrapping `Task.FromException`.
+  - `Reissue` — a `PendingOperationValue` with a recoverable
+    `PendingOperation`. `WasStarted` records whether `Start()` had already
+    been called at capture time (even if not yet settled):
+    - `WasStarted = false` (e.g. `var op = startLongTask();` before any
+      `await op`) — `Restore` constructs a fresh, **not-started**
+      `PendingOperationValue`; the script's own later `await op` triggers the
+      actual `IAsyncOperationBinder.Start` call.
+    - `WasStarted = true` — `Restore` eagerly calls
+      `IAsyncOperationBinder.Start` during reconstruction (mirroring Phase
+      B's existing `Reissue` handling for the cursor's own operand), and
+      registers the result with `FunctionValueFactory.RegisterRestored` so
+      end-of-script `DiscardPending` doesn't double-discard it.
+- **Exclusions** (`NotSupportedException` at Capture time):
+  - A still-*pending* `ThunkValue` with no backing `PendingOperationValue` —
+    fundamental, not just unimplemented: `ThunkValue` carries no
+    `PendingOperation` descriptor, so there is nothing for `Restore` to
+    reissue.
+  - A composite `await [a, b, c]` element whose underlying
+    `PendingOperationValue`/`ThunkValue` instance is *also* reachable from a
+    local — deferred follow-up. Composite elements have their own
+    `Reissue`/`Resolved`/`Fault` capture independent of the
+    `PendingOperations` table; aliasing the two would need a second,
+    divergent dedup pass and is rejected explicitly rather than silently
+    double-captured/double-started.
+- Wire format: `SerializedStructuralCaptureState.PendingOperations` (a list of
+  `SerializedPendingOperation { Element: SerializedAwaitElement, WasStarted:
+  bool }`), `SerializedHeapValue`'s `"pendingopref"` kind, and
+  `SerializedPendingAwait.OperationRef`.
+
 - Native array-method callbacks (`map`/`filter`, etc.) that themselves `await`
   are not supported — these run via `cursor.Call(...)` and a callback
   returning `IsAwaiting` is unhandled.

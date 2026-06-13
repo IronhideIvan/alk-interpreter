@@ -37,6 +37,16 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// </summary>
     public List<CapturedClassStaticFields> StaticFields { get; set; } = new();
 
+    /// <summary>
+    /// <c>PendingOperationValue</c>/<c>ThunkValue</c> instances reachable from
+    /// <see cref="Environments"/> and/or <see cref="PendingAwait"/>'s own
+    /// operand, addressed by index via <see cref="CapturedHeapValue.PendingOpRef"/>
+    /// and <see cref="CapturedPendingAwait.OperationRef"/> ("Phase C",
+    /// docs/ASYNC_AWAIT_DESIGN.md Addendum 3). The same underlying instance
+    /// referenced from multiple places gets a single shared entry.
+    /// </summary>
+    public List<CapturedPendingOperation> PendingOperations { get; set; } = new();
+
     public List<CapturedEnvironment> Environments { get; set; } = new();
 
     public List<CapturedTrailEntry> Trail { get; set; } = new();

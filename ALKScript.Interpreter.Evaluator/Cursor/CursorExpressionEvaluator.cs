@@ -1335,7 +1335,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       switch (value)
       {
         case ThunkValue thunkValue:
-          return AwaitTask(thunkValue.Task, thunkValue.ElementType, environment, site, allowSuspend);
+          return AwaitTask(thunkValue.Task, thunkValue.ElementType, environment, site, allowSuspend, source: thunkValue);
 
         case PendingOperationValue pending:
           return AwaitPending(pending, environment, site, allowSuspend);
@@ -1373,10 +1373,10 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         return StepResult.Completed(entry.Result!);
       }
 
-      return AwaitTask(pending.Start(), pending.ElementType, environment, site, allowSuspend, pending.Operation);
+      return AwaitTask(pending.Start(), pending.ElementType, environment, site, allowSuspend, pending.Operation, source: pending);
     }
 
-    private StepResult AwaitTask(Task<ALKScriptValue> task, TypeNode? elementType, ScriptEnvironment environment, ALKScriptToken site, bool allowSuspend, PendingOperation? operation = null)
+    private StepResult AwaitTask(Task<ALKScriptValue> task, TypeNode? elementType, ScriptEnvironment environment, ALKScriptToken site, bool allowSuspend, PendingOperation? operation = null, ALKScriptValue? source = null)
     {
       if (!task.IsCompleted)
       {
@@ -1386,8 +1386,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         }
 
         return StepResult.Awaiting(operation != null
-          ? AwaitHandle.ForPendingTask(task, operation, elementType, site)
-          : AwaitHandle.ForTask(task, elementType, site));
+          ? AwaitHandle.ForPendingTask(task, operation, elementType, site, source)
+          : AwaitHandle.ForTask(task, elementType, site, source));
       }
 
       if (task.IsFaulted)
@@ -1439,12 +1439,12 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             }
             else
             {
-              elements[i] = AwaitElement.ForTask(pending.Start(), pending.ElementType, pending.Operation);
+              elements[i] = AwaitElement.ForTask(pending.Start(), pending.ElementType, pending.Operation, source: pending);
             }
             break;
 
           case ThunkValue thunkValue:
-            elements[i] = AwaitElement.ForTask(thunkValue.Task, thunkValue.ElementType);
+            elements[i] = AwaitElement.ForTask(thunkValue.Task, thunkValue.ElementType, source: thunkValue);
             break;
 
           default:

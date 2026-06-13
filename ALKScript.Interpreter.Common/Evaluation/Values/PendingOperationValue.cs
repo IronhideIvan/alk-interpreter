@@ -82,6 +82,14 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
     /// </summary>
     internal void MarkStarted(Task<ALKScriptValue> task) => _started = task;
 
+    /// <summary>
+    /// The task <see cref="Start"/> produced, if it has been called — without
+    /// triggering <see cref="Start"/>'s side effect. Used by "Phase C"
+    /// structural Capture (docs/ASYNC_AWAIT_DESIGN.md Addendum 3) to inspect
+    /// whether this operation has settled, without starting it.
+    /// </summary>
+    internal Task<ALKScriptValue>? StartedTask => _started;
+
     public override string TypeName => "thunk";
 
     public override string ToString() =>
