@@ -205,6 +205,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           InterfaceValue interfaceValue => interfaceValue.Declaration,
           EnumTypeValue enumTypeValue => enumTypeValue.Declaration,
           FunctionValue { DeclaringClass: null, BoundInstance: null } functionValue => functionValue.Declaration,
+          NativeFunctionValue { Declaration: not null } nativeFunctionValue => nativeFunctionValue.Declaration,
           _ => null,
         };
 
@@ -414,6 +415,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           return true;
         }
 
+        if (value is NativeFunctionValue { BoundNativeMethod: { } bound }
+          && addressTable.TryGetValue(bound.DeclaringClass.Declaration, out var nativeMethodClassRef))
+        {
+          var nativeMethodRef = AstResolver.AddressOfMember(nativeMethodClassRef, bound.Declaration.Name.Lexeme);
+          captured = new CapturedHeapValue.NativeMethod(nativeMethodRef, new CapturedHeapValue.HeapRef(GetHeapId(bound.BoundInstance)));
+          return true;
+        }
+
         if (value is PendingOperationValue or ThunkValue)
         {
           captured = new CapturedHeapValue.PendingOpRef(GetPendingOpId(value));
@@ -433,8 +442,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
         throw new NotSupportedException(
           $"Cannot capture a value of runtime type '{value.GetType().Name}' (ALKScript type '{value.TypeName}') — " +
-          "lambda values and native function values are not yet supported by the structural Capture/Restore design's " +
-          "current milestone (docs/ASYNC_AWAIT_DESIGN.md Addendum 3, Step 13).");
+          "lambda values, and native function values not bound to a top-level declaration or instance method, are not " +
+          "yet supported by the structural Capture/Restore design's current milestone (docs/ASYNC_AWAIT_DESIGN.md Addendum 3, Step 13).");
       }
 
       var environments = new List<CapturedEnvironment>();
@@ -692,6 +701,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         CapturedHeapValue.AstRef astRef => ResolveAstRef(astRef.Reference),
         CapturedHeapValue.HeapRef heapRef => heapValues[heapRef.Id]!,
         CapturedHeapValue.Method method => ResolveMethod(method),
+        CapturedHeapValue.NativeMethod nativeMethod => ResolveNativeMethod(nativeMethod),
         CapturedHeapValue.PendingOpRef pendingOpRef => pendingOpValues[pendingOpRef.Id]!,
         _ => throw new NotSupportedException($"RestoreSuspendedState: unrecognized captured value type '{captured.GetType().Name}'."),
       };
@@ -704,6 +714,18 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         var classRef = new AstReference(method.Reference.ModuleKey, method.Reference.Path.Substring(0, lastDot));
         var declaringClass = (ClassValue)ResolveAstRef(classRef);
         var boundInstance = (InstanceValue)ResolveHeapValue(method.Instance);
+
+        return FunctionValueFactory.CreateMethod(methodDecl, declaringClass, declaringClass.Closure, boundInstance);
+      }
+
+      ALKScriptValue ResolveNativeMethod(CapturedHeapValue.NativeMethod nativeMethod)
+      {
+        var methodDecl = (MethodDecl)AstResolver.Resolve(graph, nativeMethod.Reference);
+
+        int lastDot = nativeMethod.Reference.Path.LastIndexOf('.');
+        var classRef = new AstReference(nativeMethod.Reference.ModuleKey, nativeMethod.Reference.Path.Substring(0, lastDot));
+        var declaringClass = (ClassValue)ResolveAstRef(classRef);
+        var boundInstance = (InstanceValue)ResolveHeapValue(nativeMethod.Instance);
 
         return FunctionValueFactory.CreateMethod(methodDecl, declaringClass, declaringClass.Closure, boundInstance);
       }

@@ -109,6 +109,84 @@ public class ExpressionTests : ParserTestBase
     Assert.Single(classDecl.Members);
   }
 
+  // -------------------------------------------------------------------------
+  // await placement (LANGUAGE_SPEC.md §8.1): only valid as the entire
+  // initializer of a 'var' declaration, the entire value of a 'return'/'throw'
+  // statement, or the entire expression of an expression statement — optionally
+  // as 'await [a, b, ...]' in one of those positions.
+  // -------------------------------------------------------------------------
+
+  [Fact]
+  public void Parse_AwaitAsBinaryOperand_ThrowsParseException()
+  {
+    var ex = Assert.Throws<ParseException>(() => Parse("var y = 1 + await fetchValue();"));
+    Assert.Contains("'await'", ex.Message);
+  }
+
+  [Fact]
+  public void Parse_AwaitAsCallArgument_ThrowsParseException()
+  {
+    Assert.Throws<ParseException>(() => Parse("record(await fetchValue());"));
+  }
+
+  [Fact]
+  public void Parse_AwaitAsArrayElement_ThrowsParseException()
+  {
+    Assert.Throws<ParseException>(() => Parse("var xs = [await fetchValue(), 2];"));
+  }
+
+  [Fact]
+  public void Parse_AwaitInsideAwaitArrayElement_ThrowsParseException()
+  {
+    Assert.Throws<ParseException>(() => Parse("var r = await [await fetchValue(), 2];"));
+  }
+
+  [Fact]
+  public void Parse_AwaitAsFieldInitializer_ThrowsParseException()
+  {
+    Assert.Throws<ParseException>(() => Parse("class Box {\n  public int v = await fetchValue();\n}"));
+  }
+
+  [Fact]
+  public void Parse_AwaitAsEntireVarInitializer_IsAllowed()
+  {
+    var program = Parse("var x = await fetchValue();");
+
+    var variableDecl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
+    Assert.IsType<AwaitExpr>(variableDecl.Initializer);
+  }
+
+  [Fact]
+  public void Parse_AwaitArrayAsEntireVarInitializer_IsAllowed()
+  {
+    var program = Parse("var r = await [fetchA(), fetchB()];");
+
+    var variableDecl = Assert.IsType<VariableDecl>(Assert.Single(program.Declarations));
+    Assert.IsType<AwaitExpr>(variableDecl.Initializer);
+  }
+
+  [Fact]
+  public void Parse_AwaitAsEntireReturnValue_IsAllowed()
+  {
+    var program = Parse("function int main() {\n  return await fetchValue();\n}");
+
+    var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(function.Body!.Statements));
+    var returnStmt = Assert.IsType<ReturnStmt>(stmtDecl.Statement);
+    Assert.IsType<AwaitExpr>(returnStmt.Value);
+  }
+
+  [Fact]
+  public void Parse_AwaitAsEntireThrowValue_IsAllowed()
+  {
+    var program = Parse("function void main() {\n  throw await fetchValue();\n}");
+
+    var function = Assert.IsType<FunctionDecl>(Assert.Single(program.Declarations));
+    var stmtDecl = Assert.IsType<StatementDecl>(Assert.Single(function.Body!.Statements));
+    var throwStmt = Assert.IsType<ThrowStmt>(stmtDecl.Statement);
+    Assert.IsType<AwaitExpr>(throwStmt.Value);
+  }
+
   [Fact]
   public void Parse_CallChainedWithMemberAndIndexAccess_BuildsNestedCallExpressions()
   {

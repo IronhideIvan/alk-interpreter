@@ -22,7 +22,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   public void Evaluate_AwaitOnNativeReturningAlreadyCompletedTask_ResolvesToItsValue()
   {
     var recorded = Run(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var fetched = await fetch();\n  record(fetched);\n}}\nmain();",
       new FuncBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(42))));
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
@@ -36,7 +36,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // mid-script on it (there's nothing to resolve to yet) and resume once a
     // background thread settles it.
     var recorded = Run(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var fetched = await fetch();\n  record(fetched);\n}}\nmain();",
       new FuncBinder(_ => Task.Run(async () =>
       {
         await Task.Delay(10);
@@ -65,7 +65,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   [Fact]
   public void Evaluate_AwaitOnPlainValue_YieldsItDirectly()
   {
-    var recorded = Run($"{RecordDeclaration}\nfunction void main() {{\n  record(await 1);\n}}\nmain();");
+    var recorded = Run($"{RecordDeclaration}\nfunction void main() {{\n  var awaited = await 1;\n  record(awaited);\n}}\nmain();");
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(1L, value.Value);
@@ -97,7 +97,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // async call's *eventual* completion is exactly the "Discard"/lazy-start
     // mechanism the design defers past this phase.)
     var recorded = Run(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nrecord(await fetch());",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nvar fetched = await fetch();\nrecord(fetched);",
       new FuncBinder(_ => Task.Run(async () =>
       {
         await Task.Delay(20);
@@ -256,7 +256,7 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // natives: "main"'s "await load()" is transitively parked until "load"'s
     // body — and therefore "fetch"'s task — settles.
     var recorded = Run(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction int load() {{\n  var n = await fetch();\n  return n + 1;\n}}\nfunction void main() {{\n  record(await load());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction int load() {{\n  var n = await fetch();\n  return n + 1;\n}}\nfunction void main() {{\n  var loaded = await load();\n  record(loaded);\n}}\nmain();",
       new FuncBinder(_ => Task.Run(async () =>
       {
         await Task.Delay(20);

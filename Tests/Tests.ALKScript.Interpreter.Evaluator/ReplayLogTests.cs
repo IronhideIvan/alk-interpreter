@@ -26,7 +26,7 @@ public class ReplayLogTests : EvaluatorTestBase
     var binder = new TrackingBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(42)));
 
     var (_, log) = RunAndCaptureLog(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var fetched = await fetch();\n  record(fetched);\n}}\nmain();",
       binder);
 
     var entry = Assert.Single(log);
@@ -57,7 +57,7 @@ public class ReplayLogTests : EvaluatorTestBase
     var binder = new TrackingBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(++call)));
 
     var (_, log) = RunAndCaptureLog(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var first = await fetch();\n  record(first);\n  var second = await fetch();\n  record(second);\n}}\nmain();",
       binder);
 
     Assert.Equal(2, log.Count);
@@ -77,14 +77,14 @@ public class ReplayLogTests : EvaluatorTestBase
     var liveBinder = new TrackingBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(42)));
 
     var (_, log) = RunAndCaptureLog(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var fetched = await fetch();\n  record(fetched);\n}}\nmain();",
       liveBinder);
 
     // Replay binder would return 99, but replay should ignore it.
     var replayBinder = new TrackingBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(99)));
 
     var recorded = RunWithReplayLog(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var fetched = await fetch();\n  record(fetched);\n}}\nmain();",
       replayBinder, log);
 
     // Result must come from log, not binder.
@@ -127,7 +127,7 @@ public class ReplayLogTests : EvaluatorTestBase
     var liveBinder = new TrackingBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(++liveCall)));
 
     var (_, fullLog) = RunAndCaptureLog(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var first = await fetch();\n  record(first);\n  var second = await fetch();\n  record(second);\n}}\nmain();",
       liveBinder);
 
     Assert.Equal(2, fullLog.Count); // sanity
@@ -139,7 +139,7 @@ public class ReplayLogTests : EvaluatorTestBase
     var replayBinder = new TrackingBinder(_ => Task.FromResult((ALKScriptValue)new IntValue(200 + ++replayLiveCall)));
 
     var recorded = RunWithReplayLog(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  record(await fetch());\n  record(await fetch());\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction void main() {{\n  var first = await fetch();\n  record(first);\n  var second = await fetch();\n  record(second);\n}}\nmain();",
       replayBinder, partialLog);
 
     Assert.Equal(2, recorded.Count);

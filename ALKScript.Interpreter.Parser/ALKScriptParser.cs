@@ -48,7 +48,11 @@ namespace ALKScript.Interpreter.Parser
         declarations.Add(ParseDeclaration());
       }
 
-      return new ProgramNode(imports, declarations);
+      var program = new ProgramNode(imports, declarations);
+
+      AwaitPositionValidator.Validate(program);
+
+      return program;
     }
 
     #region Imports

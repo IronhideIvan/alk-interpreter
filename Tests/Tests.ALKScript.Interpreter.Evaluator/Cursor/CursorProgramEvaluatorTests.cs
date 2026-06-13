@@ -5,6 +5,7 @@ using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator;
 using ALKScript.Interpreter.Evaluator.Cursor;
+using ALKScript.Interpreter.Parser;
 
 namespace Tests.ALKScript.Interpreter.Evaluator.Cursor;
 
@@ -193,22 +194,16 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Evaluate_FieldInitializerAwait_StillThrowsRuntimeException()
+  public void Evaluate_FieldInitializerAwait_IsAParseTimeError()
   {
+    // Per LANGUAGE_SPEC.md §8.1, 'await' is only allowed as the entire
+    // initializer of a 'var' declaration, the entire value of a
+    // 'return'/'throw' statement, or the entire expression of an expression
+    // statement — a field initializer is none of those, so this is now a
+    // parse-time error rather than a RuntimeException at evaluation time.
     var source = $"{RecordDeclaration}\nnative function thunk<int> fetch();\nclass Box {{\n  public int v = await fetch();\n}}\nvar b = new Box();\nrecord(b.v);";
 
-    var bindings = new ScriptNativeBindings
-    {
-      ["record"] = arguments => NullValue.Instance
-    };
-
-    var source1 = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(_ => source1.Task);
-
-    var graph = LoadGraph(source);
-    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
-
-    Assert.Throws<RuntimeException>(() => evaluator.Evaluate(graph));
+    Assert.Throws<ParseException>(() => LoadGraph(source));
   }
 
   [Fact]

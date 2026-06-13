@@ -110,7 +110,7 @@ public class ScriptSchedulerTests : EvaluatorTestBase
     // Top-level "await" — the Evaluate task parks on tcs.Task and returns an
     // incomplete Task. We discard it here; driving it is the scheduler's job.
     var scheduler = new ScriptScheduler();
-    var graph = LoadGraph($"{RecordDeclaration}\nnative function thunk<int> fetch();\nrecord(await fetch());");
+    var graph = LoadGraph($"{RecordDeclaration}\nnative function thunk<int> fetch();\nvar fetched = await fetch();\nrecord(fetched);");
     var evaluator = new ProgramEvaluator(bindings, operationBinder: binder, scheduler: scheduler);
     evaluator.Evaluate(graph); // starts evaluation; suspends at "await fetch()"
 
@@ -146,8 +146,10 @@ public class ScriptSchedulerTests : EvaluatorTestBase
       native function void record(Object v);
       native function thunk<int> fetch();
       function void main() {
-        record(await fetch());
-        record(await fetch());
+        var first = await fetch();
+        record(first);
+        var second = await fetch();
+        record(second);
       }
       main();
       """;
@@ -308,7 +310,8 @@ public class ScriptSchedulerTests : EvaluatorTestBase
     const string source = """
       native function void record(Object v);
       native function thunk<int> fetch();
-      record(await fetch());
+      var fetched = await fetch();
+      record(fetched);
       """;
 
     var scheduler = new ScriptScheduler();
@@ -350,7 +353,8 @@ public class ScriptSchedulerTests : EvaluatorTestBase
       native function void record(Object v);
       native function thunk<int> fetch();
       function void main() {
-        record(await fetch());
+        var fetched = await fetch();
+        record(fetched);
       }
       main();
       """;

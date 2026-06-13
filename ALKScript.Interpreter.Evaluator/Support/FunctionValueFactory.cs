@@ -62,7 +62,7 @@ namespace ALKScript.Interpreter.Evaluator
 
       if (_nativeBindings.TryGetValue(declaration.Name.Lexeme, out var implementation))
       {
-        return new NativeFunctionValue(declaration.Name.Lexeme, declaration.Parameters.Count, implementation);
+        return new NativeFunctionValue(declaration.Name.Lexeme, declaration.Parameters.Count, implementation, declaration: declaration);
       }
 
       throw new RuntimeException(declaration.Name, $"Native function '{declaration.Name.Lexeme}' has no host implementation registered.");
@@ -86,15 +86,16 @@ namespace ALKScript.Interpreter.Evaluator
       if (_nativeMethodBindings.TryGetValue(className, memberName, out var implementation))
       {
         var instance = boundInstance;
+        var binding = new NativeMethodBinding(declaration, declaringClass, instance);
 
         if (declaration.ReturnType.Name == "thunk")
         {
           var elementType = ThunkElementType(declaration.ReturnType);
           return new NativeFunctionValue(memberName, declaration.Parameters.Count, arguments =>
-            TagThunkElementType(implementation(instance, arguments), elementType));
+            TagThunkElementType(implementation(instance, arguments), elementType), boundNativeMethod: binding);
         }
 
-        return new NativeFunctionValue(memberName, declaration.Parameters.Count, arguments => implementation(instance, arguments));
+        return new NativeFunctionValue(memberName, declaration.Parameters.Count, arguments => implementation(instance, arguments), boundNativeMethod: binding);
       }
 
       throw new RuntimeException(declaration.Name, $"Native method '{className}.{memberName}' has no host implementation registered.");

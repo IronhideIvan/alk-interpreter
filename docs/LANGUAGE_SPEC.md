@@ -770,41 +770,33 @@ for (var i = 0; i < 3; i = i + 1) {
 }
 ```
 
-### 8.1 `await` Placement and Suspension (Cursor Evaluator)
+### 8.1 `await` Placement and Suspension
 
-The synchronous, resumable evaluator (`EvaluationCursor`, see
-docs/ASYNC_AWAIT_DESIGN.md) can genuinely suspend execution — returning
-control to the host without blocking — only when an `await` of a
-not-yet-resolved `thunk`/`thunk<T>` appears in one of these positions:
+`await` (including the `await [expr1, expr2, ...]` "whenAll" form) may only
+appear in one of these positions, enforced as a **parse-time error**:
 
 - the entire initializer of a variable declaration (`var x = await ...;`);
 - the entire value of a `return` or `throw` statement;
 - the entire expression of an expression statement (`await ...;`);
-- the entire `await [expr1, expr2, ...]` ("whenAll") expression, when used in
-  one of the three positions above — any element may be a genuinely in-flight
-  operation; the whole expression suspends until all of them settle.
+- nested directly inside `await [expr1, expr2, ...]` ("whenAll"), when that
+  expression itself is used in one of the three positions above — any element
+  may be a genuinely in-flight operation; the whole expression suspends until
+  all of them settle.
 
-`await` remains a universally-valid prefix operator everywhere else in an
-expression (e.g. as an operand of a binary operator, inside a call argument,
-or as part of a larger expression) **as long as the operand is already
-resolved** at the time it runs — for example, a `thunk` returned by a
-synchronous `native` that completes immediately. In that case `await` simply
-unwraps it inline, exactly as described above.
+`await` appearing anywhere else — as an operand of a binary operator, inside
+a call argument, as an array element (outside of `await [...]`), as a field
+initializer, etc. — is rejected by the parser with a `ParseException`
+referencing this section, regardless of whether the awaited operand happens
+to already be resolved. Rewrite such expressions to bind the awaited value to
+a variable first, e.g. `var t = await ...; var y = t + 1;`.
 
-If `await` is reached in any position other than the four listed above *and*
-the operand is not yet resolved, the cursor evaluator throws a
-`RuntimeException`: `'await' in this expression position cannot suspend on an
-unresolved 'thunk' — rewrite as 'var t = await ...;' first.` Rewriting the
-expression to bind the awaited value to a variable first (as the message
-suggests) moves the `await` into an allowed position.
+The allowed positions above apply equally inside a called function, method, or
+constructor body (including `base(...)` super-constructor bodies) — suspending
+mid-body and later resuming is supported. Two narrower restrictions remain,
+tracked in docs/ASYNC_AWAIT_DESIGN.md:
 
-The four allowed positions above apply equally inside a called function,
-method, or constructor body (including `base(...)` super-constructor bodies)
-— suspending mid-body and later resuming is supported. Two narrower
-restrictions remain, tracked in docs/ASYNC_AWAIT_DESIGN.md:
-
-- Field and static-field initializer expressions cannot suspend; an `await`
-  of an unresolved `thunk` there throws `RuntimeException`.
+- Field and static-field initializer expressions cannot contain `await` at
+  all (rejected at parse time, per above).
 - If a statement containing a suspending call is re-executed on resume, the
   callee and all of its argument expressions are re-evaluated from scratch —
   an argument expression with side effects (e.g. `foo(sideEffect())`) runs

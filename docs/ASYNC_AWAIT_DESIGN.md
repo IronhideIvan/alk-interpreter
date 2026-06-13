@@ -629,6 +629,60 @@ affects the other's types or behavior.
   `SerializedToken`, `SerializedTypeNode`) convert every type above to/from
   its wire shape, reusing `SerializedValue`/`SerializedOperation` for
   primitives and operation descriptors.
+
+### Addendum 4: `NativeLoopFrame` — design sketch for `map`/`filter` with `await` callbacks (not implemented)
+
+Today, Capture/Restore's `_trail` only contains frames for user-defined
+function/method/constructor calls and `await`/`await [...]` suspension points
+(see Addendum 3). The native array methods `map` and `filter` are implemented
+via `CursorCallInvoker.Call(callback, ...)` — a per-item, native-driven loop
+that invokes the user's callback once per array element. If that callback
+itself contains an `await` that suspends (e.g. `arr.map(x => await fetch(x))`),
+there is currently no trail entry that records "I am partway through a native
+`map`/`filter` loop, here is my source array, my current index, and my
+accumulated results so far" — so `CaptureStructural()` cannot snapshot this
+in-progress native loop, and such a suspension is presently unsupported.
+
+A future session could close this gap by adding a new `TrailEntry` variant,
+sketched as:
+
+```
+TrailEntry.NativeLoopFrame {
+  MethodName: "map" | "filter",
+  SourceArray: HeapRef,          // the receiver array being iterated
+  CurrentIndex: int,              // index of the element whose callback is in flight
+  Accumulated: IReadOnlyList<CapturedHeapValue>, // results collected so far
+  Callback: CapturedHeapValue,    // Method / AstRef / NativeMethod (Item 2) — NOT a lambda
+}
+```
+
+On `RestoreStructural`, a `NativeLoopFrame` would be grafted back onto the
+trail, and `CursorCallInvoker`'s `map`/`filter` driver would resume the loop
+from `CurrentIndex`, re-invoking `Callback` for the in-flight element (the
+suspended callback invocation itself is represented by the trail frames above
+the `NativeLoopFrame`, exactly as for any other suspended call) and continuing
+to populate `Accumulated` for subsequent elements.
+
+Constraints/notes for that future work:
+
+- **Callback must be capturable.** `Callback` reuses the `Method`/`AstRef`/
+  `NativeMethod` (Item 2) representations introduced for Capture/Restore of
+  function-valued locals. A `map`/`filter` callback that is itself a lambda
+  closing over local state remains excluded, consistent with the existing
+  `CaptureStructural_LocalBoundToLambdaValue_Throws` exclusion.
+- **Receiver/argument idempotency.** As with `CursorCallInvoker.Construct`'s
+  existing precedent for `new`, the receiver array expression (and any
+  arguments to `map`/`filter` itself) must be safe to re-evaluate if the
+  enclosing statement is re-executed on resume — see the
+  "decls-before-statements"/re-execution caveat in docs/LANGUAGE_SPEC.md §8.1.
+- **Strict superset of Item 4 Option B.** The deferred "Option B" approach
+  (a general expression-level resume trail, allowing `await` in arbitrary
+  expression positions by checkpointing partially-evaluated expressions) would
+  need exactly this kind of "partial progress through a multi-step, native-
+  driven expression evaluation" machinery — but generalized to *any* expression,
+  not just `map`/`filter`. If Option B is ever pursued, `NativeLoopFrame` should
+  be designed as a special case of it (or implemented first, as the simpler,
+  narrower case that validates the general approach).
 **Capture/Restore ("Phase C", pending operations in locals)**: closes Phase
 B's gap where any `PendingOperationValue`/`ThunkValue` reachable from a local
 variable other than the suspending await's own operand threw

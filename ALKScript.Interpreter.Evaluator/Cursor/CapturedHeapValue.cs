@@ -84,6 +84,26 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     }
 
     /// <summary>
+    /// A bound <em>native</em> method value (<c>obj.nativeMethod</c>) — same
+    /// shape as <see cref="Method"/>, but resolved on Restore via
+    /// <see cref="FunctionValueFactory.CreateMethod"/>'s native branch rather
+    /// than reconstructing a <c>FunctionValue</c> (Step 13 follow-up,
+    /// docs/ASYNC_AWAIT_DESIGN.md Addendum 3).
+    /// </summary>
+    public sealed class NativeMethod : CapturedHeapValue
+    {
+      public AstReference Reference { get; }
+
+      public HeapRef Instance { get; }
+
+      public NativeMethod(AstReference reference, HeapRef instance)
+      {
+        Reference = reference;
+        Instance = instance;
+      }
+    }
+
+    /// <summary>
     /// A reference to a <see cref="CursorStructuralCaptureState.PendingOperations"/>
     /// entry — a <c>PendingOperationValue</c>/<c>ThunkValue</c> held in a local
     /// variable, addressed by index so the same instance referenced from

@@ -448,23 +448,96 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void CaptureStructural_LocalBoundToNativeFunctionValue_Throws()
+  public void CaptureRestore_LocalBoundToTopLevelNativeFunctionValue_RestoresAndCallsIt()
   {
     var source = $"{RecordDeclaration}native function thunk<int> fetch();\n" +
+      "native function int square(int x);\n" +
       "for (var i = 0; i < 1; i = i + 1) {\n" +
-      "  var f = record;\n" +
+      "  var f = square;\n" +
       "  var fetched = await fetch();\n" +
+      "  record(f(fetched));\n" +
       "}";
 
     var graph = LoadGraph(source);
 
-    var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
+    var bindings = new ScriptNativeBindings
+    {
+      ["record"] = arguments => NullValue.Instance,
+      ["square"] = arguments => new IntValue(((IntValue)arguments[0]).Value * ((IntValue)arguments[0]).Value),
+    };
     var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
 
-    Assert.Throws<NotSupportedException>(() => evaluator.CaptureStructural());
+    var state = evaluator.CaptureStructural();
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings2 = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; },
+      ["square"] = arguments => new IntValue(((IntValue)arguments[0]).Value * ((IntValue)arguments[0]).Value),
+    };
+    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+
+    var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
+
+    Assert.Equal(ProgramRunResult.Awaiting, restoreResult);
+    Assert.Empty(recorded);
+
+    var result = restored.Resume(new IntValue(6));
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(36L, Assert.IsType<IntValue>(recorded[0]).Value);
+  }
+
+  [Fact]
+  public void CaptureRestore_LocalBoundToNativeMethodValue_RestoresAndCallsIt()
+  {
+    var source = $"{RecordDeclaration}native function thunk<int> fetch();\n" +
+      "native class Doubler {\n" +
+      "  public int factor;\n" +
+      "  public native function int double(int x);\n" +
+      "}\n" +
+      "var d = new Doubler();\n" +
+      "d.factor = 2;\n" +
+      "for (var i = 0; i < 1; i = i + 1) {\n" +
+      "  var f = d.double;\n" +
+      "  var fetched = await fetch();\n" +
+      "  record(f(fetched));\n" +
+      "}";
+
+    var graph = LoadGraph(source);
+
+    var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
+    var methodBindings = new ScriptNativeMethodBindings
+    {
+      ["Doubler", "double"] = (instance, arguments) =>
+        new IntValue(((IntValue)instance.Fields["factor"]).Value * ((IntValue)arguments[0]).Value),
+    };
+    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+
+    var evaluator = new CursorProgramEvaluator(bindings, methodBindings, operationBinder: binder);
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+
+    var state = evaluator.CaptureStructural();
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings2 = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+
+    var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, methodBindings, operationBinder: binder2);
+
+    Assert.Equal(ProgramRunResult.Awaiting, restoreResult);
+    Assert.Empty(recorded);
+
+    var result = restored.Resume(new IntValue(8));
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(16L, Assert.IsType<IntValue>(recorded[0]).Value);
   }
 
   [Fact]

@@ -92,6 +92,14 @@ namespace ALKScript.Interpreter.Serialization
             MethodInstanceId = method.Instance.Id,
           };
 
+        case CapturedHeapValue.NativeMethod nativeMethod:
+          return new SerializedHeapValue
+          {
+            Kind = "nativemethod",
+            MethodRef = SerializedAstReference.From(nativeMethod.Reference),
+            MethodInstanceId = nativeMethod.Instance.Id,
+          };
+
         case CapturedHeapValue.PendingOpRef pendingOpRef:
           return new SerializedHeapValue { Kind = "pendingopref", PendingOpRefId = pendingOpRef.Id };
 
@@ -117,6 +125,11 @@ namespace ALKScript.Interpreter.Serialization
           var methodRef = MethodRef ?? throw new FormatException("Serialized 'method' heap value is missing MethodRef.");
           var instanceId = MethodInstanceId ?? throw new FormatException("Serialized 'method' heap value is missing MethodInstanceId.");
           return new CapturedHeapValue.Method(methodRef.ToAstReference(), new CapturedHeapValue.HeapRef(instanceId));
+
+        case "nativemethod":
+          var nativeMethodRef = MethodRef ?? throw new FormatException("Serialized 'nativemethod' heap value is missing MethodRef.");
+          var nativeInstanceId = MethodInstanceId ?? throw new FormatException("Serialized 'nativemethod' heap value is missing MethodInstanceId.");
+          return new CapturedHeapValue.NativeMethod(nativeMethodRef.ToAstReference(), new CapturedHeapValue.HeapRef(nativeInstanceId));
 
         case "pendingopref":
           return new CapturedHeapValue.PendingOpRef(PendingOpRefId ?? throw new FormatException("Serialized 'pendingopref' heap value is missing PendingOpRefId."));
