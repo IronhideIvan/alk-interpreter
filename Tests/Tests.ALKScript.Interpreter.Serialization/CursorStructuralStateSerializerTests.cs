@@ -147,6 +147,56 @@ public class CursorStructuralStateSerializerTests
     Assert.Equal(12L, Assert.IsType<IntValue>(recorded[0]).Value);
   }
 
+  [Fact]
+  public void CaptureAndRestore_CompositeAwaitElementAliasedWithLocal_JsonRoundTripReissuesOperationExactlyOnce()
+  {
+    var source = $"{RecordDeclaration}native function thunk<int> fetch();\n" +
+      "for (var i = 0; i < 1; i = i + 1) {\n" +
+      "  var op = fetch();\n" +
+      "  var r = await [op, 5];\n" +
+      "  record(r[0] + r[1]);\n" +
+      "}";
+
+    var graph = LoadGraph(source);
+
+    var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
+    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+
+    var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
+    Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
+
+    var bytes = CursorStructuralStateSerializer.Capture(evaluator);
+
+    var recorded = new List<ALKScriptValue>();
+    var bindings2 = new ScriptNativeBindings
+    {
+      ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
+    };
+
+    int startCount = 0;
+    TaskCompletionSource<ALKScriptValue>? tcs = null;
+    var binder2 = new FuncBinder(_ =>
+    {
+      startCount++;
+      tcs = new TaskCompletionSource<ALKScriptValue>();
+      return tcs.Task;
+    });
+
+    var restored = CursorStructuralStateSerializer.Restore(graph, bytes, out var restoreResult, bindings2, operationBinder: binder2);
+
+    Assert.Equal(ProgramRunResult.Awaiting, restoreResult);
+    Assert.Equal(1, startCount); // op and the composite element are the same instance — started exactly once
+    Assert.Empty(recorded);
+
+    Assert.NotNull(tcs);
+    tcs!.SetResult(new IntValue(9));
+
+    var result = restored.Resume(NullValue.Instance);
+
+    Assert.Equal(ProgramRunResult.Completed, result);
+    Assert.Equal(14L, Assert.IsType<IntValue>(recorded[0]).Value); // 9 + 5
+  }
+
   private static ModuleGraph LoadGraph(string source, IReadOnlyList<string>? globalPreludeSources = null)
   {
     var program = Parse(source);

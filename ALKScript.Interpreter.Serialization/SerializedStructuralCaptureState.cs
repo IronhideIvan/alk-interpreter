@@ -297,10 +297,20 @@ namespace ALKScript.Interpreter.Serialization
 
     public SerializedTypeNode? ElementType { get; set; }
 
+    public int? OperationRefId { get; set; }
+
     public static SerializedAwaitElement From(CapturedAwaitElement element)
     {
       switch (element)
       {
+        case CapturedAwaitElement.OperationRef operationRef:
+          return new SerializedAwaitElement
+          {
+            Kind = "operationref",
+            OperationRefId = operationRef.Id,
+            ElementType = operationRef.ElementType != null ? SerializedTypeNode.From(operationRef.ElementType) : null,
+          };
+
         case CapturedAwaitElement.Resolved resolved:
           return new SerializedAwaitElement
           {
@@ -336,6 +346,10 @@ namespace ALKScript.Interpreter.Serialization
 
       switch (Kind)
       {
+        case "operationref":
+          var operationRefId = OperationRefId ?? throw new FormatException("Serialized 'operationref' await element is missing OperationRefId.");
+          return new CapturedAwaitElement.OperationRef(operationRefId, elementType);
+
         case "resolved":
           var value = Value ?? throw new FormatException("Serialized 'resolved' await element is missing Value.");
           return new CapturedAwaitElement.Resolved(value.ToCapturedHeapValue(), elementType);

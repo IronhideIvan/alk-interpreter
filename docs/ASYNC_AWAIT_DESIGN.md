@@ -666,21 +666,32 @@ is ever reached).
       B's existing `Reissue` handling for the cursor's own operand), and
       registers the result with `FunctionValueFactory.RegisterRestored` so
       end-of-script `DiscardPending` doesn't double-discard it.
+- **Composite-element aliasing**: a composite `await [a, b, c]` element whose
+  underlying `PendingOperationValue`/`ThunkValue` instance is *also*
+  referenced from a local (e.g. `var op = fetch(); var r = await [op, 5];`) is
+  captured as `CapturedAwaitElement.OperationRef(id, elementType)` — the
+  element's `AwaitElement.Source` is looked up in `pendingOpIds` (already
+  populated by the local's own `GetPendingOpId` call, since environments are
+  captured before `PendingAwait`) and, if present, the element shares that
+  `PendingOperations` table entry instead of capturing a second, independent
+  `Reissue`. A non-aliased composite element is captured exactly as before
+  (`Resolved`/`Reissue`/`Fault`, independent of the table). On `Restore`,
+  `OperationRef` elements are rebuilt from the already-reconstructed
+  `PendingOperations[id]` value — a `PendingOperationValue` (guaranteed
+  started, since composite elements are always eagerly started) contributes
+  its `StartedTask`, a `ThunkValue` contributes its `Task` — via
+  `AwaitElement.ForTask`, so `IAsyncOperationBinder.Start` is called exactly
+  once and `op`/the composite element observably refer to the same
+  reconstructed operation.
 - **Exclusions** (`NotSupportedException` at Capture time):
   - A still-*pending* `ThunkValue` with no backing `PendingOperationValue` —
     fundamental, not just unimplemented: `ThunkValue` carries no
     `PendingOperation` descriptor, so there is nothing for `Restore` to
     reissue.
-  - A composite `await [a, b, c]` element whose underlying
-    `PendingOperationValue`/`ThunkValue` instance is *also* reachable from a
-    local — deferred follow-up. Composite elements have their own
-    `Reissue`/`Resolved`/`Fault` capture independent of the
-    `PendingOperations` table; aliasing the two would need a second,
-    divergent dedup pass and is rejected explicitly rather than silently
-    double-captured/double-started.
 - Wire format: `SerializedStructuralCaptureState.PendingOperations` (a list of
   `SerializedPendingOperation { Element: SerializedAwaitElement, WasStarted:
-  bool }`), `SerializedHeapValue`'s `"pendingopref"` kind, and
+  bool }`), `SerializedHeapValue`'s `"pendingopref"` kind,
+  `SerializedAwaitElement`'s `"operationref"` kind, and
   `SerializedPendingAwait.OperationRef`.
 
 - Native array-method callbacks (`map`/`filter`, etc.) that themselves `await`

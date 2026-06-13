@@ -39,6 +39,25 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       }
     }
 
+    /// <summary>
+    /// An element whose underlying <see cref="ALKScript.Interpreter.Common.Evaluation.Values.PendingOperationValue"/>/
+    /// <see cref="ALKScript.Interpreter.Common.Evaluation.Values.ThunkValue"/> instance is also referenced from a
+    /// local variable — points into <see cref="CursorStructuralCaptureState.PendingOperations"/> for dedup
+    /// (docs/ASYNC_AWAIT_DESIGN.md Addendum 3, "Phase C" composite-aliasing).
+    /// </summary>
+    public sealed class OperationRef : CapturedAwaitElement
+    {
+      public int Id { get; }
+
+      public TypeNode? ElementType { get; }
+
+      public OperationRef(int id, TypeNode? elementType)
+      {
+        Id = id;
+        ElementType = elementType;
+      }
+    }
+
     /// <summary>An element whose outcome was a fault.</summary>
     public sealed class Fault : CapturedAwaitElement
     {

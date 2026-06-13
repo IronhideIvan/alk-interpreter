@@ -561,11 +561,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           {
             if (element.Source != null && pendingOpIds.ContainsKey(element.Source))
             {
-              throw new NotSupportedException(
-                "Capturing a composite 'await [a, b, c]' element whose underlying 'PendingOperationValue'/'ThunkValue' " +
-                "instance is also referenced from a local variable is not yet supported by structural Capture/Restore " +
-                "(docs/ASYNC_AWAIT_DESIGN.md Addendum 3, Phase C) — this would require a second, divergent dedup " +
-                "mechanism for composite elements.");
+              return new CapturedAwaitElement.OperationRef(GetPendingOpId(element.Source), element.ElementType);
             }
 
             return new CapturedAwaitElement.Reissue(element.Operation, element.ElementType);
@@ -857,6 +853,20 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         return AwaitElement.ForTask(reissueTask, reissue.ElementType, reissue.Operation, source: reissuePending);
       }
 
+      AwaitElement ElementFromPendingOpRef(CapturedAwaitElement.OperationRef opRef)
+      {
+        var operationValue = pendingOpValues[opRef.Id]!;
+        return operationValue switch
+        {
+          PendingOperationValue pendingOp => AwaitElement.ForTask(
+            pendingOp.StartedTask ?? throw new InvalidOperationException(
+              $"RestoreSuspendedState: pending operation #{opRef.Id} referenced by a composite 'await [...]' element was not started during Restore."),
+            opRef.ElementType, pendingOp.Operation, source: pendingOp),
+          ThunkValue thunk => AwaitElement.ForTask(thunk.Task, opRef.ElementType, source: thunk),
+          _ => throw new NotSupportedException($"RestoreSuspendedState: unrecognized reconstructed pending-operation value type '{operationValue.GetType().Name}'."),
+        };
+      }
+
       if (state.PendingAwait.CompositeElements != null)
       {
         var elements = new List<AwaitElement>();
@@ -867,6 +877,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             CapturedAwaitElement.Resolved resolved => AwaitElement.ForResolved(ResolveHeapValue(resolved.Value), resolved.ElementType),
             CapturedAwaitElement.Reissue reissue => ReissueElement(reissue),
             CapturedAwaitElement.Fault fault => AwaitElement.ForReplayedFault(fault.Message, fault.ElementType),
+            CapturedAwaitElement.OperationRef opRef => ElementFromPendingOpRef(opRef),
             _ => throw new NotSupportedException($"RestoreSuspendedState: unrecognized captured await element type '{captured.GetType().Name}'."),
           });
         }
