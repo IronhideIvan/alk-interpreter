@@ -106,6 +106,19 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     private IReadOnlyList<AwaitElement>? _resumeComposite;
 
     /// <summary>
+    /// Set by <see cref="ResumeFaulted"/> instead of <see cref="Signal"/> directly:
+    /// raising <see cref="Signal"/> up-front would short-circuit every "if
+    /// (Signal != null) return ..." guard the trail walk passes through on its
+    /// way back down to the suspended <c>await</c>, so the resulting
+    /// <c>Signal.Thrown</c> would never reach an enclosing <c>try</c>/<c>catch</c>
+    /// recorded further up the trail. Instead, the leaf <see cref="AwaitExpr"/>
+    /// — reached once <see cref="IsResuming"/> drops back to <c>false</c> —
+    /// consumes this and raises <see cref="Signal"/> itself, exactly where the
+    /// old evaluator's <c>AwaitTask</c>/<c>AwaitPending</c> used to.
+    /// </summary>
+    private string? _pendingFault;
+
+    /// <summary>
     /// The record-and-replay log (docs/ASYNC_AWAIT_DESIGN.md decision #17),
     /// carried over unchanged from the old evaluator's <c>IEvaluationContext.Log</c>/
     /// <c>TryReplayNext</c>/<c>RecordEntry</c>. During a replay run this starts
@@ -987,6 +1000,21 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     }
 
     /// <summary>
+    /// If <see cref="ResumeFaulted"/> was called to resume this run, consumes
+    /// and returns the fault message — the leaf <see cref="AwaitExpr"/> raises
+    /// it as <see cref="Signal.Thrown"/> itself once <see cref="IsResuming"/>
+    /// has dropped back to <c>false</c>. Returns <c>null</c> on an ordinary
+    /// <see cref="Resume"/>. Must be called at most once per resume, mirroring
+    /// <see cref="TakeResumeValue"/>.
+    /// </summary>
+    public string? TakePendingFault()
+    {
+      var fault = _pendingFault;
+      _pendingFault = null;
+      return fault;
+    }
+
+    /// <summary>
     /// If a composite <c>await [a, b, c]</c> just resumed, consumes and
     /// returns its <see cref="AwaitElement"/>s (whose tasks are now all
     /// settled) and returns <c>true</c>. Must be called at most once per
@@ -1153,7 +1181,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       }
 
       PendingAwait = null;
-      Signal = ALKScript.Interpreter.Common.Evaluation.Signal.Thrown(new StringValue(faultMessage));
+      _pendingFault = faultMessage;
       _resumeValue = NullValue.Instance;
       _resumeCursor = _trail.Count - 1;
       return Run();

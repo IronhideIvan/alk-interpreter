@@ -1,19 +1,18 @@
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Modules;
+using ALKScript.Interpreter.Evaluator.Cursor;
 
-namespace ALKScript.Interpreter.Common
+namespace ALKScript.Interpreter.Runtime
 {
   /// <summary>
   /// The primary host-facing entry point for running ALKScript programs.
   /// Encapsulates the full pipeline — lexing, parsing, loading, and evaluation
   /// — behind straightforward run and load methods.
   ///
-  /// Run methods return a <see cref="ScriptEvaluation"/> handle. Drive
-  /// execution by passing it to <see cref="IScriptLoop.RunUntilComplete"/> for
-  /// blocking/"run and wait" scenarios, or by calling
-  /// <see cref="IScriptLoop.Pump"/> each game-loop tick and checking
-  /// <see cref="ScriptEvaluation.IsCompleted"/> to detect when the script has
-  /// finished.
+  /// Run methods return a <see cref="ProgramRun"/> handle. Drive a suspended
+  /// run by inspecting <see cref="ProgramRun.PendingAwait"/> and calling
+  /// <see cref="ProgramRun.Resume"/>/<see cref="ProgramRun.ResumeFaulted"/>, or
+  /// block until completion with <see cref="ProgramRun.RunToCompletion"/>.
   ///
   /// <para>
   /// For scripts that are run repeatedly, use <see cref="LoadFromSource"/> or
@@ -52,9 +51,9 @@ namespace ALKScript.Interpreter.Common
     /// <summary>
     /// Begins executing a previously compiled <paramref name="graph"/>.
     /// The same graph can be passed to multiple concurrent calls; each call
-    /// produces an independent evaluation with its own state.
+    /// produces an independent <see cref="ProgramRun"/> with its own state.
     /// </summary>
-    ScriptEvaluation RunFromGraph(ModuleGraph graph);
+    ProgramRun RunFromGraph(ModuleGraph graph);
 
     /// <summary>
     /// Lexes, parses, and begins executing <paramref name="source"/> as an
@@ -63,7 +62,7 @@ namespace ALKScript.Interpreter.Common
     /// source are not supported — use <see cref="RunFromFile"/> when the
     /// program spans multiple modules.
     /// </summary>
-    ScriptEvaluation RunFromSource(string source);
+    ProgramRun RunFromSource(string source);
 
     /// <summary>
     /// Loads the program rooted at <paramref name="filePath"/> — resolving and
@@ -71,6 +70,6 @@ namespace ALKScript.Interpreter.Common
     /// Equivalent to calling <see cref="LoadFromFile"/> followed by
     /// <see cref="RunFromGraph"/>.
     /// </summary>
-    ScriptEvaluation RunFromFile(string filePath);
+    ProgramRun RunFromFile(string filePath);
   }
 }

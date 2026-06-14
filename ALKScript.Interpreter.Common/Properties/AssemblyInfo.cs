@@ -1,9 +1,7 @@
 using System.Runtime.CompilerServices;
 
-// The Evaluator project is the only assembly that implements IScriptScheduler
-// and wraps ScriptEvaluation. Granting it internal visibility lets
-// ScriptScheduler.RunUntilComplete access ScriptEvaluation.Task without
-// exposing Task on the public surface of ScriptEvaluation.
+// The Evaluator project's CursorProgramEvaluator and Phase A/B Capture/Restore
+// need internal access to ScriptEnvironment and related runtime state.
 [assembly: InternalsVisibleTo("ALKScript.Interpreter.Evaluator")]
 
 // Phase B structural Capture/Restore (docs/ASYNC_AWAIT_DESIGN.md Addendum 3)

@@ -191,6 +191,42 @@ public class CursorLoopAndSwitchExecutorTests
   }
 
   [Fact]
+  public void Execute_WhileStmt_ReturnSignalInBody_PropagatesOutOfLoop()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var body = new ReturnStmt(Nodes.Token(ALKScriptTokenType.Return, "return"), Nodes.Literal(42L));
+
+    ExecuteCompleted(cursor, new WhileStmt(Nodes.Literal(true), body), environment);
+
+    Assert.NotNull(cursor.Signal);
+    Assert.Equal(SignalKind.Return, cursor.Signal!.Value.Kind);
+    Assert.Equal(42L, Assert.IsType<IntValue>(cursor.Signal.Value.Value).Value);
+  }
+
+  [Fact]
+  public void Execute_ForStmt_ReturnSignalInBody_PropagatesOutOfLoop()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var body = new ReturnStmt(Nodes.Token(ALKScriptTokenType.Return, "return"), Nodes.Literal(42L));
+
+    var forStmt = new ForStmt(
+      initializer: new VariableDecl(type: null, Nodes.Identifier("i"), Nodes.Literal(0L)),
+      condition: LessThan("i", 10L),
+      increment: null,
+      body: body);
+
+    ExecuteCompleted(cursor, forStmt, environment);
+
+    Assert.NotNull(cursor.Signal);
+    Assert.Equal(SignalKind.Return, cursor.Signal!.Value.Kind);
+    Assert.Equal(42L, Assert.IsType<IntValue>(cursor.Signal.Value.Value).Value);
+  }
+
+  [Fact]
   public void Execute_SwitchStmt_FallsBackToDefault()
   {
     var cursor = MakeCursor();

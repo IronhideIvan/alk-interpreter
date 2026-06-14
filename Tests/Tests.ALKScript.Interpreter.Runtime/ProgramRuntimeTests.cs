@@ -3,6 +3,7 @@ using System.IO;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
+using ALKScript.Interpreter.Evaluator.Cursor;
 using ALKScript.Interpreter.Parser.Modules;
 using Tests.ALKScript.Interpreter.Runtime.Support;
 
@@ -79,22 +80,22 @@ public class ProgramRuntimeTests : RuntimeTestBase
     runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
 
     ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(7);");
-    runtime.RunUntilComplete(runtime.RunFromGraph(graph));
+    runtime.RunFromGraph(graph).RunToCompletion(runtime.OperationBinder);
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(7L, value.Value);
   }
 
   [Fact]
-  public void RunFromGraph_EvaluationIsCompleted_AfterRunUntilComplete()
+  public void RunFromGraph_EvaluationIsCompleted_AfterRunToCompletion()
   {
     var runtime = CreateRuntimeForEvaluation();
 
     ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}var x = 1;");
-    ScriptEvaluation evaluation = runtime.RunFromGraph(graph);
-    runtime.RunUntilComplete(evaluation);
+    var run = runtime.RunFromGraph(graph);
+    run.RunToCompletion(runtime.OperationBinder);
 
-    Assert.True(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
 
   [Fact]
@@ -108,8 +109,8 @@ public class ProgramRuntimeTests : RuntimeTestBase
 
     ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(5);");
 
-    runtime.RunUntilComplete(runtime.RunFromGraph(graph));
-    runtime.RunUntilComplete(runtime.RunFromGraph(graph));
+    runtime.RunFromGraph(graph).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromGraph(graph).RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(2, recorded.Count);
     Assert.All(recorded, v => Assert.Equal(5L, Assert.IsType<IntValue>(v).Value));
@@ -188,14 +189,14 @@ public class ProgramRuntimeTests : RuntimeTestBase
   }
 
   [Fact]
-  public void RunFromSource_EvaluationIsCompleted_AfterRunUntilComplete()
+  public void RunFromSource_EvaluationIsCompleted_AfterRunToCompletion()
   {
     var runtime = CreateRuntimeForEvaluation();
 
-    ScriptEvaluation evaluation = runtime.RunFromSource($"{RecordDeclaration}var x = 1;");
-    runtime.RunUntilComplete(evaluation);
+    var run = runtime.RunFromSource($"{RecordDeclaration}var x = 1;");
+    run.RunToCompletion(runtime.OperationBinder);
 
-    Assert.True(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
 
   // ── RunFromFile ──────────────────────────────────────────────────────────
@@ -239,7 +240,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
   }
 
   [Fact]
-  public void RunFromFile_EvaluationIsCompleted_AfterRunUntilComplete()
+  public void RunFromFile_EvaluationIsCompleted_AfterRunToCompletion()
   {
     var files = new Dictionary<string, string>
     {
@@ -247,69 +248,60 @@ public class ProgramRuntimeTests : RuntimeTestBase
     };
     var runtime = CreateRuntimeForEvaluation(files: files);
 
-    ScriptEvaluation evaluation = runtime.RunFromFile("main.alk");
-    runtime.RunUntilComplete(evaluation);
+    var run = runtime.RunFromFile("main.alk");
+    run.RunToCompletion(runtime.OperationBinder);
 
-    Assert.True(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
 
-  // ── Multiple concurrent scripts ──────────────────────────────────────────
+  // ── Independent runs ──────────────────────────────────────────────────────
 
   [Fact]
-  public void MultipleConcurrentScripts_BothComplete_WhenDrivenBySharedLoop()
+  public void RunFromSource_TwoIndependentRuns_BothCompleteIndependently()
   {
-    // Two independent scripts are started before either has run. A single
-    // RunUntilComplete on the second evaluation must also advance (and
-    // complete) the first, because both share the same scheduler.
+    // Two independent scripts are each run via their own ProgramRun; running
+    // one to completion does not affect the other, and each produces its own
+    // output.
     var runtime = CreateRuntimeForEvaluation();
     var recordedA = new List<ALKScriptValue>();
     var recordedB = new List<ALKScriptValue>();
     runtime.NativeBindings["recordA"] = args => { recordedA.Add(args[0]); return NullValue.Instance; };
     runtime.NativeBindings["recordB"] = args => { recordedB.Add(args[0]); return NullValue.Instance; };
 
-    ScriptEvaluation evalA = runtime.RunFromSource(
+    var runA = runtime.RunFromSource(
       "native function void recordA(Object v);\nrecordA(1);");
-    ScriptEvaluation evalB = runtime.RunFromSource(
+    runA.RunToCompletion(runtime.OperationBinder);
+
+    var runB = runtime.RunFromSource(
       "native function void recordB(Object v);\nrecordB(2);");
+    runB.RunToCompletion(runtime.OperationBinder);
 
-    // Pumping until evalB is done must advance evalA as well, since both
-    // share the same underlying ScriptScheduler.
-    runtime.RunUntilComplete(evalB);
-
-    Assert.True(evalA.IsCompleted);
-    Assert.True(evalB.IsCompleted);
+    Assert.Equal(ProgramRunResult.Completed, runA.Result);
+    Assert.Equal(ProgramRunResult.Completed, runB.Result);
     Assert.Equal(1L, Assert.IsType<IntValue>(Assert.Single(recordedA)).Value);
     Assert.Equal(2L, Assert.IsType<IntValue>(Assert.Single(recordedB)).Value);
   }
 
   [Fact]
-  public void MultipleConcurrentScripts_FromSameGraph_RunIndependently()
+  public void RunFromGraph_TwoIndependentRuns_BothCompleteIndependently()
   {
-    // Two evaluations of the same compiled graph both produce their own
-    // output; completing one does not suppress the other.
+    // The same compiled graph can be run twice via independent ProgramRuns;
+    // each produces its own output and completing one does not affect the
+    // other.
     var runtime = CreateRuntimeForEvaluation();
     var recorded = new List<ALKScriptValue>();
     runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
 
     ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(42);");
-    ScriptEvaluation eval1 = runtime.RunFromGraph(graph);
-    ScriptEvaluation eval2 = runtime.RunFromGraph(graph);
+    var run1 = runtime.RunFromGraph(graph);
+    var run2 = runtime.RunFromGraph(graph);
 
-    runtime.RunUntilComplete(eval2);
+    run1.RunToCompletion(runtime.OperationBinder);
+    run2.RunToCompletion(runtime.OperationBinder);
 
-    Assert.True(eval1.IsCompleted);
-    Assert.True(eval2.IsCompleted);
+    Assert.Equal(ProgramRunResult.Completed, run1.Result);
+    Assert.Equal(ProgramRunResult.Completed, run2.Result);
     Assert.Equal(2, recorded.Count);
     Assert.All(recorded, v => Assert.Equal(42L, Assert.IsType<IntValue>(v).Value));
-  }
-
-  [Fact]
-  public void Pump_WhenNoActiveEvaluations_ReturnsZero()
-  {
-    var runtime = CreateRuntimeForEvaluation();
-
-    int advanced = runtime.Pump();
-
-    Assert.Equal(0, advanced);
   }
 }

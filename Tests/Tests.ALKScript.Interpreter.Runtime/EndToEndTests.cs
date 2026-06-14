@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator;
+using ALKScript.Interpreter.Evaluator.Cursor;
 using ALKScript.Interpreter.Parser.Modules;
 using Tests.ALKScript.Interpreter.Runtime.Support;
 
@@ -64,7 +65,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -160,7 +161,7 @@ public class EndToEndTests : RuntimeTestBase
       throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
     });
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -177,7 +178,7 @@ public class EndToEndTests : RuntimeTestBase
   // ── Async Fetcher ─────────────────────────────────────────────────────────
 
   [Fact]
-  public async Task AsyncFetcher_NativeAsyncMethodOnClassInstance_ProducesExpectedOutput()
+  public void AsyncFetcher_NativeAsyncMethodOnClassInstance_ProducesExpectedOutput()
   {
     // The program spans two core modules:
     //   network.alk   — declares a native class HttpClient with a
@@ -231,18 +232,10 @@ public class EndToEndTests : RuntimeTestBase
       }));
     };
 
-    // Drive the script via Pump() — one call per simulated game tick — rather
-    // than RunUntilComplete.  Between ticks we yield the thread briefly so the
-    // background Task.Delay completions can post their continuations onto the
-    // scheduler queue; Pump() then picks them up on the next tick.  This is
-    // exactly how a real game host would integrate the script runtime.
-    var evaluation = runtime.RunFromFile("main.alk");
-    while (!evaluation.IsCompleted)
-    {
-      runtime.Pump();
-      await Task.Delay(5, TestContext.Current.CancellationToken);
-    }
-    runtime.Pump(); // drain any continuations queued in the final tick
+    // Each 'await client.get(url)' suspends with a genuinely pending Task
+    // (Task.Run + Task.Delay); RunToCompletion waits on each one in turn and
+    // resumes with its settled result, mirroring a real host driving the run.
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -258,31 +251,28 @@ public class EndToEndTests : RuntimeTestBase
   // ── Pump Ordering ─────────────────────────────────────────────────────────
 
   [Fact]
-  public void PumpOrdering_ScriptSuspendsAtEachAwait_LogsIncrementallyAcrossPumps()
+  public void PumpOrdering_ScriptSuspendsAtEachAwait_LogsIncrementallyAcrossResumes()
   {
     // Verifies that execution genuinely stops at each 'await' and only
-    // advances when the host calls Pump() — the core contract for game-loop
-    // integration.
+    // advances when the host resumes the run — the core contract for
+    // game-loop integration.
     //
     // Each 'sensor.read()' binding captures its own TaskCompletionSource so
     // the test controls exactly when each async operation settles, with no
-    // timing dependency.  Because ScheduledTask uses ExecuteSynchronously on
-    // its ContinueWith, calling TCS.SetResult enqueues the script continuation
-    // synchronously before SetResult returns — so by the time Pump() is called
-    // the continuation is already in the queue and runs deterministically.
+    // timing dependency.
     //
-    // Checkpoint 0 — after RunFromFile, before any Pump:
+    // Checkpoint 0 — after RunFromFile, before any Resume:
     //   The synchronous prefix of the script (log("starting")) has already run
     //   on the calling thread.  The first 'await sensor.read()' has suspended
     //   evaluation; nothing beyond it has executed yet.
     //
-    // Checkpoint 1 — after settling read #1 and one Pump:
+    // Checkpoint 1 — after settling read #1 and resuming:
     //   The continuation resumes, logs "reading-1: 42", then suspends again at
     //   the second 'await sensor.read()'.  Exactly one new log line appears.
     //
-    // Checkpoint 2 — after settling read #2 and one Pump:
+    // Checkpoint 2 — after settling read #2 and resuming:
     //   The script runs to completion: "reading-2: 99" and "done" are logged in
-    //   the same pump and evaluation.IsCompleted flips to true.
+    //   the same resume and run.Result flips to Completed.
 
     var logged = new List<string>();
     var pendingReads = new List<TaskCompletionSource<ALKScriptValue>>();
@@ -315,29 +305,28 @@ public class EndToEndTests : RuntimeTestBase
     // RunFromFile starts the evaluator, which runs synchronously until the
     // first 'await sensor.read()' suspends it.  The pre-await log("starting")
     // has already executed on this thread; nothing after the first await has.
-    var evaluation = runtime.RunFromFile("main.alk");
+    var run = runtime.RunFromFile("main.alk");
 
     Assert.Equal(new[] { "starting" }, logged);
-    Assert.False(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Awaiting, run.Result);
 
     // ── Checkpoint 1 ──────────────────────────────────────────────────────
-    // Settle read #1: the TCS continuation is synchronously enqueued onto the
-    // scheduler before SetResult returns.  Pump() drains it: the script logs
-    // "reading-1: 42", then suspends again at the second await.
+    // Settle read #1 and resume: the script logs "reading-1: 42", then
+    // suspends again at the second await.
     pendingReads[0].SetResult(new IntValue(42));
-    runtime.Pump();
+    run.Resume(run.PendingAwait!.Task!.GetAwaiter().GetResult());
 
     Assert.Equal(new[] { "starting", "reading-1: 42" }, logged);
-    Assert.False(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Awaiting, run.Result);
 
     // ── Checkpoint 2 ──────────────────────────────────────────────────────
-    // Settle read #2: the script now runs to the end in one Pump — logging
-    // "reading-2: 99" and "done" with no further awaits in between.
+    // Settle read #2 and resume: the script now runs to the end in one
+    // step — logging "reading-2: 99" and "done" with no further awaits in between.
     pendingReads[1].SetResult(new IntValue(99));
-    runtime.Pump();
+    run.Resume(run.PendingAwait!.Task!.GetAwaiter().GetResult());
 
     Assert.Equal(new[] { "starting", "reading-1: 42", "reading-2: 99", "done" }, logged);
-    Assert.True(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
 
   // ── Field declaration initializers ───────────────────────────────────────
@@ -378,7 +367,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -436,7 +425,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -489,7 +478,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -550,7 +539,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -627,7 +616,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -685,7 +674,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -742,7 +731,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -789,7 +778,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -851,7 +840,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -891,7 +880,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains(expectedDescription, exception.Message);
     Assert.Empty(logged);
@@ -938,7 +927,7 @@ public class EndToEndTests : RuntimeTestBase
       throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
     });
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -989,7 +978,7 @@ public class EndToEndTests : RuntimeTestBase
       throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
     });
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign a value of type 'function'", exception.Message);
     Assert.Empty(logged);
@@ -1023,7 +1012,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1068,7 +1057,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1106,7 +1095,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("sealed", exception.Message);
     Assert.Empty(logged);
@@ -1140,7 +1129,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1188,7 +1177,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1228,7 +1217,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot cast a value of type 'string' to 'int'", exception.Message);
     Assert.Empty(logged);
@@ -1263,7 +1252,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1298,7 +1287,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign to 'const' variable 'max'", exception.Message);
     Assert.Equal(new[] { "max=100" }, logged);
@@ -1325,7 +1314,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign to 'const' variable 'count'", exception.Message);
     Assert.Equal(new[] { "count=1" }, logged);
@@ -1354,7 +1343,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1388,7 +1377,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign to readonly field 'x'", exception.Message);
     Assert.Equal(new[] { "x=3" }, logged);
@@ -1415,7 +1404,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign to readonly field 'x'", exception.Message);
     Assert.Equal(new[] { "x=3" }, logged);
@@ -1442,7 +1431,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign to readonly field 'value'", exception.Message);
     Assert.Equal(new[] { "value=0" }, logged);
@@ -1475,7 +1464,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1521,7 +1510,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign 'null' to", exception.Message);
     Assert.Contains(expectedDescription, exception.Message);
@@ -1556,7 +1545,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1592,7 +1581,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Cannot assign a value of type", exception.Message);
     Assert.Contains(expectedDescription, exception.Message);
@@ -1622,7 +1611,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains(expectedMessage, exception.Message);
     Assert.Empty(logged);
@@ -1657,7 +1646,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -1695,7 +1684,7 @@ public class EndToEndTests : RuntimeTestBase
       return NullValue.Instance;
     };
 
-    var exception = Assert.Throws<RuntimeException>(() => runtime.RunUntilComplete(runtime.RunFromFile("main.alk")));
+    var exception = Assert.Throws<RuntimeException>(() => runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder));
 
     Assert.Contains("Uncaught exception: boom", exception.Message);
     Assert.Equal(new[] { "try: before throw", "finally: still runs" }, logged);

@@ -134,4 +134,72 @@ public class CursorTryThrowReturnExecutorTests
     Assert.Equal(SignalKind.Thrown, cursor.Signal!.Value.Kind);
     Assert.Equal(99L, Assert.IsType<IntValue>(cursor.Signal.Value.Value).Value);
   }
+
+  /// <summary>A zero-arity native function that raises a "Cancelled" signal on the given cursor when called — models an external stop request arriving mid-try-block.</summary>
+  private static CursorNativeFunctionValue TriggerCancel(EvaluationCursor cursor) =>
+    new CursorNativeFunctionValue("triggerCancel", 0, (_, _) =>
+    {
+      cursor.Signal = Signal.Cancelled();
+      return StepResult.Completed(NullValue.Instance);
+    });
+
+  private static CallExpr CallNoArgs(string name) =>
+    new CallExpr(Nodes.Ident(name), Nodes.Token(ALKScriptTokenType.RightParen, ")"), System.Array.Empty<Expr>());
+
+  [Fact]
+  public void Execute_TryWithCancelledSignalDuringTryBlock_BypassesCatchClauses()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("triggerCancel", TriggerCancel(cursor));
+    environment.Define("caught", BoolValue.Of(false));
+
+    var tryBlock = new BlockStmt(new List<Stmt>
+    {
+      new ExpressionStmt(CallNoArgs("triggerCancel")),
+    });
+
+    var catchBlock = new BlockStmt(new List<Stmt>
+    {
+      new ExpressionStmt(new AssignmentExpr(Nodes.Ident("caught"), Nodes.Literal(true))),
+    });
+
+    var tryStmt = new TryStmt(tryBlock, new[] { new CatchClause(exceptionType: null, Nodes.Identifier("e"), catchBlock) }, finallyBlock: null);
+
+    Execute(cursor, tryStmt, environment);
+
+    Assert.True(environment.TryGet("caught", out var value));
+    Assert.False(Assert.IsType<BoolValue>(value).Value);
+    Assert.NotNull(cursor.Signal);
+    Assert.Equal(SignalKind.Cancelled, cursor.Signal!.Value.Kind);
+  }
+
+  [Fact]
+  public void Execute_TryWithCancelledSignalDuringTryBlock_StillRunsFinallyBlock()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("triggerCancel", TriggerCancel(cursor));
+    environment.Define("ranFinally", BoolValue.Of(false));
+
+    var tryBlock = new BlockStmt(new List<Stmt>
+    {
+      new ExpressionStmt(CallNoArgs("triggerCancel")),
+    });
+
+    var finallyBlock = new BlockStmt(new List<Stmt>
+    {
+      new ExpressionStmt(new AssignmentExpr(Nodes.Ident("ranFinally"), Nodes.Literal(true))),
+    });
+
+    var tryStmt = new TryStmt(tryBlock, System.Array.Empty<CatchClause>(), finallyBlock);
+
+    Execute(cursor, tryStmt, environment);
+
+    Assert.True(environment.TryGet("ranFinally", out var value));
+    Assert.True(Assert.IsType<BoolValue>(value).Value);
+
+    Assert.NotNull(cursor.Signal);
+    Assert.Equal(SignalKind.Cancelled, cursor.Signal!.Value.Kind);
+  }
 }

@@ -752,10 +752,17 @@ is ever reached).
   are not supported — these run via `cursor.Call(...)` and a callback
   returning `IsAwaiting` is unhandled.
 
-`CursorProgramEvaluator`/`EvaluationCursor` exist alongside the original
-`Task`-based evaluator (`ProgramEvaluator` + `ScriptScheduler`) — differential
-testing (`Tests.ALKScript.Interpreter.Evaluator/Cursor/CursorDifferentialTests.cs`)
-confirms both produce identical `record()` output for the in-scope subset of
-the existing test suite's scripts. Cutover (making `CursorProgramEvaluator`
-the only evaluator and deleting `ScriptScheduler`/`ScheduledTask`/etc.) is a
-later plan, once the limitations above are addressed.
+**Cutover complete**: `CursorProgramEvaluator`/`EvaluationCursor` is now the
+sole evaluator. The original `Task`-based evaluator (`ProgramEvaluator` +
+`ScriptScheduler`/`ScheduledTask`, plus `ExpressionEvaluator`/
+`StatementExecutor`/`CallInvoker` and their interfaces) has been deleted,
+along with the differential test suite that compared the two
+(`CursorDifferentialTests`/`CursorEvaluatorTestBase`).
+
+`IProgramRuntime`/`ProgramRuntime` (`ALKScript.Interpreter.Runtime`) now expose
+`CursorProgramEvaluator`'s suspend/resume model directly via `ProgramRun`:
+`RunFromGraph`/`RunFromSource`/`RunFromFile` return a `ProgramRun`, which
+exposes `Result` (`ProgramRunResult`), `PendingAwait`, `Resume`,
+`ResumeFaulted`, and `RunToCompletion(IAsyncOperationBinder?)`. The old
+`Pump()`/`RunUntilComplete(ScriptEvaluation)`/`IScriptLoop`/`ScriptEvaluation`
+surface has been removed.

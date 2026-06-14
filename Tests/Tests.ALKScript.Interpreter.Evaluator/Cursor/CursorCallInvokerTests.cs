@@ -132,4 +132,181 @@ public class CursorCallInvokerTests
 
     Assert.Equal(new long[] { 2, 4, 6 }, value.Items.ConvertAll(item => ((IntValue)item).Value));
   }
+
+  [Fact]
+  public void Eval_Call_NativeFunctionWithMatchingArity_InvokesItsImplementation()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    IReadOnlyList<ALKScriptValue>? receivedArguments = null;
+    environment.Define("f", new NativeFunctionValue("f", 1, arguments =>
+    {
+      receivedArguments = arguments;
+      return new IntValue(42);
+    }));
+
+    var call = new CallExpr(Nodes.Ident("f"), Nodes.Token(ALKScriptTokenType.RightParen, ")"), new Expr[] { Nodes.Literal(1L) });
+
+    var value = EvalCompleted(cursor, call, environment);
+
+    Assert.Equal(42L, Assert.IsType<IntValue>(value).Value);
+    Assert.Single(receivedArguments!);
+  }
+
+  [Fact]
+  public void Eval_Call_WithMismatchedArity_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("f", new NativeFunctionValue("f", 2, _ => NullValue.Instance));
+
+    var call = new CallExpr(Nodes.Ident("f"), Nodes.Token(ALKScriptTokenType.RightParen, ")"), new Expr[] { Nodes.Literal(1L) });
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(call, environment));
+
+    Assert.Contains("Expected 2 argument(s) but got 1", exception.Message);
+  }
+
+  [Fact]
+  public void Eval_Call_NonCallableValue_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("x", new IntValue(1));
+
+    var call = new CallExpr(Nodes.Ident("x"), Nodes.Token(ALKScriptTokenType.RightParen, ")"), System.Array.Empty<Expr>());
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(call, environment));
+
+    Assert.Contains("Cannot call a value of type 'int'", exception.Message);
+  }
+
+  [Fact]
+  public void Eval_Call_FunctionValueWithBoundInstance_DefinesThisInTheCallEnvironment()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
+    var classValue = new ClassValue(classDecl, null, environment);
+    var instance = new InstanceValue(classValue);
+
+    // function Foo getThis() { return this; }
+    var declaration = new FunctionDecl(
+      isNative: false,
+      typeParameters: System.Array.Empty<string>(),
+      returnType: IntType,
+      name: Nodes.Identifier("getThis"),
+      parameters: System.Array.Empty<Parameter>(),
+      body: new BlockStmt(new List<Stmt>
+      {
+        new ReturnStmt(Nodes.Token(ALKScriptTokenType.Return, "return"), Nodes.Ident("this")),
+      }));
+
+    environment.Define("getThis", new FunctionValue(declaration, environment, instance));
+
+    var call = new CallExpr(Nodes.Ident("getThis"), Nodes.Token(ALKScriptTokenType.RightParen, ")"), System.Array.Empty<Expr>());
+
+    var value = EvalCompleted(cursor, call, environment);
+
+    Assert.Same(instance, value);
+  }
+
+  [Fact]
+  public void Eval_Call_FunctionValue_LeavesAThrownSignalPendingForTheCaller()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    // function void f() { throw "boom"; }
+    var declaration = new FunctionDecl(
+      isNative: false,
+      typeParameters: System.Array.Empty<string>(),
+      returnType: Nodes.VoidType,
+      name: Nodes.Identifier("f"),
+      parameters: System.Array.Empty<Parameter>(),
+      body: new BlockStmt(new List<Stmt>
+      {
+        new ThrowStmt(Nodes.Token(ALKScriptTokenType.Throw, "throw"), Nodes.Literal("boom")),
+      }));
+
+    environment.Define("f", new FunctionValue(declaration, environment));
+
+    var call = new CallExpr(Nodes.Ident("f"), Nodes.Token(ALKScriptTokenType.RightParen, ")"), System.Array.Empty<Expr>());
+
+    cursor.Eval(call, environment);
+
+    Assert.NotNull(cursor.Signal);
+    Assert.Equal(SignalKind.Thrown, cursor.Signal!.Value.Kind);
+  }
+
+  [Fact]
+  public void Eval_New_WithMismatchedConstructorArity_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var constructor = new ConstructorDecl(AccessModifier.Public, new[] { new Parameter(IntType, "x") }, new BlockStmt(System.Array.Empty<Stmt>()));
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), new MemberDecl[] { constructor });
+    environment.Define("Foo", new ClassValue(classDecl, null, environment));
+
+    var newExpr = new NewExpr(Nodes.Token(ALKScriptTokenType.New, "new"), Nodes.Identifier("Foo"), System.Array.Empty<TypeNode>(), System.Array.Empty<Expr>());
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(newExpr, environment));
+
+    Assert.Contains("Expected 1 argument(s) but got 0", exception.Message);
+  }
+
+  [Fact]
+  public void Eval_New_WithoutAConstructor_ReturnsAnEmptyInstanceWhenCalledWithNoArguments()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
+    environment.Define("Foo", new ClassValue(classDecl, null, environment));
+
+    var newExpr = new NewExpr(Nodes.Token(ALKScriptTokenType.New, "new"), Nodes.Identifier("Foo"), System.Array.Empty<TypeNode>(), System.Array.Empty<Expr>());
+
+    var value = EvalCompleted(cursor, newExpr, environment);
+
+    Assert.IsType<InstanceValue>(value);
+  }
+
+  [Fact]
+  public void Eval_New_WithoutAConstructorButGivenArguments_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
+    environment.Define("Foo", new ClassValue(classDecl, null, environment));
+
+    var newExpr = new NewExpr(Nodes.Token(ALKScriptTokenType.New, "new"), Nodes.Identifier("Foo"), System.Array.Empty<TypeNode>(), new Expr[] { Nodes.Literal(1L) });
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(newExpr, environment));
+
+    Assert.Contains("Expected 0 argument(s) but got 1", exception.Message);
+  }
+
+  [Fact]
+  public void Eval_New_ConsumesABareReturnSignalFromTheConstructorBody()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var constructor = new ConstructorDecl(AccessModifier.Public, System.Array.Empty<Parameter>(), new BlockStmt(new List<Stmt>
+    {
+      new ReturnStmt(Nodes.Token(ALKScriptTokenType.Return, "return"), null),
+    }));
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), new MemberDecl[] { constructor });
+    environment.Define("Foo", new ClassValue(classDecl, null, environment));
+
+    var newExpr = new NewExpr(Nodes.Token(ALKScriptTokenType.New, "new"), Nodes.Identifier("Foo"), System.Array.Empty<TypeNode>(), System.Array.Empty<Expr>());
+
+    EvalCompleted(cursor, newExpr, environment);
+
+    Assert.Null(cursor.Signal);
+  }
 }

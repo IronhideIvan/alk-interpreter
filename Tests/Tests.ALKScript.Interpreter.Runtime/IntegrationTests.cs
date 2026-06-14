@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
+using ALKScript.Interpreter.Evaluator.Cursor;
 using ALKScript.Interpreter.Runtime;
 using Tests.ALKScript.Interpreter.Runtime.Support;
 
@@ -46,7 +47,7 @@ public class IntegrationTests
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile(ScriptPath("AnimalShowcase", "main.alk")));
+    runtime.RunFromFile(ScriptPath("AnimalShowcase", "main.alk")).RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -114,7 +115,7 @@ public class IntegrationTests
       throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
     });
 
-    runtime.RunUntilComplete(runtime.RunFromFile(ScriptPath("ItemProcessor", "main.alk")));
+    runtime.RunFromFile(ScriptPath("ItemProcessor", "main.alk")).RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -131,7 +132,7 @@ public class IntegrationTests
   // ── Async Fetcher ─────────────────────────────────────────────────────────
 
   [Fact]
-  public async Task AsyncFetcher_DefaultRuntime_ProducesExpectedOutput()
+  public void AsyncFetcher_DefaultRuntime_ProducesExpectedOutput()
   {
     var logged = new List<string>();
 
@@ -155,13 +156,10 @@ public class IntegrationTests
       }));
     };
 
-    var evaluation = runtime.RunFromFile(ScriptPath("AsyncFetcher", "main.alk"));
-    while (!evaluation.IsCompleted)
-    {
-      runtime.Pump();
-      await Task.Delay(5, TestContext.Current.CancellationToken);
-    }
-    runtime.Pump();
+    // Each 'await client.get(url)' suspends with a genuinely pending Task
+    // (Task.Run + Task.Delay); RunToCompletion waits on each one in turn and
+    // resumes with its settled result, mirroring a real host driving the run.
+    runtime.RunFromFile(ScriptPath("AsyncFetcher", "main.alk")).RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]
@@ -177,7 +175,7 @@ public class IntegrationTests
   // ── Pump Ordering ─────────────────────────────────────────────────────────
 
   [Fact]
-  public void PumpOrdering_DefaultRuntime_ScriptSuspendsAtEachAwait()
+  public void PumpOrdering_DefaultRuntime_ScriptSuspendsAtEachAwait_LogsIncrementallyAcrossResumes()
   {
     var logged = new List<string>();
     var pendingReads = new List<TaskCompletionSource<ALKScriptValue>>();
@@ -199,22 +197,22 @@ public class IntegrationTests
       return new ThunkValue(tcs.Task);
     };
 
-    var evaluation = runtime.RunFromFile(ScriptPath("PumpOrdering", "main.alk"));
+    var run = runtime.RunFromFile(ScriptPath("PumpOrdering", "main.alk"));
 
     Assert.Equal(new[] { "starting" }, logged);
-    Assert.False(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Awaiting, run.Result);
 
     pendingReads[0].SetResult(new IntValue(42));
-    runtime.Pump();
+    run.Resume(run.PendingAwait!.Task!.GetAwaiter().GetResult());
 
     Assert.Equal(new[] { "starting", "reading-1: 42" }, logged);
-    Assert.False(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Awaiting, run.Result);
 
     pendingReads[1].SetResult(new IntValue(99));
-    runtime.Pump();
+    run.Resume(run.PendingAwait!.Task!.GetAwaiter().GetResult());
 
     Assert.Equal(new[] { "starting", "reading-1: 42", "reading-2: 99", "done" }, logged);
-    Assert.True(evaluation.IsCompleted);
+    Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
 
   // ── Custom IModuleFileReader ──────────────────────────────────────────────
@@ -244,7 +242,7 @@ public class IntegrationTests
       return NullValue.Instance;
     };
 
-    runtime.RunUntilComplete(runtime.RunFromFile("main.alk"));
+    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
 
     Assert.Equal(
       new[]

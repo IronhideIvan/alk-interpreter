@@ -116,4 +116,89 @@ public class CursorStatementExecutorTests
     Assert.True(environment.TryGet("x", out var value));
     Assert.Equal(2L, Assert.IsType<IntValue>(value).Value);
   }
+
+  [Fact]
+  public void Execute_VariableDecl_DoesNotDefineWhenInitializerRaisesASignal()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var initializer = new ThrowStmt(Nodes.Token(ALKScriptTokenType.Throw, "throw"), Nodes.Literal(1L));
+    var block = new BlockStmt(new List<Stmt>
+    {
+      initializer,
+      new VariableDecl(type: null, Nodes.Identifier("x"), Nodes.Literal(1L)),
+    });
+
+    ExecuteCompleted(cursor, block, environment);
+
+    Assert.False(environment.TryGet("x", out _));
+  }
+
+  [Fact]
+  public void Execute_ReturnStatementWithoutValue_SetsReturnSignalToNull()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    ExecuteCompleted(cursor, new ReturnStmt(Nodes.Token(ALKScriptTokenType.Return, "return"), value: null), environment);
+
+    Assert.NotNull(cursor.Signal);
+    Assert.Equal(SignalKind.Return, cursor.Signal!.Value.Kind);
+    Assert.Same(NullValue.Instance, cursor.Signal.Value.Value);
+  }
+
+  [Fact]
+  public void Execute_AlreadyPendingSignal_SkipsExecutionEntirely()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("evaluated", BoolValue.Of(false));
+
+    var block = new BlockStmt(new List<Stmt>
+    {
+      new ReturnStmt(Nodes.Token(ALKScriptTokenType.Return, "return"), Nodes.Literal(1L)),
+      new ExpressionStmt(new AssignmentExpr(Nodes.Ident("evaluated"), Nodes.Literal(true))),
+    });
+
+    ExecuteCompleted(cursor, block, environment);
+
+    Assert.True(environment.TryGet("evaluated", out var value));
+    Assert.False(Assert.IsType<BoolValue>(value).Value);
+  }
+
+  [Fact]
+  public void Execute_FunctionDecl_DefinesItsValueViaTheFunctionValueFactory()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var declaration = new FunctionDecl(false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("greet"), System.Array.Empty<Parameter>(), new BlockStmt(System.Array.Empty<Stmt>()));
+
+    ExecuteCompleted(cursor, declaration, environment);
+
+    Assert.True(environment.TryGet("greet", out var value));
+    var function = Assert.IsType<FunctionValue>(value);
+    Assert.Same(declaration, function.Declaration);
+  }
+
+  [Fact]
+  public void Execute_ClassDeclWithSuperclassNameThatIsNotAClass_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("Missing", new IntValue(1));
+
+    var declaration = new ClassDecl(
+      false,
+      Nodes.Identifier("Derived"),
+      System.Array.Empty<string>(),
+      superclassName: Nodes.Identifier("Missing"),
+      superclassTypeArguments: System.Array.Empty<TypeNode>(),
+      members: System.Array.Empty<MemberDecl>());
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Execute(declaration, environment));
+
+    Assert.Contains("'Missing' is not a class", exception.Message);
+  }
 }

@@ -2,8 +2,6 @@ using System.Collections.Generic;
 using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
-using ALKScript.Interpreter.Evaluator;
-using ALKScript.Interpreter.Evaluator.Scheduling;
 using ALKScript.Interpreter.Lexer;
 using ALKScript.Interpreter.Parser;
 using ALKScript.Interpreter.Parser.Modules;
@@ -38,7 +36,7 @@ public abstract class RuntimeTestBase
       extraBindings: extraBindings,
       out var recorded);
 
-    runtime.RunUntilComplete(runtime.RunFromSource(source));
+    runtime.RunFromSource(source).RunToCompletion(runtime.OperationBinder);
     return recorded;
   }
 
@@ -56,14 +54,16 @@ public abstract class RuntimeTestBase
       extraBindings: extraBindings,
       out var recorded);
 
-    runtime.RunUntilComplete(runtime.RunFromFile(entryFilePath));
+    runtime.RunFromFile(entryFilePath).RunToCompletion(runtime.OperationBinder);
     return recorded;
   }
 
   /// <summary>
-  /// Creates a runtime whose evaluation is not yet driven, so the caller can
-  /// inspect <see cref="ScriptEvaluation.IsCompleted"/> before and after
-  /// calling <see cref="IScriptLoop.RunUntilComplete"/>.
+  /// Creates a runtime whose runs are not yet started, so the caller can
+  /// drive a <see cref="Evaluator.Cursor.ProgramRun"/> step by step (e.g.
+  /// inspecting <see cref="Evaluator.Cursor.ProgramRun.Result"/> and
+  /// <see cref="Evaluator.Cursor.ProgramRun.PendingAwait"/> before and after
+  /// calling <see cref="Evaluator.Cursor.ProgramRun.Resume"/>).
   /// </summary>
   protected static ProgramRuntime CreateRuntimeForEvaluation(
     IReadOnlyDictionary<string, string>? files = null,
@@ -89,8 +89,6 @@ public abstract class RuntimeTestBase
     var capturedRecorded = new List<ALKScriptValue>();
     recorded = capturedRecorded;
 
-    var scheduler = new ScriptScheduler();
-
     var loader = new ProgramLoader(
       new ALKScriptLexer(),
       new ALKScriptParser(),
@@ -98,7 +96,7 @@ public abstract class RuntimeTestBase
       new FakeCoreModuleProvider(coreModules ?? new Dictionary<string, string>()),
       preludes);
 
-    var runtime = new ProgramRuntime(loader, scheduler, scheduler, new EvaluatorFactory());
+    var runtime = new ProgramRuntime(loader);
 
     runtime.NativeBindings["record"] = args => { capturedRecorded.Add(args[0]); return NullValue.Instance; };
 

@@ -6,8 +6,7 @@ using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Lexer;
 using ALKScript.Interpreter.Parser;
-using ALKScript.Interpreter.Evaluator;
-using ALKScript.Interpreter.Evaluator.Scheduling;
+using ALKScript.Interpreter.Evaluator.Cursor;
 
 namespace Tests.ALKScript.Interpreter.Evaluator;
 
@@ -48,9 +47,8 @@ public abstract class EvaluatorTestBase
 
   protected static void RunWithBindings(string source, ScriptNativeBindings nativeBindings)
   {
-    var scheduler = new ScriptScheduler();
     var graph = LoadGraph(source);
-    scheduler.RunUntilComplete(new ProgramEvaluator(nativeBindings, scheduler: scheduler).Evaluate(graph));
+    ProgramRun.Start(new CursorProgramEvaluator(nativeBindings, null, null), graph).RunToCompletion();
   }
 
   /// <summary>
@@ -60,9 +58,8 @@ public abstract class EvaluatorTestBase
   /// </summary>
   protected static void RunWithOperationBinder(string source, ScriptNativeBindings? nativeBindings, IAsyncOperationBinder operationBinder)
   {
-    var scheduler = new ScriptScheduler();
     var graph = LoadGraph(source);
-    scheduler.RunUntilComplete(new ProgramEvaluator(nativeBindings, operationBinder: operationBinder, scheduler: scheduler).Evaluate(graph));
+    ProgramRun.Start(new CursorProgramEvaluator(nativeBindings, null, operationBinder), graph).RunToCompletion(operationBinder);
   }
 
   /// <summary>
@@ -71,9 +68,8 @@ public abstract class EvaluatorTestBase
   /// </summary>
   protected static void RunWithMethodBindings(string source, ScriptNativeBindings? nativeBindings, ScriptNativeMethodBindings nativeMethodBindings)
   {
-    var scheduler = new ScriptScheduler();
     var graph = LoadGraph(source);
-    scheduler.RunUntilComplete(new ProgramEvaluator(nativeBindings, nativeMethodBindings, scheduler: scheduler).Evaluate(graph));
+    ProgramRun.Start(new CursorProgramEvaluator(nativeBindings, nativeMethodBindings, null), graph).RunToCompletion();
   }
 
   /// <summary>
@@ -89,10 +85,9 @@ public abstract class EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var scheduler = new ScriptScheduler();
     var graph = LoadGraph(source);
-    var evaluator = new ProgramEvaluator(bindings, operationBinder: operationBinder, scheduler: scheduler);
-    scheduler.RunUntilComplete(evaluator.Evaluate(graph));
+    var evaluator = new CursorProgramEvaluator(bindings, null, operationBinder);
+    ProgramRun.Start(evaluator, graph).RunToCompletion(operationBinder);
     return (recorded, evaluator.Log);
   }
 
@@ -107,10 +102,9 @@ public abstract class EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var scheduler = new ScriptScheduler();
     var graph = LoadGraph(source);
-    var evaluator = new ProgramEvaluator(bindings, operationBinder: operationBinder, replayLog: replayLog, scheduler: scheduler);
-    scheduler.RunUntilComplete(evaluator.Evaluate(graph));
+    var evaluator = new CursorProgramEvaluator(bindings, null, operationBinder, replayLog);
+    ProgramRun.Start(evaluator, graph).RunToCompletion(operationBinder);
     return recorded;
   }
 
@@ -119,9 +113,8 @@ public abstract class EvaluatorTestBase
   /// </summary>
   protected static void RunWithGlobals(string source, IReadOnlyList<string> globalPreludeSources, ScriptNativeBindings nativeBindings)
   {
-    var scheduler = new ScriptScheduler();
     var graph = LoadGraph(source, globalPreludeSources);
-    scheduler.RunUntilComplete(new ProgramEvaluator(nativeBindings, scheduler: scheduler).Evaluate(graph));
+    ProgramRun.Start(new CursorProgramEvaluator(nativeBindings, null, null), graph).RunToCompletion();
   }
 
   protected static ModuleGraph LoadGraph(string source, IReadOnlyList<string>? globalPreludeSources = null)

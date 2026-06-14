@@ -1300,9 +1300,24 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// </summary>
     private StepResult EvalAwait(AwaitExpr expression, ScriptEnvironment environment, bool allowSuspend)
     {
-      if (_cursor.HasResumeValue)
+      // Only the AwaitExpr at the very leaf of the resume trail — reached once
+      // every enclosing resumable construct has finished fast-forwarding into
+      // its recorded child (IsResuming has dropped back to false) — is the one
+      // that originally suspended. An outer `await <call>` (e.g. `await load()`
+      // where load() itself awaits) must NOT consume the resume value; it needs
+      // to re-evaluate its operand so the call's body resumes via the trail.
+      if (_cursor.HasResumeValue && !_cursor.IsResuming)
       {
-        return StepResult.Completed(_cursor.TakeResumeValue());
+        var resumeValue = _cursor.TakeResumeValue();
+
+        var faultMessage = _cursor.TakePendingFault();
+        if (faultMessage != null)
+        {
+          _cursor.Signal = Signal.Thrown(new StringValue(faultMessage));
+          return StepResult.Completed(NullValue.Instance);
+        }
+
+        return StepResult.Completed(resumeValue);
       }
 
       if (_cursor.TryTakeResumeComposite(out var compositeElements))

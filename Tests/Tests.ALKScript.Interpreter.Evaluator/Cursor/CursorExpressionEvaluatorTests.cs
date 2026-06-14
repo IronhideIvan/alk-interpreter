@@ -170,4 +170,155 @@ public class CursorExpressionEvaluatorTests
 
     Assert.Equal(3L, Assert.IsType<IntValue>(value).Value);
   }
+
+  [Fact]
+  public void Eval_AssignmentToIdentifier_UpdatesTheBindingAndReturnsTheValue()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("x", new IntValue(1));
+
+    var assignment = new AssignmentExpr(Nodes.Ident("x"), Nodes.Literal(2L));
+
+    var value = EvalCompleted(cursor, assignment, environment);
+
+    Assert.Equal(2L, Assert.IsType<IntValue>(value).Value);
+    Assert.True(environment.TryGet("x", out var stored));
+    Assert.Equal(2L, Assert.IsType<IntValue>(stored).Value);
+  }
+
+  [Fact]
+  public void Eval_AssignmentToUndefinedIdentifier_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var assignment = new AssignmentExpr(Nodes.Ident("missing"), Nodes.Literal(1L));
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(assignment, new ScriptEnvironment()));
+
+    Assert.Contains("Undefined name 'missing'", exception.Message);
+  }
+
+  [Theory]
+  [InlineData(ALKScriptTokenType.AmpAmp, "&&", false, false, false)]
+  [InlineData(ALKScriptTokenType.AmpAmp, "&&", true, true, true)]
+  [InlineData(ALKScriptTokenType.PipePipe, "||", true, false, true)]
+  [InlineData(ALKScriptTokenType.PipePipe, "||", false, true, true)]
+  public void Eval_LogicalOperators_ShortCircuitWithoutEvaluatingTheRightOperand(
+    ALKScriptTokenType operatorType, string lexeme, bool leftValue, bool expectRightEvaluated, bool expectedResult)
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("evaluated", BoolValue.Of(false));
+    var left = new LiteralExpr(Nodes.Token(ALKScriptTokenType.True, leftValue.ToString()), leftValue);
+    var right = new AssignmentExpr(Nodes.Ident("evaluated"), new LiteralExpr(Nodes.Token(ALKScriptTokenType.True, "true"), true));
+    var binary = new BinaryExpr(left, Nodes.Operator(operatorType, lexeme), right);
+
+    var result = EvalCompleted(cursor, binary, environment);
+
+    Assert.True(environment.TryGet("evaluated", out var evaluatedFlag));
+    Assert.Equal(expectRightEvaluated, Assert.IsType<BoolValue>(evaluatedFlag).Value);
+    Assert.Equal(expectedResult, Assert.IsType<BoolValue>(result).Value);
+  }
+
+  [Theory]
+  [InlineData(ALKScriptTokenType.Plus, "+", 3L)]
+  [InlineData(ALKScriptTokenType.Minus, "-", -1L)]
+  [InlineData(ALKScriptTokenType.Star, "*", 2L)]
+  public void Eval_ArithmeticBinary_DelegatesToOperators(ALKScriptTokenType operatorType, string lexeme, long expected)
+  {
+    var cursor = MakeCursor();
+    var binary = new BinaryExpr(Nodes.Literal(1L), Nodes.Operator(operatorType, lexeme), Nodes.Literal(2L));
+
+    var value = EvalCompleted(cursor, binary, new ScriptEnvironment());
+
+    Assert.Equal(expected, Assert.IsType<IntValue>(value).Value);
+  }
+
+  [Fact]
+  public void Eval_UnaryBang_NegatesTruthiness()
+  {
+    var cursor = MakeCursor();
+    var unary = new UnaryExpr(Nodes.Operator(ALKScriptTokenType.Bang, "!"), Nodes.Literal(true));
+
+    var value = EvalCompleted(cursor, unary, new ScriptEnvironment());
+
+    Assert.False(Assert.IsType<BoolValue>(value).Value);
+  }
+
+  [Fact]
+  public void Eval_UnaryMinus_OnNonNumericOperand_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var unary = new UnaryExpr(Nodes.Operator(ALKScriptTokenType.Minus, "-"), Nodes.Literal("text"));
+
+    Assert.Throws<RuntimeException>(() => cursor.Eval(unary, new ScriptEnvironment()));
+  }
+
+  [Fact]
+  public void Eval_NewWithNonClassTypeName_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("NotAClass", new IntValue(1));
+    var newExpr = new NewExpr(Nodes.Token(ALKScriptTokenType.New, "new"), Nodes.Identifier("NotAClass"), System.Array.Empty<TypeNode>(), System.Array.Empty<Expr>());
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(newExpr, environment));
+
+    Assert.Contains("'NotAClass' is not a class", exception.Message);
+  }
+
+  [Fact]
+  public void Eval_GetOnInstance_ReturnsFieldValue()
+  {
+    var cursor = MakeCursor();
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
+    var instance = new InstanceValue(new ClassValue(classDecl, null, new ScriptEnvironment()));
+    instance.Fields["name"] = new StringValue("Ada");
+    var environment = new ScriptEnvironment();
+    environment.Define("instance", instance);
+    var get = new GetExpr(Nodes.Ident("instance"), Nodes.Identifier("name"));
+
+    var value = EvalCompleted(cursor, get, environment);
+
+    Assert.Equal("Ada", Assert.IsType<StringValue>(value).Value);
+  }
+
+  [Fact]
+  public void Eval_GetOfUndefinedProperty_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Foo"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
+    var instance = new InstanceValue(new ClassValue(classDecl, null, new ScriptEnvironment()));
+    var environment = new ScriptEnvironment();
+    environment.Define("instance", instance);
+    var get = new GetExpr(Nodes.Ident("instance"), Nodes.Identifier("missing"));
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(get, environment));
+
+    Assert.Contains("Undefined property 'missing'", exception.Message);
+  }
+
+  [Fact]
+  public void Eval_IndexOutOfBounds_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("items", new ArrayValue(new List<ALKScriptValue> { new IntValue(10) }));
+    var index = new IndexExpr(Nodes.Ident("items"), Nodes.Literal(5L), Nodes.Token(ALKScriptTokenType.RightBracket, "]"));
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Eval(index, environment));
+
+    Assert.Contains("out of bounds", exception.Message);
+  }
+
+  [Fact]
+  public void Eval_AlreadyPendingSignal_ShortCircuitsToNull()
+  {
+    var cursor = MakeCursor();
+    cursor.Signal = Signal.Return(NullValue.Instance);
+
+    var value = EvalCompleted(cursor, Nodes.Literal(1L), new ScriptEnvironment());
+
+    Assert.Same(NullValue.Instance, value);
+  }
 }
