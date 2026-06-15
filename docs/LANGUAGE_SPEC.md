@@ -803,8 +803,8 @@ tracked in docs/ASYNC_AWAIT_DESIGN.md:
   twice across the suspend/resume cycle. Bind such expressions to a local
   first, e.g. `var a = sideEffect(); var y = foo(a);`.
 
-A host using **structural-snapshot Capture/Restore** ("Phase B", see
-docs/ASYNC_AWAIT_DESIGN.md Addendum 3) has one additional constraint, checked
+A host using **structural-snapshot Capture/Restore** (see
+docs/ASYNC_AWAIT_DESIGN.md §6.2) has one additional constraint, checked
 at Capture time: within each module (and global prelude), every
 class/interface/enum/function/import/export declaration must precede all of
 that module's top-level statements ("decls-before-statements"). Top-level
