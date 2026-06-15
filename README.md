@@ -19,6 +19,7 @@ the sake of my own curiosity :).
 If you have any questions/comments, you can reach out to me at alkfreelance@outlook.com
 
 That's all. 99% of everything else in this project is LLM generated. 
+
 -----
 
 ALKScript is a small, embeddable scripting language designed to be hosted
