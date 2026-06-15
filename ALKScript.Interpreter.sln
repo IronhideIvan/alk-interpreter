@@ -29,6 +29,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Seria
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.ALKScript.Interpreter.Serialization", "Tests\Tests.ALKScript.Interpreter.Serialization\Tests.ALKScript.Interpreter.Serialization.csproj", "{F1C9FB1D-859A-4E72-A978-CAC662F25831}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALK.Interpreter.Sample", "ALK.Interpreter.Sample\ALK.Interpreter.Sample.csproj", "{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -183,6 +185,18 @@ Global
 		{F1C9FB1D-859A-4E72-A978-CAC662F25831}.Release|x64.Build.0 = Release|Any CPU
 		{F1C9FB1D-859A-4E72-A978-CAC662F25831}.Release|x86.ActiveCfg = Release|Any CPU
 		{F1C9FB1D-859A-4E72-A978-CAC662F25831}.Release|x86.Build.0 = Release|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Debug|x64.Build.0 = Debug|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Debug|x86.Build.0 = Debug|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Release|x64.ActiveCfg = Release|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Release|x64.Build.0 = Release|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Release|x86.ActiveCfg = Release|Any CPU
+		{C75C8ED6-4DFC-4960-9AAA-2470A54DD325}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

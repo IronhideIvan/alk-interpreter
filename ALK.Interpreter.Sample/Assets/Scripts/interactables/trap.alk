@@ -1,0 +1,7 @@
+import { damagePlayer, removeSelf } from "interact";
+import { log, randomInt } from "common";
+
+var dmg = randomInt(3, 8);
+damagePlayer(dmg);
+log(`A trap springs! You take ${dmg} damage.`);
+removeSelf();

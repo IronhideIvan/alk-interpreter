@@ -32,6 +32,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     public static ProgramRun Start(CursorProgramEvaluator evaluator, ModuleGraph graph) =>
       new ProgramRun(evaluator, evaluator.Evaluate(graph));
 
+    /// <summary>
+    /// Wraps a previously-restored <paramref name="evaluator"/> (e.g. via
+    /// <c>CursorStructuralStateSerializer.Restore</c>) and its reported
+    /// <paramref name="result"/> in a <see cref="ProgramRun"/>.
+    /// </summary>
+    public static ProgramRun Restore(CursorProgramEvaluator evaluator, ProgramRunResult result) =>
+      new ProgramRun(evaluator, result);
+
     /// <summary>Resumes a suspended run with the settled result of the pending <c>await</c>.</summary>
     public ProgramRunResult Resume(ALKScriptValue value)
     {

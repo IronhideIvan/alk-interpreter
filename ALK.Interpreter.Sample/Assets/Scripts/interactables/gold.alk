@@ -1,0 +1,7 @@
+import { grantGold, removeSelf } from "interact";
+import { log, randomInt } from "common";
+
+var amount = randomInt(5, 15);
+grantGold(amount);
+log(`You found ${amount} gold!`);
+removeSelf();

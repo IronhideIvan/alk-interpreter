@@ -1,0 +1,33 @@
+// Wanders randomly; flees when the player gets adjacent.
+import { self, player, tryMove, wait } from "enemy";
+import { randomInt } from "common";
+
+while (true) {
+    var me = self();
+    var target = player();
+
+    var dx = target.x - me.x;
+    var dy = target.y - me.y;
+    var dist = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+
+    if (dist <= 1) {
+        // Flee directly away from the player.
+        var stepX = dx == 0 ? 0 : (dx > 0 ? -1 : 1);
+        var stepY = dy == 0 ? 0 : (dy > 0 ? -1 : 1);
+
+        if (!tryMove(stepX, stepY)) {
+            if (stepX != 0) {
+                tryMove(stepX, 0);
+            } else {
+                tryMove(0, stepY);
+            }
+        }
+    } else {
+        // Wander in a random direction.
+        var stepX = randomInt(-1, 1);
+        var stepY = randomInt(-1, 1);
+        tryMove(stepX, stepY);
+    }
+
+    wait();
+}

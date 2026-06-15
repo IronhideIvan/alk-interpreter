@@ -1,0 +1,6 @@
+import { healPlayer, removeSelf } from "interact";
+import { log } from "common";
+
+healPlayer(10);
+log(`You drink a potion and recover 10 HP.`);
+removeSelf();
