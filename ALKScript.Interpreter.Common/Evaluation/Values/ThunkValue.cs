@@ -1,49 +1,47 @@
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 
 namespace ALKScript.Interpreter.Common.Evaluation.Values
 {
   /// <summary>
-  /// An in-flight or completed asynchronous operation, as seen from ALKScript:
-  /// the value a <c>thunk</c>/<c>thunk&lt;T&gt;</c>-typed native call produces,
-  /// and the thing an <c>await</c> expression unwraps.
+  /// An already-settled <c>thunk</c>/<c>thunk&lt;T&gt;</c> value, as seen from
+  /// ALKScript: the value a synchronous-but-<c>thunk</c>-typed native call
+  /// produces, or the result an <c>await</c> expression unwraps once a
+  /// <see cref="PendingOperationValue"/> has resolved.
   ///
-  /// Wraps a real <see cref="System.Threading.Tasks.Task{TResult}"/> so that
-  /// "real suspension" — an <c>await</c> that genuinely parks the calling
-  /// script's evaluation until the operation settles — falls directly out of
-  /// the Task-based evaluator spine built in Phase 2: awaiting this value's
-  /// <see cref="Task"/> suspends the compiler-generated continuation chain
-  /// exactly like awaiting any other <see cref="System.Threading.Tasks.Task"/>,
-  /// and resumes it (with the produced value, or a converted fault) once the
-  /// underlying operation settles.
+  /// Always wraps an already-available <see cref="Result"/> — there is no
+  /// "live" or "pending" <see cref="ThunkValue"/>. A native operation that can
+  /// genuinely be pending must be declared <c>native async</c> and go through
+  /// <see cref="PendingOperation"/> + <see cref="ALKScript.Interpreter.Common.Evaluation.Scheduling.IAsyncOperationBinder"/>
+  /// (see <see cref="PendingOperationValue"/>) — the single path for pending
+  /// state.
   /// </summary>
   public sealed class ThunkValue : ALKScriptValue
   {
-    /// <summary>The underlying task. May already be completed (e.g. a native that resolved synchronously) or still pending.</summary>
-    public Task<ALKScriptValue> Task { get; }
+    /// <summary>The settled value.</summary>
+    public ALKScriptValue Result { get; }
 
     /// <summary>
     /// The "T" of the declared <c>thunk&lt;T&gt;</c> return type that produced
-    /// this value, if any — used to validate the resolved result on
+    /// this value, if any — used to validate <see cref="Result"/> on
     /// <c>await</c>. <c>null</c> for a bare <c>thunk</c> (nothing to validate
     /// against).
     /// </summary>
     public TypeNode? ElementType { get; }
 
-    public ThunkValue(Task<ALKScriptValue> task, TypeNode? elementType = null)
+    public ThunkValue(ALKScriptValue result, TypeNode? elementType = null)
     {
-      Task = task;
+      Result = result;
       ElementType = elementType;
     }
 
-    /// <summary>An already-completed task wrapping <paramref name="value"/> — e.g. for natives/results that resolve synchronously.</summary>
-    public static ThunkValue FromResult(ALKScriptValue value, TypeNode? elementType = null) => new ThunkValue(System.Threading.Tasks.Task.FromResult(value), elementType);
+    /// <summary>Thin factory for call-site readability — equivalent to the constructor.</summary>
+    public static ThunkValue FromResult(ALKScriptValue value, TypeNode? elementType = null) => new ThunkValue(value, elementType);
 
-    /// <summary>Returns a copy of this value, wrapping the same <see cref="Task"/>, tagged with <paramref name="elementType"/>.</summary>
-    public ThunkValue WithElementType(TypeNode? elementType) => new ThunkValue(Task, elementType);
+    /// <summary>Returns a copy of this value, wrapping the same <see cref="Result"/>, tagged with <paramref name="elementType"/>.</summary>
+    public ThunkValue WithElementType(TypeNode? elementType) => new ThunkValue(Result, elementType);
 
     public override string TypeName => "thunk";
 
-    public override string ToString() => $"<task {(Task.IsCompleted ? "completed" : "pending")}>";
+    public override string ToString() => "<thunk resolved>";
   }
 }

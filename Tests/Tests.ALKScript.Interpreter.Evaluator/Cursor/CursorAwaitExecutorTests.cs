@@ -1,7 +1,7 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
+using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
 using ALKScript.Interpreter.Evaluator;
@@ -30,11 +30,35 @@ public class CursorAwaitExecutorTests
     return Assert.IsType<IntValue>(value).Value;
   }
 
-  /// <summary>An unresolved thunk whose task is completed externally via <paramref name="source"/>.</summary>
-  private static (ThunkValue Thunk, TaskCompletionSource<ALKScriptValue> Source) PendingThunk(TypeNode? elementType = null)
+  /// <summary>A not-yet-started pending operation, settled externally via <paramref name="source"/>.</summary>
+  private static (PendingOperationValue Pending, PendingSource Source) PendingThunk(TypeNode? elementType = null)
   {
-    var source = new TaskCompletionSource<ALKScriptValue>();
-    return (new ThunkValue(source.Task, elementType), source);
+    var source = new PendingSource();
+    var pending = new PendingOperationValue(new PendingOperation("test", System.Array.Empty<ALKScriptValue>()), new PendingBinder(source), elementType);
+    return (pending, source);
+  }
+
+  /// <summary>Mutable settlement cell for a <see cref="PendingBinder"/>.</summary>
+  private sealed class PendingSource
+  {
+    internal OperationStatus Status { get; private set; } = OperationStatus.Pending.Instance;
+
+    internal void SetResult(ALKScriptValue value) => Status = new OperationStatus.Resolved(value);
+  }
+
+  private sealed class PendingBinder : IAsyncOperationBinder
+  {
+    private readonly PendingSource _source;
+
+    internal PendingBinder(PendingSource source) => _source = source;
+
+    public OperationStatus Start(PendingOperation operation) => OperationStatus.Pending.Instance;
+
+    public OperationStatus Poll(PendingOperation operation) => _source.Status;
+
+    public void Discard(PendingOperation operation, System.Action<System.Exception> onFault) { }
+
+    public void OnOperationFaulted(PendingOperation operation, System.Exception fault) { }
   }
 
   [Fact]
@@ -296,6 +320,7 @@ public class CursorAwaitExecutorTests
     Assert.NotNull(cursor.PendingAwait!.CompositeElements);
 
     source.SetResult(new IntValue(2));
+    pending.Poll();
     var result = cursor.Resume(NullValue.Instance);
 
     Assert.Equal(RunResult.Completed, result);

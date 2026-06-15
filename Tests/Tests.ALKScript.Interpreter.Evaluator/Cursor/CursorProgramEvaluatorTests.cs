@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator;
@@ -78,8 +77,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var source1 = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(_ => source1.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -103,7 +101,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => NullValue.Instance
     };
 
-    var binder = new FuncBinder(_ => Task.FromResult<ALKScriptValue>(new IntValue(9)));
+    var binder = new LiveBinder(_ => new OperationStatus.Resolved(new IntValue(9)));
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -126,8 +124,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var source1 = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(_ => source1.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -152,8 +149,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var source1 = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(_ => source1.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -178,8 +174,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var source1 = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(_ => source1.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -217,8 +212,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var source1 = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(_ => source1.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -256,8 +250,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var source1 = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(_ => source1.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -288,9 +281,7 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var sourceA = new TaskCompletionSource<ALKScriptValue>();
-    var sourceB = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(op => op.Name == "fetchA" ? sourceA.Task : sourceB.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -300,8 +291,9 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
     Assert.NotNull(evaluator.PendingAwait!.CompositeElements);
     Assert.Equal(2, evaluator.PendingAwait!.CompositeElements!.Count);
 
-    sourceA.SetResult(new IntValue(1));
-    sourceB.SetResult(new IntValue(2));
+    binder.Settle("fetchA", new IntValue(1));
+    binder.Settle("fetchB", new IntValue(2));
+    PollPendingElements(evaluator);
 
     var result = evaluator.Resume(NullValue.Instance);
 
@@ -322,17 +314,16 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var sourceOk = new TaskCompletionSource<ALKScriptValue>();
-    var sourceFail = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(op => op.Name == "ok" ? sourceOk.Task : sourceFail.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
 
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
 
-    sourceOk.SetResult(new IntValue(99));
-    sourceFail.SetException(new InvalidOperationException("boom"));
+    binder.Settle("ok", new IntValue(99));
+    binder.SettleFault("fail", new InvalidOperationException("boom"));
+    PollPendingElements(evaluator);
 
     var result = evaluator.Resume(NullValue.Instance);
 
@@ -352,17 +343,16 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var sourceA = new TaskCompletionSource<ALKScriptValue>();
-    var sourceB = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(op => op.Name == "a" ? sourceA.Task : sourceB.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
 
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
 
-    sourceA.SetException(new InvalidOperationException("fault-a"));
-    sourceB.SetException(new InvalidOperationException("fault-b"));
+    binder.SettleFault("a", new InvalidOperationException("fault-a"));
+    binder.SettleFault("b", new InvalidOperationException("fault-b"));
+    PollPendingElements(evaluator);
 
     var result = evaluator.Resume(NullValue.Instance);
 
@@ -382,17 +372,16 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => NullValue.Instance
     };
 
-    var sourceA = new TaskCompletionSource<ALKScriptValue>();
-    var sourceB = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(op => op.Name == "a" ? sourceA.Task : sourceB.Task);
+    var binder = new LiveBinder(_ => null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
 
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
 
-    sourceA.SetException(new InvalidOperationException("fault-a"));
-    sourceB.SetException(new InvalidOperationException("fault-b"));
+    binder.SettleFault("a", new InvalidOperationException("fault-a"));
+    binder.SettleFault("b", new InvalidOperationException("fault-b"));
+    PollPendingElements(evaluator);
 
     Assert.Equal(ProgramRunResult.Completed, evaluator.Resume(NullValue.Instance));
 
@@ -412,17 +401,15 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var sourcePending = new TaskCompletionSource<ALKScriptValue>();
-    var binder = new FuncBinder(op => op.Name == "resolved"
-      ? Task.FromResult<ALKScriptValue>(new IntValue(5))
-      : sourcePending.Task);
+    var binder = new LiveBinder(op => op.Name == "resolved" ? new OperationStatus.Resolved(new IntValue(5)) : null);
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
 
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
 
-    sourcePending.SetResult(new IntValue(6));
+    binder.Settle("pending", new IntValue(6));
+    PollPendingElements(evaluator);
 
     var result = evaluator.Resume(NullValue.Instance);
 
@@ -442,9 +429,9 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    var binder = new FuncBinder(op => op.Name == "a"
-      ? Task.FromResult<ALKScriptValue>(new IntValue(1))
-      : Task.FromResult<ALKScriptValue>(new IntValue(2)));
+    var binder = new LiveBinder(op => op.Name == "a"
+      ? new OperationStatus.Resolved(new IntValue(1))
+      : new OperationStatus.Resolved(new IntValue(2)));
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -454,20 +441,60 @@ public class CursorProgramEvaluatorTests : EvaluatorTestBase
     Assert.Equal(2L, Assert.IsType<IntValue>(recorded[1]).Value);
   }
 
-  private sealed class FuncBinder : IAsyncOperationBinder
+  /// <summary>
+  /// Polls every composite element's <see cref="PendingOperationValue"/> (if
+  /// any) so that operations the test settled via <see cref="LiveBinder.Settle"/>/
+  /// <see cref="LiveBinder.SettleFault"/> after suspension have their
+  /// <see cref="PendingOperationValue.Status"/> refreshed before
+  /// <see cref="CursorProgramEvaluator.Resume"/> calls <c>ResolveWhenAll</c> —
+  /// mirroring what a host's <see cref="ProgramRun.Pump"/> would do.
+  /// </summary>
+  private static void PollPendingElements(CursorProgramEvaluator evaluator)
   {
-    private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+    if (evaluator.PendingAwait?.CompositeElements == null) return;
+
+    foreach (var element in evaluator.PendingAwait.CompositeElements)
+    {
+      (element.Source as PendingOperationValue)?.Poll();
+    }
+  }
+
+  /// <summary>
+  /// A binder whose <see cref="Start"/> reports <paramref name="seed"/>'s
+  /// status for an operation if non-null, otherwise <see cref="OperationStatus.Pending"/>;
+  /// <see cref="Poll"/> re-checks a settlement map that <see cref="Settle"/>/
+  /// <see cref="SettleFault"/> mutate from the test, mirroring
+  /// <c>PendingPumpTests.PollBinder</c>.
+  /// </summary>
+  private sealed class LiveBinder : IAsyncOperationBinder
+  {
+    private readonly Func<PendingOperation, OperationStatus?> _seed;
+    private readonly Dictionary<string, OperationStatus> _settled = new();
 
     internal readonly List<(PendingOperation Operation, Exception Fault)> ReportedFaults = new List<(PendingOperation, Exception)>();
 
-    internal FuncBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
+    internal LiveBinder(Func<PendingOperation, OperationStatus?> seed) => _seed = seed;
 
-    public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
+    internal void Settle(string operationName, ALKScriptValue value) => _settled[operationName] = new OperationStatus.Resolved(value);
 
-    public void Discard(PendingOperation operation, Action<Exception> onFault)
+    internal void SettleFault(string operationName, Exception error) => _settled[operationName] = new OperationStatus.Faulted(error);
+
+    public OperationStatus Start(PendingOperation operation)
     {
-      _ = _start(operation);
+      var seeded = _seed(operation);
+      if (seeded != null)
+      {
+        _settled[operation.Name] = seeded;
+        return seeded;
+      }
+
+      return OperationStatus.Pending.Instance;
     }
+
+    public OperationStatus Poll(PendingOperation operation) =>
+      _settled.TryGetValue(operation.Name, out var status) ? status : OperationStatus.Pending.Instance;
+
+    public void Discard(PendingOperation operation, Action<Exception> onFault) { }
 
     public void OnOperationFaulted(PendingOperation operation, Exception fault)
       => ReportedFaults.Add((operation, fault));

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator.Cursor;
@@ -26,7 +25,7 @@ public class CursorCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => NullValue.Instance
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -41,7 +40,7 @@ public class CursorCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.Restore(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -63,11 +62,11 @@ public class CursorCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => NullValue.Instance
     };
-    var binder = new FuncBinder(op => op.Name switch
+    var binder = new LiveBinder(onStart: op => op.Name switch
     {
-      "a" => Task.FromResult<ALKScriptValue>(new IntValue(1)),
-      "b" => Task.FromResult<ALKScriptValue>(new IntValue(2)),
-      _ => new TaskCompletionSource<ALKScriptValue>().Task,
+      "a" => new OperationStatus.Resolved(new IntValue(1)),
+      "b" => new OperationStatus.Resolved(new IntValue(2)),
+      _ => OperationStatus.Pending.Instance,
     });
 
     var graph = LoadGraph(source);
@@ -83,11 +82,11 @@ public class CursorCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(op => op.Name switch
+    var binder2 = new LiveBinder(onStart: op => op.Name switch
     {
-      "a" => Task.FromResult<ALKScriptValue>(new IntValue(1)),
-      "b" => Task.FromResult<ALKScriptValue>(new IntValue(2)),
-      _ => new TaskCompletionSource<ALKScriptValue>().Task,
+      "a" => new OperationStatus.Resolved(new IntValue(1)),
+      "b" => new OperationStatus.Resolved(new IntValue(2)),
+      _ => OperationStatus.Pending.Instance,
     });
 
     var restored = CursorProgramEvaluator.Restore(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
@@ -111,7 +110,7 @@ public class CursorCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => NullValue.Instance
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -128,7 +127,7 @@ public class CursorCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.Restore(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -160,18 +159,28 @@ public class CursorCaptureRestoreTests : EvaluatorTestBase
     Assert.Throws<InvalidOperationException>(() => evaluator.Capture());
   }
 
-  private sealed class FuncBinder : IAsyncOperationBinder
+  /// <summary>
+  /// A binder whose <see cref="Start"/> reports <see cref="OperationStatus.Pending"/>
+  /// (or, via <paramref name="onStart"/>, a test-supplied status per operation)
+  /// for every operation; <see cref="Poll"/> re-checks a settlement map that
+  /// <see cref="Settle"/> mutates from the test.
+  /// </summary>
+  private sealed class LiveBinder : IAsyncOperationBinder
   {
-    private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+    private readonly Func<PendingOperation, OperationStatus>? _onStart;
+    private readonly Dictionary<string, OperationStatus> _settled = new();
 
-    internal FuncBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
+    internal LiveBinder(Func<PendingOperation, OperationStatus>? onStart = null) => _onStart = onStart;
 
-    public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
+    internal void Settle(string operationName, ALKScriptValue value) => _settled[operationName] = new OperationStatus.Resolved(value);
 
-    public void Discard(PendingOperation operation, Action<Exception> onFault)
-    {
-      _ = _start(operation);
-    }
+    public OperationStatus Start(PendingOperation operation) =>
+      _onStart?.Invoke(operation) ?? OperationStatus.Pending.Instance;
+
+    public OperationStatus Poll(PendingOperation operation) =>
+      _settled.TryGetValue(operation.Name, out var status) ? status : OperationStatus.Pending.Instance;
+
+    public void Discard(PendingOperation operation, Action<Exception> onFault) { }
 
     public void OnOperationFaulted(PendingOperation operation, Exception fault)
     {

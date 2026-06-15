@@ -1,5 +1,4 @@
 using System;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 
 namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
@@ -31,18 +30,37 @@ namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
   /// at the moment script execution ends rather than when it was called — see
   /// the design doc's core-requirements section for why this is load-bearing,
   /// not incidental.
+  ///
+  /// Neither <see cref="Start"/> nor <see cref="Poll"/> ever blocks or returns
+  /// a <see cref="System.Threading.Tasks.Task"/> — the evaluator has no
+  /// concept of <c>Task</c>. A truly-asynchronous host effect (e.g. an HTTP
+  /// call) is queued by the host and reported as <see cref="OperationStatus.Pending"/>;
+  /// the host later reports progress via <see cref="Poll"/>, called once per
+  /// "Pump" (see <c>ProgramRun.Pump</c>) for any operation whose last-known
+  /// status was <see cref="OperationStatus.Pending"/>.
   /// </summary>
   public interface IAsyncOperationBinder
   {
     /// <summary>
     /// Starts the host-side effect <paramref name="operation"/> describes, and
-    /// returns a task that completes with its result (or fault) once the
-    /// effect finishes — possibly many game-loop ticks later. Invoked at most
-    /// once per <see cref="PendingOperation"/> (see <see cref="PendingOperationValue.Start"/>),
+    /// returns its outcome — <see cref="OperationStatus.Resolved"/> or
+    /// <see cref="OperationStatus.Faulted"/> if it settles synchronously, or
+    /// <see cref="OperationStatus.Pending"/> if the host has queued it for
+    /// later resolution via <see cref="Poll"/>. Invoked at most once per
+    /// <see cref="PendingOperation"/> (see <see cref="PendingOperationValue.Start"/>),
     /// so an implementation never needs to guard against being asked to start
     /// the same operation twice.
     /// </summary>
-    Task<ALKScriptValue> Start(PendingOperation operation);
+    OperationStatus Start(PendingOperation operation);
+
+    /// <summary>
+    /// Called by the host's "Pump" (see <c>ProgramRun.Pump</c>) for any
+    /// operation whose last-known <see cref="OperationStatus"/> was
+    /// <see cref="OperationStatus.Pending"/>, to check whether it has settled
+    /// since. Returns the current status — <see cref="OperationStatus.Pending"/>
+    /// if still unsettled.
+    /// </summary>
+    OperationStatus Poll(PendingOperation operation);
 
     /// <summary>
     /// Called at end-of-script for any <c>thunk</c> native operation that was

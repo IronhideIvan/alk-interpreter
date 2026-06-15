@@ -63,11 +63,24 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     {
       public string Message { get; }
 
+      /// <summary>
+      /// The faulted operation's descriptor, if this fault is being captured
+      /// as a <see cref="CursorStructuralCaptureState.PendingOperations"/>
+      /// entry (so Restore can reconstruct a settled
+      /// <see cref="ALKScript.Interpreter.Common.Evaluation.Values.PendingOperationValue"/>
+      /// via <see cref="ALKScript.Interpreter.Common.Evaluation.Values.PendingOperationValue.MarkSettled"/>).
+      /// <c>null</c> for an already-replayed composite-element fault, which
+      /// Restore reconstructs directly as <see cref="AwaitElement.ForReplayedFault"/>
+      /// without needing a descriptor.
+      /// </summary>
+      public PendingOperation? Operation { get; }
+
       public TypeNode? ElementType { get; }
 
-      public Fault(string message, TypeNode? elementType)
+      public Fault(string message, TypeNode? elementType, PendingOperation? operation = null)
       {
         Message = message;
+        Operation = operation;
         ElementType = elementType;
       }
     }

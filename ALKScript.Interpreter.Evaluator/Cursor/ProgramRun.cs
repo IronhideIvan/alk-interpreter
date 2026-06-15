@@ -1,4 +1,3 @@
-using System;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
@@ -48,48 +47,68 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     }
 
     /// <summary>
-    /// Blocks, driving this run from its current state to
-    /// <see cref="ProgramRunResult.Completed"/> by synchronously waiting on
-    /// each <see cref="PendingAwait"/> in turn and resuming with its settled
-    /// result. A composite <c>await [a, b, c]</c> (<see cref="AwaitHandle.CompositeTask"/>)
-    /// swallows per-element faults — matching <c>await [...]</c>'s own
-    /// semantics, where faults surface only if the script re-awaits the
-    /// faulted element — and resumes with <see cref="NullValue.Instance"/>.
-    /// A single-element <c>await</c> resumes with the task's result, or calls
-    /// <see cref="ResumeFaulted"/> with the exception's message on fault.
-    ///
-    /// <paramref name="binder"/> is required only if a pending <c>await</c> is
-    /// parked on a not-yet-started <see cref="PendingOperation"/>
-    /// (<see cref="AwaitHandle.Operation"/> set with <see cref="AwaitHandle.Task"/>
-    /// null) — in practice the cursor evaluator always starts the operation
-    /// before suspending, so this is a defensive fallback.
+    /// Polls the current <see cref="PendingAwait"/> (if any) and advances the
+    /// run if it has settled. A no-op (returns <see cref="Result"/> unchanged)
+    /// if not currently <see cref="ProgramRunResult.Awaiting"/>, or if the
+    /// pending operation(s) are still <see cref="OperationStatus.Pending"/>.
+    /// Safe to call repeatedly from a host's game loop / pump — each call
+    /// polls every still-pending <see cref="PendingOperationValue"/> via
+    /// <see cref="IAsyncOperationBinder.Poll"/> exactly once.
     /// </summary>
-    public void RunToCompletion(IAsyncOperationBinder? binder = null)
+    public ProgramRunResult Pump()
+    {
+      if (Result != ProgramRunResult.Awaiting) return Result;
+
+      var handle = PendingAwait!;
+
+      if (handle.CompositeElements != null)
+      {
+        var allSettled = true;
+        foreach (var element in handle.CompositeElements)
+        {
+          if (element.Source is PendingOperationValue pending && pending.Poll() is OperationStatus.Pending)
+          {
+            allSettled = false;
+          }
+        }
+
+        if (allSettled) Resume(NullValue.Instance);
+        return Result;
+      }
+
+      var pendingOperation = (PendingOperationValue)handle.Source!;
+      switch (pendingOperation.Poll())
+      {
+        case OperationStatus.Resolved resolved:
+          Resume(resolved.Value);
+          break;
+
+        case OperationStatus.Faulted faulted:
+          ResumeFaulted(faulted.Error.Message);
+          break;
+
+          // Pending: leave Result == Awaiting.
+      }
+
+      return Result;
+    }
+
+    /// <summary>
+    /// Repeatedly calls <see cref="Pump"/> until the run leaves the
+    /// <see cref="ProgramRunResult.Awaiting"/> state, sleeping briefly between
+    /// calls that made no progress. Suitable for tests / synchronous binders
+    /// whose <see cref="IAsyncOperationBinder.Start"/> never returns
+    /// <see cref="OperationStatus.Pending"/> (they block internally). For
+    /// genuinely-async binders this busy-polls — hosts with real async work
+    /// should call <see cref="Pump"/> from their own loop instead.
+    /// </summary>
+    public void RunToCompletion()
     {
       while (Result == ProgramRunResult.Awaiting)
       {
-        var handle = PendingAwait!;
-
-        if (handle.CompositeTask != null)
+        if (Pump() == ProgramRunResult.Awaiting)
         {
-          try { handle.CompositeTask.GetAwaiter().GetResult(); }
-          catch { /* per-element faults are swallowed, matching await [...] semantics */ }
-
-          Resume(NullValue.Instance);
-          continue;
-        }
-
-        var task = handle.Task ?? binder?.Start(handle.Operation!)
-          ?? throw new InvalidOperationException("ProgramRun.RunToCompletion: pending await has no Task and no IAsyncOperationBinder was supplied to start its Operation.");
-
-        try
-        {
-          var value = task.GetAwaiter().GetResult();
-          Resume(value);
-        }
-        catch (Exception ex)
-        {
-          ResumeFaulted(ex.Message);
+          System.Threading.Thread.Sleep(10);
         }
       }
     }

@@ -36,7 +36,7 @@ public abstract class RuntimeTestBase
       extraBindings: extraBindings,
       out var recorded);
 
-    runtime.RunFromSource(source).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromSource(source).RunToCompletion();
     return recorded;
   }
 
@@ -54,7 +54,7 @@ public abstract class RuntimeTestBase
       extraBindings: extraBindings,
       out var recorded);
 
-    runtime.RunFromFile(entryFilePath).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromFile(entryFilePath).RunToCompletion();
     return recorded;
   }
 

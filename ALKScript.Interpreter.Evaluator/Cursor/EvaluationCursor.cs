@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
@@ -351,43 +350,28 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         switch (value)
         {
           case PendingOperationValue pending:
-            var started = pending.StartedTask;
-            if (started == null)
+            switch (pending.Status)
             {
-              captured = new CapturedPendingOperation(new CapturedAwaitElement.Reissue(pending.Operation, pending.ElementType), wasStarted: false);
-            }
-            else if (started.Status == TaskStatus.RanToCompletion)
-            {
-              captured = new CapturedPendingOperation(new CapturedAwaitElement.Resolved(CaptureValue(started.Result), pending.ElementType), wasStarted: true);
-            }
-            else if (started.IsFaulted)
-            {
-              var fault = started.Exception?.InnerException ?? started.Exception;
-              captured = new CapturedPendingOperation(new CapturedAwaitElement.Fault(fault?.Message ?? "Unknown error", pending.ElementType), wasStarted: true);
-            }
-            else
-            {
-              captured = new CapturedPendingOperation(new CapturedAwaitElement.Reissue(pending.Operation, pending.ElementType), wasStarted: true);
+              case null:
+                captured = new CapturedPendingOperation(new CapturedAwaitElement.Reissue(pending.Operation, pending.ElementType), wasStarted: false);
+                break;
+
+              case OperationStatus.Resolved resolved:
+                captured = new CapturedPendingOperation(new CapturedAwaitElement.Resolved(CaptureValue(resolved.Value), pending.ElementType), wasStarted: true);
+                break;
+
+              case OperationStatus.Faulted faulted:
+                captured = new CapturedPendingOperation(new CapturedAwaitElement.Fault(faulted.Error.Message, pending.ElementType, pending.Operation), wasStarted: true);
+                break;
+
+              default: // Pending
+                captured = new CapturedPendingOperation(new CapturedAwaitElement.Reissue(pending.Operation, pending.ElementType), wasStarted: true);
+                break;
             }
             break;
 
           case ThunkValue thunk:
-            if (thunk.Task.Status == TaskStatus.RanToCompletion)
-            {
-              captured = new CapturedPendingOperation(new CapturedAwaitElement.Resolved(CaptureValue(thunk.Task.Result), thunk.ElementType), wasStarted: true);
-            }
-            else if (thunk.Task.IsFaulted)
-            {
-              var fault = thunk.Task.Exception?.InnerException ?? thunk.Task.Exception;
-              captured = new CapturedPendingOperation(new CapturedAwaitElement.Fault(fault?.Message ?? "Unknown error", thunk.ElementType), wasStarted: true);
-            }
-            else
-            {
-              throw new NotSupportedException(
-                "Cannot capture a still-pending 'thunk' value that is not backed by a 'PendingOperationValue' " +
-                "operation descriptor — there is nothing to reissue on Restore (docs/ASYNC_AWAIT_DESIGN.md " +
-                "Addendum 3, Phase C).");
-            }
+            captured = new CapturedPendingOperation(new CapturedAwaitElement.Resolved(CaptureValue(thunk.Result), thunk.ElementType), wasStarted: true);
             break;
 
           default:
@@ -566,33 +550,24 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           return new CapturedAwaitElement.Fault(element.ReplayedFaultMessage, element.ElementType);
         }
 
-        if (element.Task != null)
+        if (element.Source is PendingOperationValue pendingOperation)
         {
-          if (element.Task.Status == TaskStatus.RanToCompletion)
+          switch (pendingOperation.Status)
           {
-            return new CapturedAwaitElement.Resolved(CaptureValue(element.Task.Result), element.ElementType);
+            case OperationStatus.Resolved resolved:
+              return new CapturedAwaitElement.Resolved(CaptureValue(resolved.Value), element.ElementType);
+
+            case OperationStatus.Faulted faulted:
+              return new CapturedAwaitElement.Fault(faulted.Error.Message, element.ElementType, element.Operation);
+
+            default: // null or Pending
+              if (pendingOpIds.ContainsKey(element.Source))
+              {
+                return new CapturedAwaitElement.OperationRef(GetPendingOpId(element.Source), element.ElementType);
+              }
+
+              return new CapturedAwaitElement.Reissue(element.Operation!, element.ElementType);
           }
-
-          if (element.Task.IsFaulted)
-          {
-            var fault = element.Task.Exception?.InnerException ?? element.Task.Exception;
-            return new CapturedAwaitElement.Fault(fault?.Message ?? "Unknown error", element.ElementType);
-          }
-
-          if (element.Operation != null)
-          {
-            if (element.Source != null && pendingOpIds.ContainsKey(element.Source))
-            {
-              return new CapturedAwaitElement.OperationRef(GetPendingOpId(element.Source), element.ElementType);
-            }
-
-            return new CapturedAwaitElement.Reissue(element.Operation, element.ElementType);
-          }
-
-          throw new NotSupportedException(
-            "Capturing a composite 'await [a, b, c]' element that is a live operation not backed by a " +
-            "'thunk' native operation descriptor (AwaitElement.Operation) is not yet supported by structural " +
-            "Capture/Restore (docs/ASYNC_AWAIT_DESIGN.md Addendum 3).");
         }
 
         throw new NotSupportedException(
@@ -778,18 +753,29 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
       ALKScriptValue ReconstructPendingOperation(CapturedPendingOperation captured) => captured.Element switch
       {
-        CapturedAwaitElement.Resolved resolved => ThunkValue.FromResult(ResolveHeapValue(resolved.Value), resolved.ElementType),
-        CapturedAwaitElement.Fault fault => new ThunkValue(System.Threading.Tasks.Task.FromException<ALKScriptValue>(new Exception(fault.Message)), fault.ElementType),
+        CapturedAwaitElement.Resolved resolved => new ThunkValue(ResolveHeapValue(resolved.Value), resolved.ElementType),
+        CapturedAwaitElement.Fault fault => ReconstructFaultedOperation(fault),
         CapturedAwaitElement.Reissue reissue => ReconstructReissuedOperation(reissue, captured.WasStarted),
         _ => throw new NotSupportedException($"RestoreSuspendedState: unrecognized captured pending operation element type '{captured.Element.GetType().Name}'."),
       };
+
+      ALKScriptValue ReconstructFaultedOperation(CapturedAwaitElement.Fault fault)
+      {
+        var operation = fault.Operation ?? throw new NotSupportedException(
+          "RestoreSuspendedState: cannot reconstruct a captured fault with no operation descriptor.");
+
+        var pendingValue = new PendingOperationValue(operation, binder!, fault.ElementType);
+        pendingValue.MarkSettled(new OperationStatus.Faulted(new Exception(fault.Message)));
+        FunctionValueFactory.RegisterRestored(pendingValue);
+        return pendingValue;
+      }
 
       ALKScriptValue ReconstructReissuedOperation(CapturedAwaitElement.Reissue reissue, bool wasStarted)
       {
         var pendingValue = new PendingOperationValue(reissue.Operation, binder!, reissue.ElementType);
         if (wasStarted)
         {
-          pendingValue.MarkStarted(binder!.Start(reissue.Operation));
+          pendingValue.Start();
         }
 
         FunctionValueFactory.RegisterRestored(pendingValue);
@@ -881,11 +867,10 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
       AwaitElement ReissueElement(CapturedAwaitElement.Reissue reissue)
       {
-        var reissueTask = binder.Start(reissue.Operation);
         var reissuePending = new PendingOperationValue(reissue.Operation, binder, reissue.ElementType);
-        reissuePending.MarkStarted(reissueTask);
+        reissuePending.Start();
         FunctionValueFactory.RegisterRestored(reissuePending);
-        return AwaitElement.ForTask(reissueTask, reissue.ElementType, reissue.Operation, source: reissuePending);
+        return AwaitElement.ForOperation(reissuePending, reissue.ElementType);
       }
 
       AwaitElement ElementFromPendingOpRef(CapturedAwaitElement.OperationRef opRef)
@@ -893,11 +878,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         var operationValue = pendingOpValues[opRef.Id]!;
         return operationValue switch
         {
-          PendingOperationValue pendingOp => AwaitElement.ForTask(
-            pendingOp.StartedTask ?? throw new InvalidOperationException(
-              $"RestoreSuspendedState: pending operation #{opRef.Id} referenced by a composite 'await [...]' element was not started during Restore."),
-            opRef.ElementType, pendingOp.Operation, source: pendingOp),
-          ThunkValue thunk => AwaitElement.ForTask(thunk.Task, opRef.ElementType, source: thunk),
+          PendingOperationValue pendingOp => AwaitElement.ForOperation(pendingOp, opRef.ElementType),
+          ThunkValue thunk => AwaitElement.ForResolved(thunk.Result, opRef.ElementType),
           _ => throw new NotSupportedException($"RestoreSuspendedState: unrecognized reconstructed pending-operation value type '{operationValue.GetType().Name}'."),
         };
       }
@@ -924,8 +906,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       var operationValue = pendingOpValues[state.PendingAwait.OperationRef!.Value]!;
       PendingAwait = operationValue switch
       {
-        PendingOperationValue pendingOp => AwaitHandle.ForPendingTask(pendingOp.StartedTask!, pendingOp.Operation, state.PendingAwait.ElementType, state.PendingAwait.Site, source: pendingOp),
-        ThunkValue thunk => AwaitHandle.ForTask(thunk.Task, state.PendingAwait.ElementType, state.PendingAwait.Site, source: thunk),
+        PendingOperationValue pendingOp => AwaitHandle.ForOperation(pendingOp, state.PendingAwait.ElementType, state.PendingAwait.Site),
         _ => throw new NotSupportedException($"RestoreSuspendedState: unrecognized reconstructed pending-operation value type '{operationValue.GetType().Name}'."),
       };
       return RunResult.Awaiting;
@@ -1172,7 +1153,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     {
       if (PendingAwait?.CompositeElements != null)
       {
-        throw new InvalidOperationException("ResumeFaulted is not valid for a composite 'await [...]' suspension — await PendingAwait.CompositeTask (which settles only once every element has completed) and call Resume(NullValue.Instance) instead.");
+        throw new InvalidOperationException("ResumeFaulted is not valid for a composite 'await [...]' suspension — poll PendingAwait.CompositeElements (which settle only once every element has completed) and call Resume(NullValue.Instance) instead.");
       }
 
       if (PendingAwait?.Operation != null)

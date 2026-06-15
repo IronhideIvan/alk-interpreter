@@ -228,11 +228,15 @@ public class ReplayLogTests : EvaluatorTestBase
 
     internal TrackingBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
 
-    public Task<ALKScriptValue> Start(PendingOperation operation)
+    public OperationStatus Start(PendingOperation operation)
     {
       StartCallCount++;
-      return _start(operation);
+      try { return new OperationStatus.Resolved(_start(operation).GetAwaiter().GetResult()); }
+      catch (Exception ex) { return new OperationStatus.Faulted(ex); }
     }
+
+    public OperationStatus Poll(PendingOperation operation) =>
+      throw new InvalidOperationException("Start never returns Pending for this binder.");
 
     public void Discard(PendingOperation operation, Action<Exception> onFault)
     {

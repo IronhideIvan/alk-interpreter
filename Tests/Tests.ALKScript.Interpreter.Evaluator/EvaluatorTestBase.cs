@@ -59,7 +59,7 @@ public abstract class EvaluatorTestBase
   protected static void RunWithOperationBinder(string source, ScriptNativeBindings? nativeBindings, IAsyncOperationBinder operationBinder)
   {
     var graph = LoadGraph(source);
-    ProgramRun.Start(new CursorProgramEvaluator(nativeBindings, null, operationBinder), graph).RunToCompletion(operationBinder);
+    ProgramRun.Start(new CursorProgramEvaluator(nativeBindings, null, operationBinder), graph).RunToCompletion();
   }
 
   /// <summary>
@@ -87,7 +87,7 @@ public abstract class EvaluatorTestBase
     };
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, null, operationBinder);
-    ProgramRun.Start(evaluator, graph).RunToCompletion(operationBinder);
+    ProgramRun.Start(evaluator, graph).RunToCompletion();
     return (recorded, evaluator.Log);
   }
 
@@ -104,7 +104,7 @@ public abstract class EvaluatorTestBase
     };
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, null, operationBinder, replayLog);
-    ProgramRun.Start(evaluator, graph).RunToCompletion(operationBinder);
+    ProgramRun.Start(evaluator, graph).RunToCompletion();
     return recorded;
   }
 

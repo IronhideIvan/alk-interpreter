@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
@@ -1350,7 +1349,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       switch (value)
       {
         case ThunkValue thunkValue:
-          return AwaitTask(thunkValue.Task, thunkValue.ElementType, environment, site, allowSuspend, source: thunkValue);
+          ValidateThunkResult(thunkValue.Result, thunkValue.ElementType, environment, site);
+          return StepResult.Completed(thunkValue.Result);
 
         case PendingOperationValue pending:
           return AwaitPending(pending, environment, site, allowSuspend);
@@ -1388,37 +1388,29 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         return StepResult.Completed(entry.Result!);
       }
 
-      return AwaitTask(pending.Start(), pending.ElementType, environment, site, allowSuspend, pending.Operation, source: pending);
-    }
-
-    private StepResult AwaitTask(Task<ALKScriptValue> task, TypeNode? elementType, ScriptEnvironment environment, ALKScriptToken site, bool allowSuspend, PendingOperation? operation = null, ALKScriptValue? source = null)
-    {
-      if (!task.IsCompleted)
+      var status = pending.Start();
+      switch (status)
       {
-        if (!allowSuspend)
-        {
-          throw new RuntimeException(site, "'await' in this expression position cannot suspend on an unresolved 'thunk' — rewrite as 'var t = await ...;' first.");
-        }
+        case OperationStatus.Resolved resolved:
+          _cursor.RecordEntry(OperationLogEntry.FromResult(pending.Operation, resolved.Value));
+          ValidateThunkResult(resolved.Value, pending.ElementType, environment, site);
+          return StepResult.Completed(resolved.Value);
 
-        return StepResult.Awaiting(operation != null
-          ? AwaitHandle.ForPendingTask(task, operation, elementType, site, source)
-          : AwaitHandle.ForTask(task, elementType, site, source));
+        case OperationStatus.Faulted faulted:
+          if (faulted.Error is RuntimeException) throw faulted.Error;
+
+          _cursor.RecordEntry(OperationLogEntry.FromFault(pending.Operation, faulted.Error.Message));
+          _cursor.Signal = Signal.Thrown(new StringValue(faulted.Error.Message));
+          return StepResult.Completed(NullValue.Instance);
+
+        default: // Pending
+          if (!allowSuspend)
+          {
+            throw new RuntimeException(site, "'await' in this expression position cannot suspend on an unresolved 'thunk' — rewrite as 'var t = await ...;' first.");
+          }
+
+          return StepResult.Awaiting(AwaitHandle.ForOperation(pending, pending.ElementType, site));
       }
-
-      if (task.IsFaulted)
-      {
-        var exception = task.Exception!.GetBaseException();
-        if (exception is RuntimeException) throw exception;
-
-        if (operation != null) _cursor.RecordEntry(OperationLogEntry.FromFault(operation, exception.Message));
-        _cursor.Signal = Signal.Thrown(new StringValue(exception.Message));
-        return StepResult.Completed(NullValue.Instance);
-      }
-
-      var result = task.Result;
-      if (operation != null) _cursor.RecordEntry(OperationLogEntry.FromResult(operation, result));
-      ValidateThunkResult(result, elementType, environment, site);
-      return StepResult.Completed(result);
     }
 
     /// <summary>
@@ -1427,7 +1419,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// <c>EvalWhenAll</c> did: a <see cref="PendingOperationValue"/> is tried
     /// against the replay log first (consuming the next entry positionally),
     /// otherwise started live; a <see cref="ThunkValue"/> contributes its
-    /// (possibly still-pending) task; anything else is already resolved. If
+    /// already-settled result; anything else is already resolved. If
     /// every element is already settled, resolves synchronously via
     /// <see cref="ResolveWhenAll"/>. Otherwise — if <paramref name="allowSuspend"/> —
     /// returns <see cref="StepResult.Awaiting"/> with a composite
@@ -1454,12 +1446,13 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             }
             else
             {
-              elements[i] = AwaitElement.ForTask(pending.Start(), pending.ElementType, pending.Operation, source: pending);
+              pending.Start();
+              elements[i] = AwaitElement.ForOperation(pending, pending.ElementType);
             }
             break;
 
           case ThunkValue thunkValue:
-            elements[i] = AwaitElement.ForTask(thunkValue.Task, thunkValue.ElementType, source: thunkValue);
+            elements[i] = AwaitElement.ForResolved(thunkValue.Result, thunkValue.ElementType);
             break;
 
           default:
@@ -1489,10 +1482,10 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
     /// <summary>
     /// Resolves a fully-settled set of <paramref name="elements"/> into the
-    /// result of <c>await [a, b, c]</c>: each live element's task is
-    /// inspected via <c>.IsFaulted</c>/<c>.Result</c> (guaranteed complete by
-    /// this point — either it never needed to suspend, or the host has
-    /// awaited <see cref="AwaitHandle.CompositeTask"/>), with results/faults
+    /// result of <c>await [a, b, c]</c>: each live element's
+    /// <see cref="PendingOperationValue.Status"/> is inspected (guaranteed
+    /// settled by this point — either it never needed to suspend, or the
+    /// host's "Pump" polled it to settled), with results/faults
     /// recorded to the replay log (and faults reported to the host) in
     /// source order, mirroring the old evaluator's <c>EvalWhenAll</c>. Any
     /// faults are aggregated into a single <see cref="Signal.Thrown"/>
@@ -1522,26 +1515,21 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           continue;
         }
 
-        var task = element.Task!;
-        if (task.IsFaulted)
+        var pendingOperation = (PendingOperationValue)element.Source!;
+        switch (pendingOperation.Status)
         {
-          var exception = task.Exception!.GetBaseException();
-          if (exception is RuntimeException) throw exception;
+          case OperationStatus.Faulted faulted:
+            if (faulted.Error is RuntimeException) throw faulted.Error;
 
-          faultMessages[i] = exception.Message;
-          if (element.Operation != null)
-          {
-            _cursor.RecordEntry(OperationLogEntry.FromFault(element.Operation, exception.Message));
-            _functionValueFactory.ReportOperationFaulted(element.Operation, exception);
-          }
-        }
-        else
-        {
-          resolved[i] = task.Result;
-          if (element.Operation != null)
-          {
-            _cursor.RecordEntry(OperationLogEntry.FromResult(element.Operation, resolved[i]!));
-          }
+            faultMessages[i] = faulted.Error.Message;
+            _cursor.RecordEntry(OperationLogEntry.FromFault(element.Operation!, faulted.Error.Message));
+            _functionValueFactory.ReportOperationFaulted(element.Operation!, faulted.Error);
+            break;
+
+          case OperationStatus.Resolved settled:
+            resolved[i] = settled.Value;
+            _cursor.RecordEntry(OperationLogEntry.FromResult(element.Operation!, settled.Value));
+            break;
         }
       }
 

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Evaluator;
@@ -36,7 +35,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => NullValue.Instance
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -48,7 +47,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -80,7 +79,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => NullValue.Instance
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -92,7 +91,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -132,7 +131,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -144,7 +143,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -179,7 +178,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -191,7 +190,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -225,7 +224,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -237,7 +236,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -262,7 +261,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -275,12 +274,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
 
-    TaskCompletionSource<ALKScriptValue>? tcs = null;
-    var binder2 = new FuncBinder(_ =>
-    {
-      tcs = new TaskCompletionSource<ALKScriptValue>();
-      return tcs.Task;
-    });
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -289,8 +283,8 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     Assert.NotNull(restored.PendingAwait!.CompositeElements);
     Assert.Empty(recorded);
 
-    Assert.NotNull(tcs);
-    tcs!.SetResult(new IntValue(7));
+    binder2.Settle("fetch", new IntValue(7));
+    PollPendingElements(restored);
 
     var result = restored.Resume(NullValue.Instance);
 
@@ -313,7 +307,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -327,10 +321,10 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     };
 
     int startCount = 0;
-    var binder2 = new FuncBinder(_ =>
+    var binder2 = new LiveBinder(onStart: _ =>
     {
       startCount++;
-      return new TaskCompletionSource<ALKScriptValue>().Task;
+      return OperationStatus.Pending.Instance;
     });
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
@@ -363,7 +357,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -377,10 +371,10 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     };
 
     int startCount = 0;
-    var binder2 = new FuncBinder(_ =>
+    var binder2 = new LiveBinder(onStart: _ =>
     {
       startCount++;
-      return new TaskCompletionSource<ALKScriptValue>().Task;
+      return OperationStatus.Pending.Instance;
     });
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
@@ -409,7 +403,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -423,12 +417,10 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     };
 
     int startCount = 0;
-    TaskCompletionSource<ALKScriptValue>? tcs = null;
-    var binder2 = new FuncBinder(_ =>
+    var binder2 = new LiveBinder(onStart: _ =>
     {
       startCount++;
-      tcs = new TaskCompletionSource<ALKScriptValue>();
-      return tcs.Task;
+      return OperationStatus.Pending.Instance;
     });
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
@@ -437,8 +429,8 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     Assert.Equal(1, startCount); // op and the composite element are the same instance — started exactly once
     Assert.Empty(recorded);
 
-    Assert.NotNull(tcs);
-    tcs!.SetResult(new IntValue(9));
+    binder2.Settle("fetch", new IntValue(9));
+    PollPendingElements(restored);
 
     var result = restored.Resume(NullValue.Instance);
 
@@ -465,7 +457,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
       ["record"] = arguments => NullValue.Instance,
       ["square"] = arguments => new IntValue(((IntValue)arguments[0]).Value * ((IntValue)arguments[0]).Value),
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -478,7 +470,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; },
       ["square"] = arguments => new IntValue(((IntValue)arguments[0]).Value * ((IntValue)arguments[0]).Value),
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -515,7 +507,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
       ["Doubler", "double"] = (instance, arguments) =>
         new IntValue(((IntValue)instance.Fields["factor"]).Value * ((IntValue)arguments[0]).Value),
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, methodBindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -527,7 +519,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorProgramEvaluator.RestoreStructural(graph, state, out var restoreResult, bindings2, methodBindings, operationBinder: binder2);
 
@@ -552,7 +544,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -574,7 +566,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -595,7 +587,7 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var graph = LoadGraph(source);
 
     var bindings = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
     Assert.Equal(ProgramRunResult.Awaiting, evaluator.Evaluate(graph));
@@ -605,10 +597,10 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     var bindings2 = new ScriptNativeBindings { ["record"] = arguments => NullValue.Instance };
 
     int discardCount = 0;
-    var binder2 = new FuncBinder(_ =>
+    var binder2 = new LiveBinder(onStart: _ =>
     {
       discardCount++;
-      return new TaskCompletionSource<ALKScriptValue>().Task;
+      return OperationStatus.Pending.Instance;
     });
 
     var factory2 = new FunctionValueFactory(bindings2, operationBinder: binder2);
@@ -641,18 +633,51 @@ public class CursorStructuralCaptureRestoreTests : EvaluatorTestBase
     Assert.Throws<InvalidOperationException>(() => evaluator.CaptureStructural());
   }
 
-  private sealed class FuncBinder : IAsyncOperationBinder
+  /// <summary>
+  /// Polls every composite element's <see cref="PendingOperationValue"/> (if
+  /// any) so that operations the test settled via <see cref="LiveBinder.Settle"/>
+  /// after suspension have their <see cref="PendingOperationValue.Status"/>
+  /// refreshed before <see cref="CursorProgramEvaluator.Resume"/> calls
+  /// <c>ResolveWhenAll</c> — mirroring what a host's <see cref="ProgramRun.Pump"/>
+  /// would do.
+  /// </summary>
+  private static void PollPendingElements(CursorProgramEvaluator evaluator)
   {
-    private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+    if (evaluator.PendingAwait?.CompositeElements == null) return;
 
-    internal FuncBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
-
-    public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
-
-    public void Discard(PendingOperation operation, Action<Exception> onFault)
+    foreach (var element in evaluator.PendingAwait.CompositeElements)
     {
-      _ = _start(operation);
+      (element.Source as PendingOperationValue)?.Poll();
     }
+  }
+
+  /// <summary>
+  /// A binder whose <see cref="Start"/> reports <see cref="OperationStatus.Pending"/>
+  /// (or, via <paramref name="onStart"/>, a test-supplied status while still
+  /// recording the call) for every operation; <see cref="Poll"/> re-checks a
+  /// settlement map that <see cref="Settle"/> mutates from the test.
+  /// </summary>
+  private sealed class LiveBinder : IAsyncOperationBinder
+  {
+    private readonly Func<PendingOperation, OperationStatus>? _onStart;
+    private readonly Action<PendingOperation>? _onDiscard;
+    private readonly Dictionary<string, OperationStatus> _settled = new();
+
+    internal LiveBinder(Func<PendingOperation, OperationStatus>? onStart = null, Action<PendingOperation>? onDiscard = null)
+    {
+      _onStart = onStart;
+      _onDiscard = onDiscard;
+    }
+
+    internal void Settle(string operationName, ALKScriptValue value) => _settled[operationName] = new OperationStatus.Resolved(value);
+
+    public OperationStatus Start(PendingOperation operation) =>
+      _onStart?.Invoke(operation) ?? OperationStatus.Pending.Instance;
+
+    public OperationStatus Poll(PendingOperation operation) =>
+      _settled.TryGetValue(operation.Name, out var status) ? status : OperationStatus.Pending.Instance;
+
+    public void Discard(PendingOperation operation, Action<Exception> onFault) => _onDiscard?.Invoke(operation);
 
     public void OnOperationFaulted(PendingOperation operation, Exception fault)
     {

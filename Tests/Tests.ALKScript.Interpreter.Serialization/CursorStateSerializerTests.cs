@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
@@ -35,7 +34,7 @@ public class CursorStateSerializerTests
     {
       ["record"] = arguments => NullValue.Instance
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -49,7 +48,7 @@ public class CursorStateSerializerTests
     {
       ["record"] = arguments => { recorded.Add(arguments[0]); return NullValue.Instance; }
     };
-    var binder2 = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder2 = new LiveBinder();
 
     var restored = CursorStateSerializer.Restore(graph, bytes, out var restoreResult, bindings2, operationBinder: binder2);
 
@@ -70,7 +69,7 @@ public class CursorStateSerializerTests
     {
       ["record"] = arguments => NullValue.Instance
     };
-    var binder = new FuncBinder(_ => new TaskCompletionSource<ALKScriptValue>().Task);
+    var binder = new LiveBinder();
 
     var graph = LoadGraph(source);
     var evaluator = new CursorProgramEvaluator(bindings, operationBinder: binder);
@@ -102,18 +101,18 @@ public class CursorStateSerializerTests
     return parser.ParseTokens(tokens);
   }
 
-  private sealed class FuncBinder : IAsyncOperationBinder
+  /// <summary>
+  /// A binder whose <see cref="Start"/> always reports <see cref="OperationStatus.Pending"/> —
+  /// the test resumes directly via <c>evaluator.Resume(value)</c> without
+  /// ever polling.
+  /// </summary>
+  private sealed class LiveBinder : IAsyncOperationBinder
   {
-    private readonly Func<PendingOperation, Task<ALKScriptValue>> _start;
+    public OperationStatus Start(PendingOperation operation) => OperationStatus.Pending.Instance;
 
-    internal FuncBinder(Func<PendingOperation, Task<ALKScriptValue>> start) => _start = start;
+    public OperationStatus Poll(PendingOperation operation) => OperationStatus.Pending.Instance;
 
-    public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
-
-    public void Discard(PendingOperation operation, Action<Exception> onFault)
-    {
-      _ = _start(operation);
-    }
+    public void Discard(PendingOperation operation, Action<Exception> onFault) { }
 
     public void OnOperationFaulted(PendingOperation operation, Exception fault)
     {

@@ -80,7 +80,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
     runtime.NativeBindings["record"] = args => { recorded.Add(args[0]); return NullValue.Instance; };
 
     ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(7);");
-    runtime.RunFromGraph(graph).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromGraph(graph).RunToCompletion();
 
     var value = Assert.IsType<IntValue>(Assert.Single(recorded));
     Assert.Equal(7L, value.Value);
@@ -93,7 +93,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
 
     ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}var x = 1;");
     var run = runtime.RunFromGraph(graph);
-    run.RunToCompletion(runtime.OperationBinder);
+    run.RunToCompletion();
 
     Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
@@ -109,8 +109,8 @@ public class ProgramRuntimeTests : RuntimeTestBase
 
     ModuleGraph graph = runtime.LoadFromSource($"{RecordDeclaration}record(5);");
 
-    runtime.RunFromGraph(graph).RunToCompletion(runtime.OperationBinder);
-    runtime.RunFromGraph(graph).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromGraph(graph).RunToCompletion();
+    runtime.RunFromGraph(graph).RunToCompletion();
 
     Assert.Equal(2, recorded.Count);
     Assert.All(recorded, v => Assert.Equal(5L, Assert.IsType<IntValue>(v).Value));
@@ -194,7 +194,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
     var runtime = CreateRuntimeForEvaluation();
 
     var run = runtime.RunFromSource($"{RecordDeclaration}var x = 1;");
-    run.RunToCompletion(runtime.OperationBinder);
+    run.RunToCompletion();
 
     Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
@@ -249,7 +249,7 @@ public class ProgramRuntimeTests : RuntimeTestBase
     var runtime = CreateRuntimeForEvaluation(files: files);
 
     var run = runtime.RunFromFile("main.alk");
-    run.RunToCompletion(runtime.OperationBinder);
+    run.RunToCompletion();
 
     Assert.Equal(ProgramRunResult.Completed, run.Result);
   }
@@ -270,11 +270,11 @@ public class ProgramRuntimeTests : RuntimeTestBase
 
     var runA = runtime.RunFromSource(
       "native function void recordA(Object v);\nrecordA(1);");
-    runA.RunToCompletion(runtime.OperationBinder);
+    runA.RunToCompletion();
 
     var runB = runtime.RunFromSource(
       "native function void recordB(Object v);\nrecordB(2);");
-    runB.RunToCompletion(runtime.OperationBinder);
+    runB.RunToCompletion();
 
     Assert.Equal(ProgramRunResult.Completed, runA.Result);
     Assert.Equal(ProgramRunResult.Completed, runB.Result);
@@ -296,8 +296,8 @@ public class ProgramRuntimeTests : RuntimeTestBase
     var run1 = runtime.RunFromGraph(graph);
     var run2 = runtime.RunFromGraph(graph);
 
-    run1.RunToCompletion(runtime.OperationBinder);
-    run2.RunToCompletion(runtime.OperationBinder);
+    run1.RunToCompletion();
+    run2.RunToCompletion();
 
     Assert.Equal(ProgramRunResult.Completed, run1.Result);
     Assert.Equal(ProgramRunResult.Completed, run2.Result);

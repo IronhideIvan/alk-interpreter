@@ -766,3 +766,129 @@ exposes `Result` (`ProgramRunResult`), `PendingAwait`, `Resume`,
 `ResumeFaulted`, and `RunToCompletion(IAsyncOperationBinder?)`. The old
 `Pump()`/`RunUntilComplete(ScriptEvaluation)`/`IScriptLoop`/`ScriptEvaluation`
 surface has been removed.
+
+### Addendum 5: removing `System.Threading.Tasks.Task` from the suspension model
+
+Addendum 3 kept `Task` as "purely a host-boundary type": `IAsyncOperationBinder.Start`
+returned `Task<ALKScriptValue>`, `PendingOperationValue.Start()` returned that
+same `Task`, `ThunkValue` could wrap a still-running `Task`, and `AwaitHandle`/
+`AwaitElement` exposed `Task`/`CompositeTask` (a `Task.WhenAll`) for the host to
+await. In practice this meant a host whose async operation couldn't settle
+synchronously (e.g. a real HTTP call) had to hand the evaluator a live `Task`
+and the evaluator's `RunToCompletion` would block on `GetAwaiter().GetResult()`
+— i.e. the evaluator still owned a slice of the host's async machinery.
+
+This addendum removes `Task` from every type that crosses the evaluator/host
+boundary, and from the evaluator's own internals. `Task` may still exist
+*inside* a host's `IAsyncOperationBinder` implementation (or in test helpers)
+— it just never appears in `PendingOperationValue`, `ThunkValue`, `AwaitElement`,
+`AwaitHandle`, or `IAsyncOperationBinder`'s signatures.
+
+**New type — `OperationStatus`** (`ALKScript.Interpreter.Common/Evaluation/Scheduling/OperationStatus.cs`):
+a Task-free tri-state — `Pending` (singleton), `Resolved(ALKScriptValue Value)`,
+or `Faulted(Exception Error)` — replacing `Task<ALKScriptValue>` as the result
+of starting or polling an operation.
+
+**`IAsyncOperationBinder` redesign**: `Start(PendingOperation)` now returns
+`OperationStatus` directly instead of `Task<ALKScriptValue>`. If the host's
+effect can't settle synchronously, `Start` queues it and returns
+`OperationStatus.Pending` immediately — the evaluator suspends right there,
+with no `Task`, no thread, no `GetAwaiter().GetResult()`. A new method,
+`Poll(PendingOperation)`, is called by the host's "pump" for any operation
+whose last-known status was `Pending`, and returns its current status. The
+existing `Discard`/`OnOperationFaulted` members are unchanged.
+
+**`PendingOperationValue` redesign**: `_started: Task<ALKScriptValue>?` becomes
+`_status: OperationStatus?`. `Start()` is still memoized
+(`_status ??= _binder.Start(Operation)`); a new `Poll()` re-polls the binder
+only while `_status is OperationStatus.Pending`, and is a no-op (returns the
+cached status, or `Pending` if `Start` was never called) otherwise. The
+internal `Status` property exposes the cached `OperationStatus?` for
+inspection (by Capture and by `AwaitElement.NeedsSuspend`) without triggering
+`Start`. `MarkStarted(Task)` is gone — Capture/Restore call `Start()` directly
+(idempotent via memoization), and a small internal `MarkSettled(OperationStatus)`
+lets Restore reconstruct an already-faulted operation without going through
+the binder at all (see below).
+
+**`ThunkValue` simplification**: a `ThunkValue` is now *always* an
+already-settled `{ ALKScriptValue Result, TypeNode? ElementType }` — the
+"wrap a live/faulted `Task` directly" role is gone entirely. Any native
+operation that can genuinely be pending must be declared `native async` and go
+through `PendingOperation`/`IAsyncOperationBinder` — the single path for
+pending state. A synchronous native binding that needs a `Task` internally
+(e.g. it calls another async API) must block on it
+(`.GetAwaiter().GetResult()`) before wrapping the resulting value in
+`ThunkValue` — `Task` stays inside that host binding, never crossing into
+`ThunkValue` itself.
+
+**`AwaitElement`/`AwaitHandle` redesign** (`ALKScript.Interpreter.Evaluator/Cursor/AwaitHandle.cs`):
+`Task`/`CompositeTask`/`ForTask`/`ForPendingTask` are gone.
+`AwaitElement` now carries `Resolved`/`Operation`/`ElementType`/
+`ReplayedFaultMessage`/`Source` (the underlying `PendingOperationValue` or
+`ThunkValue`, for `ResolveWhenAll` to re-inspect) and a `NeedsSuspend` flag —
+true only while `Source` is a `PendingOperationValue` whose current `Status`
+is `null` or `Pending`. `AwaitHandle.ForComposite` no longer builds a
+`Task.WhenAll`; it just stores the element list, and whether the composite
+handle represents a real suspension falls out of whether any element's
+`NeedsSuspend` is true.
+
+**`ProgramRun.Pump()`** (`ALKScript.Interpreter.Evaluator/Cursor/ProgramRun.cs`)
+is the new host-facing "tick" primitive, replacing the old block-on-`Task`
+approach:
+
+```csharp
+public ProgramRunResult Pump()
+{
+    if (Result != ProgramRunResult.Awaiting) return Result;
+    var handle = PendingAwait!;
+
+    if (handle.CompositeElements != null)
+    {
+        var allSettled = true;
+        foreach (var element in handle.CompositeElements)
+            if (element.Source is PendingOperationValue pending && pending.Poll() is OperationStatus.Pending)
+                allSettled = false;
+        if (allSettled) Resume(NullValue.Instance);
+        return Result;
+    }
+
+    var pendingOperation = (PendingOperationValue)handle.Source!;
+    switch (pendingOperation.Poll())
+    {
+        case OperationStatus.Resolved resolved: Resume(resolved.Value); break;
+        case OperationStatus.Faulted faulted: ResumeFaulted(faulted.Error.Message); break;
+        // Pending: leave Result == Awaiting.
+    }
+    return Result;
+}
+```
+
+`Pump()` is a no-op (returns `Result` unchanged) unless the run is currently
+`Awaiting`, and polls each still-pending operation via
+`IAsyncOperationBinder.Poll` at most once per call — safe to call repeatedly
+from a host's own loop (game tick, event loop, etc.). `RunToCompletion()` is
+now just `while (Result == Awaiting) { if (Pump() == Awaiting) Thread.Sleep(1); }`
+— suitable for tests and binders whose `Start`/`Poll` never return `Pending`
+(they block internally), but for genuinely-async binders this busy-polls; such
+hosts should drive `Pump()` from their own loop instead. Both methods dropped
+the `IAsyncOperationBinder? binder` parameter — each `PendingOperationValue`
+already owns its binder from construction.
+
+**Capture/Restore**: Capture inspects `PendingOperationValue.Status`
+(`null`/`Pending` → `CapturedAwaitElement.Reissue`; `Resolved`/`Faulted` →
+`Resolved`/`Fault`, same as before) instead of inspecting a `Task`'s status.
+Since `ThunkValue` is now always-resolved, the old "cannot capture a
+still-pending thunk" `NotSupportedException` branch is unreachable and was
+removed. On Restore, a captured `Resolved`/`Fault` element reconstructs as a
+plain `ThunkValue(value, elementType)` (resolved) or — since `ThunkValue` can
+no longer represent a fault — as an already-settled, already-replayed
+`PendingOperationValue` whose `Status` is set directly via the internal
+`MarkSettled(OperationStatus.Faulted(...))`, without calling the binder.
+`Reissue` elements still reconstruct via `Start()` as before.
+
+**Net effect**: the only place `Task` can appear anywhere in this picture is
+inside a host's own `IAsyncOperationBinder.Start`/`Poll` implementations (e.g.
+blocking on an internal `Task` before returning `Resolved`, or stashing a
+`Task`-backed operation in a side table that `Poll` checks) — exactly the
+"host manages its own queue of truly-async operations, outside the scope of
+the evaluator" model this addendum was written to enable.

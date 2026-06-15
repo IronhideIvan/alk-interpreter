@@ -47,7 +47,7 @@ public class IntegrationTests
       return NullValue.Instance;
     };
 
-    runtime.RunFromFile(ScriptPath("AnimalShowcase", "main.alk")).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromFile(ScriptPath("AnimalShowcase", "main.alk")).RunToCompletion();
 
     Assert.Equal(
       new[]
@@ -115,7 +115,7 @@ public class IntegrationTests
       throw new InvalidOperationException($"Unknown async operation: '{op.Name}'.");
     });
 
-    runtime.RunFromFile(ScriptPath("ItemProcessor", "main.alk")).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromFile(ScriptPath("ItemProcessor", "main.alk")).RunToCompletion();
 
     Assert.Equal(
       new[]
@@ -149,17 +149,15 @@ public class IntegrationTests
     runtime.NativeMethodBindings["HttpClient", "get"] = (instance, args) =>
     {
       var url = ((StringValue)args[0]).Value;
-      return new ThunkValue(Task.Run(async () =>
+      var result = Task.Run(async () =>
       {
         await Task.Delay(10);
         return (ALKScriptValue)new StringValue("[200] " + url);
-      }));
+      }).GetAwaiter().GetResult();
+      return new ThunkValue(result);
     };
 
-    // Each 'await client.get(url)' suspends with a genuinely pending Task
-    // (Task.Run + Task.Delay); RunToCompletion waits on each one in turn and
-    // resumes with its settled result, mirroring a real host driving the run.
-    runtime.RunFromFile(ScriptPath("AsyncFetcher", "main.alk")).RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromFile(ScriptPath("AsyncFetcher", "main.alk")).RunToCompletion();
 
     Assert.Equal(
       new[]
@@ -178,7 +176,7 @@ public class IntegrationTests
   public void PumpOrdering_DefaultRuntime_ScriptSuspendsAtEachAwait_LogsIncrementallyAcrossResumes()
   {
     var logged = new List<string>();
-    var pendingReads = new List<TaskCompletionSource<ALKScriptValue>>();
+    var pendingReads = new List<PendingValueSource>();
 
     var runtime = new ProgramRuntime();
     runtime.CoreModules["console"] = ReadScript("PumpOrdering", "console.alk");
@@ -192,9 +190,9 @@ public class IntegrationTests
 
     runtime.NativeMethodBindings["Sensor", "read"] = (instance, args) =>
     {
-      var tcs = new TaskCompletionSource<ALKScriptValue>();
-      pendingReads.Add(tcs);
-      return new ThunkValue(tcs.Task);
+      var source = new PendingValueSource();
+      pendingReads.Add(source);
+      return new PendingOperationValue(new PendingOperation("read", System.Array.Empty<ALKScriptValue>()), new PendingValueBinder(source));
     };
 
     var run = runtime.RunFromFile(ScriptPath("PumpOrdering", "main.alk"));
@@ -203,16 +201,39 @@ public class IntegrationTests
     Assert.Equal(ProgramRunResult.Awaiting, run.Result);
 
     pendingReads[0].SetResult(new IntValue(42));
-    run.Resume(run.PendingAwait!.Task!.GetAwaiter().GetResult());
+    run.Pump();
 
     Assert.Equal(new[] { "starting", "reading-1: 42" }, logged);
     Assert.Equal(ProgramRunResult.Awaiting, run.Result);
 
     pendingReads[1].SetResult(new IntValue(99));
-    run.Resume(run.PendingAwait!.Task!.GetAwaiter().GetResult());
+    run.Pump();
 
     Assert.Equal(new[] { "starting", "reading-1: 42", "reading-2: 99", "done" }, logged);
     Assert.Equal(ProgramRunResult.Completed, run.Result);
+  }
+
+  /// <summary>Mutable settlement cell for a <see cref="PendingValueBinder"/>.</summary>
+  private sealed class PendingValueSource
+  {
+    internal OperationStatus Status { get; private set; } = OperationStatus.Pending.Instance;
+
+    internal void SetResult(ALKScriptValue value) => Status = new OperationStatus.Resolved(value);
+  }
+
+  private sealed class PendingValueBinder : IAsyncOperationBinder
+  {
+    private readonly PendingValueSource _source;
+
+    internal PendingValueBinder(PendingValueSource source) => _source = source;
+
+    public OperationStatus Start(PendingOperation operation) => OperationStatus.Pending.Instance;
+
+    public OperationStatus Poll(PendingOperation operation) => _source.Status;
+
+    public void Discard(PendingOperation operation, Action<Exception> onFault) { }
+
+    public void OnOperationFaulted(PendingOperation operation, Exception fault) { }
   }
 
   // ── Custom IModuleFileReader ──────────────────────────────────────────────
@@ -242,7 +263,7 @@ public class IntegrationTests
       return NullValue.Instance;
     };
 
-    runtime.RunFromFile("main.alk").RunToCompletion(runtime.OperationBinder);
+    runtime.RunFromFile("main.alk").RunToCompletion();
 
     Assert.Equal(
       new[]
@@ -268,7 +289,15 @@ public class IntegrationTests
       _start = start;
     }
 
-    public Task<ALKScriptValue> Start(PendingOperation operation) => _start(operation);
+    public OperationStatus Start(PendingOperation operation)
+    {
+      try { return new OperationStatus.Resolved(_start(operation).GetAwaiter().GetResult()); }
+      catch (Exception ex) { return new OperationStatus.Faulted(ex); }
+    }
+
+    public OperationStatus Poll(PendingOperation operation) =>
+      throw new InvalidOperationException("Start never returns Pending for this binder.");
+
     public void Discard(PendingOperation operation, Action<Exception> onFault) { }
     public void OnOperationFaulted(PendingOperation operation, Exception fault) { }
   }
