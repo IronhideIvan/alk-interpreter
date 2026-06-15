@@ -9,13 +9,6 @@ using ALKScript.Interpreter.Common.Modules;
 
 namespace ALKScript.Interpreter.Evaluator.Cursor
 {
-  /// <summary>The outcome of <see cref="CursorProgramEvaluator.Evaluate"/>/<see cref="CursorProgramEvaluator.Resume"/>/<see cref="CursorProgramEvaluator.ResumeFaulted"/>.</summary>
-  public enum ProgramRunResult
-  {
-    Completed,
-    Awaiting,
-  }
-
   /// <summary>
   /// A "Phase A" (replay-based) snapshot of a suspended
   /// <see cref="CursorProgramEvaluator"/> run (docs/ASYNC_AWAIT_DESIGN.md

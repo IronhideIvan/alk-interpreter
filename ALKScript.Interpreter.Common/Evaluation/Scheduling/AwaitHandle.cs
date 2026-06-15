@@ -1,10 +1,9 @@
 using System.Collections.Generic;
 using ALKScript.Interpreter.Common.Ast;
-using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Token;
 
-namespace ALKScript.Interpreter.Evaluator.Cursor
+namespace ALKScript.Interpreter.Common.Evaluation.Scheduling
 {
   /// <summary>
   /// One element of a composite <c>await [a, b, c]</c> suspension (see
@@ -61,14 +60,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
   }
 
   /// <summary>
-  /// Identifies what a suspended <see cref="EvaluationCursor"/> is parked on
-  /// when <see cref="StepResult.IsAwaiting"/> is true.
+  /// Identifies what a suspended <c>EvaluationCursor</c> is parked on when
+  /// <c>StepResult.IsAwaiting</c> is true.
   ///
   /// For a single-element <c>await</c>, <see cref="Source"/> is the
   /// <see cref="PendingOperationValue"/> being awaited and <see cref="Operation"/>
   /// is its descriptor (for replay logging). <see cref="ElementType"/> carries
   /// the declared <c>thunk&lt;T&gt;</c> element type through to
-  /// <see cref="EvaluationCursor.Resume"/> for <see cref="TypeChecking.MatchesType"/>
+  /// <c>EvaluationCursor.Resume</c> for <c>TypeChecking.MatchesType</c>
   /// validation.
   ///
   /// For a composite <c>await [a, b, c]</c> (see <see cref="ForComposite"/>),
@@ -76,9 +75,9 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
   /// <see cref="ElementType"/>/<see cref="Source"/> are all <c>null</c> — the
   /// host's "Pump" (see <c>ProgramRun.Pump</c>) polls each live element's
   /// <see cref="PendingOperationValue"/> and, once every element has settled,
-  /// calls <see cref="EvaluationCursor.Resume"/> with any value (e.g.
+  /// calls <c>EvaluationCursor.Resume</c> with any value (e.g.
   /// <see cref="NullValue.Instance"/>) — per-element results/faults are read
-  /// directly off <see cref="CompositeElements"/>. <see cref="EvaluationCursor.ResumeFaulted"/>
+  /// directly off <see cref="CompositeElements"/>. <c>EvaluationCursor.ResumeFaulted</c>
   /// is not valid for a composite handle.
   /// </summary>
   public sealed class AwaitHandle
@@ -87,7 +86,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
     public TypeNode? ElementType { get; }
 
-    /// <summary>The <c>await</c> keyword token, used to report a type mismatch on <see cref="EvaluationCursor.Resume"/>.</summary>
+    /// <summary>The <c>await</c> keyword token, used to report a type mismatch on <c>EvaluationCursor.Resume</c>.</summary>
     public ALKScriptToken Site { get; }
 
     /// <summary>Set only for a composite <c>await [a, b, c]</c> suspension; <c>null</c> for a single-element <c>await</c>.</summary>

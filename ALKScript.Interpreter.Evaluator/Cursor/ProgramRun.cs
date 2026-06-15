@@ -10,7 +10,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
   /// together with its most recent <see cref="ProgramRunResult"/>, giving hosts
   /// and tests one object to hold onto and drive to completion.
   /// </summary>
-  public sealed class ProgramRun
+  public sealed class ProgramRun : IProgramRun
   {
     public CursorProgramEvaluator Evaluator { get; }
 
