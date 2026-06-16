@@ -31,7 +31,14 @@ namespace ALKScript.Interpreter.Evaluator
     {
       if (left is IntValue leftInt && right is IntValue rightInt)
       {
-        return new IntValue(onInts(leftInt.Value, rightInt.Value));
+        try
+        {
+          return new IntValue(onInts(leftInt.Value, rightInt.Value));
+        }
+        catch (DivideByZeroException)
+        {
+          throw new RuntimeException(op, "Division by zero.");
+        }
       }
 
       if (TryToNumber(left, out double leftNumber) && TryToNumber(right, out double rightNumber))

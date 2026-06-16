@@ -49,6 +49,33 @@ public class OperatorsTests
   }
 
   [Fact]
+  public void Arithmetic_IntDivisionByZero_ThrowsRuntimeException()
+  {
+    var divOp = Nodes.Operator(ALKScriptTokenType.Slash, "/");
+    var exception = Assert.Throws<RuntimeException>(() => Operators.Arithmetic(new IntValue(5), new IntValue(0), divOp, (a, b) => a / b, (a, b) => a / b));
+
+    Assert.Contains("Division by zero", exception.Message);
+  }
+
+  [Fact]
+  public void Arithmetic_IntModuloByZero_ThrowsRuntimeException()
+  {
+    var modOp = Nodes.Operator(ALKScriptTokenType.Percent, "%");
+    var exception = Assert.Throws<RuntimeException>(() => Operators.Arithmetic(new IntValue(5), new IntValue(0), modOp, (a, b) => a % b, (a, b) => a % b));
+
+    Assert.Contains("Division by zero", exception.Message);
+  }
+
+  [Fact]
+  public void Arithmetic_FloatDivisionByZero_ProducesInfinity()
+  {
+    var divOp = Nodes.Operator(ALKScriptTokenType.Slash, "/");
+    var result = Operators.Arithmetic(new FloatValue(5.0), new FloatValue(0.0), divOp, (a, b) => a / b, (a, b) => a / b);
+
+    Assert.Equal(double.PositiveInfinity, Assert.IsType<FloatValue>(result).Value);
+  }
+
+  [Fact]
   public void Compare_Strings_ComparesOrdinally()
   {
     Assert.True(Operators.Compare(new StringValue("a"), new StringValue("b"), Op) < 0);

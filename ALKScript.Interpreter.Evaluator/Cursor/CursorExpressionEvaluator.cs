@@ -1356,7 +1356,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           return AwaitPending(pending, environment, site, allowSuspend);
 
         default:
-          return StepResult.Completed(value);
+          throw new RuntimeException(site, $"'await' can only be applied to a 'thunk' value, but got '{value.TypeName}'.");
       }
     }
 

@@ -298,6 +298,24 @@ public class CursorAwaitExecutorTests
   }
 
   [Fact]
+  public void Eval_AwaitNonThunkValue_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("x", new IntValue(42));
+
+    var statements = new List<Stmt>
+    {
+      new ExpressionStmt(new AwaitExpr(Nodes.Token(ALKScriptTokenType.Await, "await"), Nodes.Ident("x"))),
+    };
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Start(statements, environment));
+
+    Assert.Contains("'await' can only be applied to a 'thunk' value", exception.Message);
+    Assert.Contains("'int'", exception.Message);
+  }
+
+  [Fact]
   public void Eval_AwaitArrayWithUnresolvedElement_ReturnsAwaitingThenResumesWithArrayOfResolvedValues()
   {
     var cursor = MakeCursor();
