@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Console", "ALKScript.Interpreter.Console\ALKScript.Interpreter.Console.csproj", "{281901DE-B36A-4A94-AAD6-30431810AC81}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ALKScript.Interpreter.Lexer", "ALKScript.Interpreter.Lexer\ALKScript.Interpreter.Lexer.csproj", "{6437C35D-EB4A-4456-8C43-CBA03D6F8891}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
@@ -41,18 +39,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Debug|x64.Build.0 = Debug|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Debug|x86.Build.0 = Debug|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Release|Any CPU.Build.0 = Release|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Release|x64.ActiveCfg = Release|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Release|x64.Build.0 = Release|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Release|x86.ActiveCfg = Release|Any CPU
-		{281901DE-B36A-4A94-AAD6-30431810AC81}.Release|x86.Build.0 = Release|Any CPU
 		{6437C35D-EB4A-4456-8C43-CBA03D6F8891}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6437C35D-EB4A-4456-8C43-CBA03D6F8891}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6437C35D-EB4A-4456-8C43-CBA03D6F8891}.Debug|x64.ActiveCfg = Debug|Any CPU
