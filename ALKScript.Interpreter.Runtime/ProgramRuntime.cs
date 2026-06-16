@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using ALKScript.Interpreter.Common.Ast;
+using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
@@ -98,14 +99,14 @@ namespace ALKScript.Interpreter.Runtime
     public ModuleGraph LoadFromFile(string filePath) => _loader.Load(filePath);
 
     /// <inheritdoc/>
-    public ProgramRun RunFromGraph(ModuleGraph graph) =>
-      ProgramRun.Start(new CursorProgramEvaluator(NativeBindings, NativeMethodBindings, OperationBinder), graph);
+    public ProgramRun RunFromGraph(ModuleGraph graph, ScriptArguments? arguments = null) =>
+      ProgramRun.Start(new CursorProgramEvaluator(NativeBindings, NativeMethodBindings, OperationBinder), graph, arguments);
 
     /// <inheritdoc/>
-    public ProgramRun RunFromSource(string source) => RunFromGraph(LoadFromSource(source));
+    public ProgramRun RunFromSource(string source, ScriptArguments? arguments = null) => RunFromGraph(LoadFromSource(source), arguments);
 
     /// <inheritdoc/>
-    public ProgramRun RunFromFile(string filePath) => RunFromGraph(LoadFromFile(filePath));
+    public ProgramRun RunFromFile(string filePath, ScriptArguments? arguments = null) => RunFromGraph(LoadFromFile(filePath), arguments);
 
     // -------------------------------------------------------------------------
 

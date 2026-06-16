@@ -1,3 +1,4 @@
+using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
 using ALKScript.Interpreter.Common.Modules;
@@ -28,9 +29,9 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       Result = result;
     }
 
-    /// <summary>Begins evaluating <paramref name="graph"/> with <paramref name="evaluator"/>.</summary>
-    public static ProgramRun Start(CursorProgramEvaluator evaluator, ModuleGraph graph) =>
-      new ProgramRun(evaluator, evaluator.Evaluate(graph));
+    /// <summary>Begins evaluating <paramref name="graph"/> with <paramref name="evaluator"/>, optionally seeding <paramref name="arguments"/> as read-only root variables.</summary>
+    public static ProgramRun Start(CursorProgramEvaluator evaluator, ModuleGraph graph, ScriptArguments? arguments = null) =>
+      new ProgramRun(evaluator, evaluator.Evaluate(graph, arguments));
 
     /// <summary>
     /// Wraps a previously-restored <paramref name="evaluator"/> (e.g. via

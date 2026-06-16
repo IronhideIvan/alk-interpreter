@@ -1,3 +1,4 @@
+using ALKScript.Interpreter.Common.Evaluation;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Modules;
 using ALKScript.Interpreter.Evaluator.Cursor;
@@ -52,8 +53,15 @@ namespace ALKScript.Interpreter.Runtime
     /// Begins executing a previously compiled <paramref name="graph"/>.
     /// The same graph can be passed to multiple concurrent calls; each call
     /// produces an independent <see cref="ProgramRun"/> with its own state.
+    ///
+    /// <para>
+    /// <paramref name="arguments"/> seeds named, read-only values into the
+    /// root environment before any script code runs. The script can read them
+    /// as ordinary variables but cannot reassign them. Pass <c>null</c> (the
+    /// default) when no per-run context is needed.
+    /// </para>
     /// </summary>
-    ProgramRun RunFromGraph(ModuleGraph graph);
+    ProgramRun RunFromGraph(ModuleGraph graph, ScriptArguments? arguments = null);
 
     /// <summary>
     /// Lexes, parses, and begins executing <paramref name="source"/> as an
@@ -62,7 +70,7 @@ namespace ALKScript.Interpreter.Runtime
     /// source are not supported — use <see cref="RunFromFile"/> when the
     /// program spans multiple modules.
     /// </summary>
-    ProgramRun RunFromSource(string source);
+    ProgramRun RunFromSource(string source, ScriptArguments? arguments = null);
 
     /// <summary>
     /// Loads the program rooted at <paramref name="filePath"/> — resolving and
@@ -70,6 +78,6 @@ namespace ALKScript.Interpreter.Runtime
     /// Equivalent to calling <see cref="LoadFromFile"/> followed by
     /// <see cref="RunFromGraph"/>.
     /// </summary>
-    ProgramRun RunFromFile(string filePath);
+    ProgramRun RunFromFile(string filePath, ScriptArguments? arguments = null);
   }
 }

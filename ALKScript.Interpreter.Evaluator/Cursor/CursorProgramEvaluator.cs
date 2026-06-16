@@ -97,7 +97,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// <see cref="ModuleGraph.EntryModule"/> (via imports/re-exports, each
     /// only once) in dependency order.
     /// </summary>
-    public ProgramRunResult Evaluate(ModuleGraph graph)
+    public ProgramRunResult Evaluate(ModuleGraph graph, ScriptArguments? arguments = null)
     {
       _graph = graph;
       _globals = new ScriptEnvironment();
@@ -105,6 +105,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       _moduleEnvs = new Dictionary<string, ScriptEnvironment>();
       _phase = 0;
       _index = 0;
+
+      if (arguments != null)
+      {
+        foreach (var arg in arguments)
+        {
+          _globals.Define(arg.Key, arg.Value, isConst: true);
+        }
+      }
 
       return Advance();
     }
