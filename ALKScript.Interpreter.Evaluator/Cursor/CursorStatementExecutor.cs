@@ -47,6 +47,10 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           return ExecuteVariableDecl(variableDecl, environment);
 
         case FunctionDecl functionDecl:
+          if (environment.IsDefinedLocally(functionDecl.Name.Lexeme))
+          {
+            throw new RuntimeException(functionDecl.Name, $"A declaration named '{functionDecl.Name.Lexeme}' is already defined in this scope.");
+          }
           environment.Define(functionDecl.Name.Lexeme, _cursor.FunctionValueFactory.Create(functionDecl, environment));
           return StepResult.Completed(NullValue.Instance);
 
@@ -237,6 +241,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         }
       }
 
+      if (environment.IsDefinedLocally(declaration.Name.Lexeme))
+      {
+        throw new RuntimeException(declaration.Name, $"A declaration named '{declaration.Name.Lexeme}' is already defined in this scope.");
+      }
+
       environment.Define(declaration.Name.Lexeme, classValue);
 
       InitializeStaticFields(classValue, environment);
@@ -299,6 +308,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         extends.Add(resolved);
       }
 
+      if (environment.IsDefinedLocally(declaration.Name.Lexeme))
+      {
+        throw new RuntimeException(declaration.Name, $"A declaration named '{declaration.Name.Lexeme}' is already defined in this scope.");
+      }
+
       environment.Define(declaration.Name.Lexeme, new InterfaceValue(declaration, extends));
     }
 
@@ -318,6 +332,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
         members[member.Name.Lexeme] = new EnumValue(declaration.Name.Lexeme, member.Name.Lexeme, value);
         nextValue = value + 1;
+      }
+
+      if (environment.IsDefinedLocally(declaration.Name.Lexeme))
+      {
+        throw new RuntimeException(declaration.Name, $"A declaration named '{declaration.Name.Lexeme}' is already defined in this scope.");
       }
 
       environment.Define(declaration.Name.Lexeme, new EnumTypeValue(declaration, members));

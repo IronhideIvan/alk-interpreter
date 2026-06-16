@@ -76,6 +76,16 @@ namespace ALKScript.Interpreter.Evaluator
         return (concrete, true);
       }
 
+      // Handle T[] where T is a bare type parameter: substitute to produce concrete[].
+      // e.g. T[] on a Box<int> instance becomes int[].
+      if (type.ArrayRank > 0
+        && type.TypeArguments.Count == 0
+        && typeArguments != null
+        && typeArguments.TryGetValue(type.Name, out var elementConcrete))
+      {
+        return (new TypeNode(elementConcrete.Name, elementConcrete.TypeArguments, type.ArrayRank, type.IsNullable), true);
+      }
+
       return (type, false);
     }
 
@@ -94,7 +104,13 @@ namespace ALKScript.Interpreter.Evaluator
 
       if (type.ArrayRank > 0)
       {
-        return value is ArrayValue;
+        if (value is not ArrayValue array) return false;
+        var elementType = new TypeNode(type.Name, type.TypeArguments, type.ArrayRank - 1, isNullable: false);
+        foreach (var item in array.Items)
+        {
+          if (!MatchesType(item, elementType, environment, site)) return false;
+        }
+        return true;
       }
 
       if (type.Name == "lambda" && type.TypeArguments.Count > 0)

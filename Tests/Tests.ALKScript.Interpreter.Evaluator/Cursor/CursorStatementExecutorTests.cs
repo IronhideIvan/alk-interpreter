@@ -201,4 +201,35 @@ public class CursorStatementExecutorTests
 
     Assert.Contains("'Missing' is not a class", exception.Message);
   }
+
+  [Fact]
+  public void Execute_DuplicateFunctionDecl_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    var body = new BlockStmt(System.Array.Empty<Stmt>());
+    var first = new FunctionDecl(false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("foo"), System.Array.Empty<Parameter>(), body);
+    var second = new FunctionDecl(false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("foo"), System.Array.Empty<Parameter>(), body);
+
+    cursor.Execute(first, environment);
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Execute(second, environment));
+
+    Assert.Contains("already defined in this scope", exception.Message);
+    Assert.Contains("'foo'", exception.Message);
+  }
+
+  [Fact]
+  public void Execute_DuplicateFunctionDeclInEnclosingScope_Allowed()
+  {
+    var cursor = MakeCursor();
+    var outer = new ScriptEnvironment();
+    var body = new BlockStmt(System.Array.Empty<Stmt>());
+    cursor.Execute(new FunctionDecl(false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("foo"), System.Array.Empty<Parameter>(), body), outer);
+
+    // Declaring 'foo' again in an inner scope shadows the outer one — allowed.
+    var inner = new ScriptEnvironment(outer);
+    cursor.Execute(new FunctionDecl(false, System.Array.Empty<string>(), Nodes.VoidType, Nodes.Identifier("foo"), System.Array.Empty<Parameter>(), body), inner);
+
+    Assert.True(inner.TryGet("foo", out _));
+  }
 }

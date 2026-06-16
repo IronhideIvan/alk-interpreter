@@ -312,6 +312,36 @@ public class CursorExpressionEvaluatorTests
   }
 
   [Fact]
+  public void Eval_TypeTest_ArrayOfInt_TrueWhenAllElementsAreInts()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("items", new ArrayValue(new List<ALKScriptValue> { new IntValue(1), new IntValue(2) }));
+
+    var intArrayType = new TypeNode("int", System.Array.Empty<TypeNode>(), arrayRank: 1, isNullable: false);
+    var typeTest = new TypeTestExpr(Nodes.Ident("items"), Nodes.Token(ALKScriptTokenType.Is, "is"), intArrayType);
+
+    var result = EvalCompleted(cursor, typeTest, environment);
+
+    Assert.True(Assert.IsType<BoolValue>(result).Value);
+  }
+
+  [Fact]
+  public void Eval_TypeTest_ArrayOfInt_FalseWhenElementTypeDoesNotMatch()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("items", new ArrayValue(new List<ALKScriptValue> { new StringValue("a"), new StringValue("b") }));
+
+    var intArrayType = new TypeNode("int", System.Array.Empty<TypeNode>(), arrayRank: 1, isNullable: false);
+    var typeTest = new TypeTestExpr(Nodes.Ident("items"), Nodes.Token(ALKScriptTokenType.Is, "is"), intArrayType);
+
+    var result = EvalCompleted(cursor, typeTest, environment);
+
+    Assert.False(Assert.IsType<BoolValue>(result).Value);
+  }
+
+  [Fact]
   public void Eval_AlreadyPendingSignal_ShortCircuitsToNull()
   {
     var cursor = MakeCursor();

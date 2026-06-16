@@ -113,6 +113,13 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// the variable's/parameter's/field's annotated type (null for "var" or
     /// other untyped bindings), used by nullability checks on later assignment.
     /// </summary>
+    /// <summary>
+    /// True if <paramref name="name"/> is bound in this scope directly (not
+    /// in any enclosing scope). Used to detect duplicate top-level declarations
+    /// in the same scope (e.g. two functions with the same name).
+    /// </summary>
+    public bool IsDefinedLocally(string name) => _values.ContainsKey(name);
+
     public void Define(string name, ALKScriptValue value, TypeNode? declaredType = null, bool isConst = false)
     {
       _values[name] = value;
