@@ -1184,6 +1184,137 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             return StepResult.Completed(new ArrayValue(results));
           });
 
+        case "indexOf":
+          return new NativeFunctionValue("indexOf", 1, arguments =>
+          {
+            for (int i = 0; i < array.Items.Count; i++)
+            {
+              if (Operators.AreEqual(array.Items[i], arguments[0]))
+                return new IntValue(i);
+            }
+            return new IntValue(-1);
+          });
+
+        case "includes":
+          return new NativeFunctionValue("includes", 1, arguments =>
+          {
+            foreach (var item in array.Items)
+            {
+              if (Operators.AreEqual(item, arguments[0]))
+                return BoolValue.True;
+            }
+            return BoolValue.False;
+          });
+
+        case "find":
+          return new CursorNativeFunctionValue("find", 1, (arguments, cursor) =>
+          {
+            var callback = ExpectCallable(arguments[0], name, "find");
+            foreach (var item in array.Items)
+            {
+              var step = cursor.Call(callback, new List<ALKScriptValue> { item }, name);
+              if (step.IsAwaiting) return step;
+              if (cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+              if (step.Value is BoolValue { Value: true })
+                return StepResult.Completed(item);
+            }
+            return StepResult.Completed(NullValue.Instance);
+          });
+
+        case "findIndex":
+          return new CursorNativeFunctionValue("findIndex", 1, (arguments, cursor) =>
+          {
+            var callback = ExpectCallable(arguments[0], name, "findIndex");
+            for (int i = 0; i < array.Items.Count; i++)
+            {
+              var step = cursor.Call(callback, new List<ALKScriptValue> { array.Items[i] }, name);
+              if (step.IsAwaiting) return step;
+              if (cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+              if (step.Value is BoolValue { Value: true })
+                return StepResult.Completed(new IntValue(i));
+            }
+            return StepResult.Completed(new IntValue(-1));
+          });
+
+        case "some":
+          return new CursorNativeFunctionValue("some", 1, (arguments, cursor) =>
+          {
+            var callback = ExpectCallable(arguments[0], name, "some");
+            foreach (var item in array.Items)
+            {
+              var step = cursor.Call(callback, new List<ALKScriptValue> { item }, name);
+              if (step.IsAwaiting) return step;
+              if (cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+              if (!(step.Value is BoolValue b))
+                throw new RuntimeException(name, $"'some' callback must return a 'bool', but got '{step.Value!.TypeName}'.");
+              if (b.Value) return StepResult.Completed(BoolValue.True);
+            }
+            return StepResult.Completed(BoolValue.False);
+          });
+
+        case "every":
+          return new CursorNativeFunctionValue("every", 1, (arguments, cursor) =>
+          {
+            var callback = ExpectCallable(arguments[0], name, "every");
+            foreach (var item in array.Items)
+            {
+              var step = cursor.Call(callback, new List<ALKScriptValue> { item }, name);
+              if (step.IsAwaiting) return step;
+              if (cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+              if (!(step.Value is BoolValue b))
+                throw new RuntimeException(name, $"'every' callback must return a 'bool', but got '{step.Value!.TypeName}'.");
+              if (!b.Value) return StepResult.Completed(BoolValue.False);
+            }
+            return StepResult.Completed(BoolValue.True);
+          });
+
+        case "sort":
+          return new CursorNativeFunctionValue("sort", 1, (arguments, cursor) =>
+          {
+            if (array.IsFrozen) throw new RuntimeException(name, "Cannot call 'sort' on a 'const' array.");
+            var comparator = ExpectCallable2(arguments[0], name, "sort");
+            var snapshot = new List<ALKScriptValue>(array.Items);
+            var exception = (RuntimeException?)null;
+            snapshot.Sort((a, b) =>
+            {
+              if (exception != null) return 0;
+              var step = cursor.Call(comparator, new List<ALKScriptValue> { a, b }, name);
+              if (!(step.Value is IntValue iv))
+              {
+                exception = new RuntimeException(name, $"'sort' comparator must return an 'int', but got '{step.Value!.TypeName}'.");
+                return 0;
+              }
+              return iv.Value < 0 ? -1 : iv.Value > 0 ? 1 : 0;
+            });
+            if (exception != null) throw exception;
+            array.Items.Clear();
+            array.Items.AddRange(snapshot);
+            return StepResult.Completed(NullValue.Instance);
+          });
+
+        case "reduce":
+          return new CursorNativeFunctionValue("reduce", 2, (arguments, cursor) =>
+          {
+            var callback = ExpectCallable2(arguments[0], name, "reduce");
+            var accumulator = arguments[1];
+            foreach (var item in array.Items)
+            {
+              var step = cursor.Call(callback, new List<ALKScriptValue> { accumulator, item }, name);
+              if (step.IsAwaiting) return step;
+              if (cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+              accumulator = step.Value!;
+            }
+            return StepResult.Completed(accumulator);
+          });
+
+        case "reverse":
+          return new NativeFunctionValue("reverse", 0, _ =>
+          {
+            if (array.IsFrozen) throw new RuntimeException(name, "Cannot call 'reverse' on a 'const' array.");
+            array.Items.Reverse();
+            return NullValue.Instance;
+          });
+
         default:
           throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on '{array.TypeName}'.");
       }
@@ -1259,6 +1390,67 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             return new StringValue(self.Replace(oldValue, newValue));
           });
 
+        case "padLeft":
+          return new NativeFunctionValue("padLeft", 2, arguments =>
+          {
+            int width = ExpectPositiveInt(arguments[0], name, "padLeft");
+            string pad = ExpectString(arguments[1], name, "padLeft");
+            if (pad.Length != 1)
+              throw new RuntimeException(name, $"'padLeft' padding character must be a single character but got \"{pad}\".");
+            return new StringValue(self.PadLeft(width, pad[0]));
+          });
+
+        case "padRight":
+          return new NativeFunctionValue("padRight", 2, arguments =>
+          {
+            int width = ExpectPositiveInt(arguments[0], name, "padRight");
+            string pad = ExpectString(arguments[1], name, "padRight");
+            if (pad.Length != 1)
+              throw new RuntimeException(name, $"'padRight' padding character must be a single character but got \"{pad}\".");
+            return new StringValue(self.PadRight(width, pad[0]));
+          });
+
+        case "repeat":
+          return new NativeFunctionValue("repeat", 1, arguments =>
+          {
+            int count = ExpectNonNegativeInt(arguments[0], name, "repeat");
+            if (count == 0) return new StringValue(string.Empty);
+            var sb = new System.Text.StringBuilder(self.Length * count);
+            for (int i = 0; i < count; i++) sb.Append(self);
+            return new StringValue(sb.ToString());
+          });
+
+        case "trimStart":
+          return new NativeFunctionValue("trimStart", 0, _ => new StringValue(self.TrimStart()));
+
+        case "trimEnd":
+          return new NativeFunctionValue("trimEnd", 0, _ => new StringValue(self.TrimEnd()));
+
+        case "charAt":
+          return new NativeFunctionValue("charAt", 1, arguments =>
+          {
+            int index = ExpectNonNegativeInt(arguments[0], name, "charAt");
+            if (index >= self.Length)
+              throw new RuntimeException(name, $"'charAt' index {index} is out of bounds for a string of length {self.Length}.");
+            return new StringValue(self[index].ToString());
+          });
+
+        case "toInt":
+          return new NativeFunctionValue("toInt", 0, _ =>
+          {
+            if (!long.TryParse(self, out long intResult))
+              throw new RuntimeException(name, $"Cannot convert \"{self}\" to 'int'.");
+            return new IntValue(intResult);
+          });
+
+        case "toFloat":
+          return new NativeFunctionValue("toFloat", 0, _ =>
+          {
+            if (!double.TryParse(self, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double floatResult))
+              throw new RuntimeException(name, $"Cannot convert \"{self}\" to 'float'.");
+            return new FloatValue(floatResult);
+          });
+
         default:
           throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on '{value.TypeName}'.");
       }
@@ -1292,6 +1484,26 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       }
 
       return callable;
+    }
+
+    private static CallableValue ExpectCallable2(ALKScriptValue value, ALKScriptToken site, string memberName)
+    {
+      if (!(value is CallableValue callable) || callable.Arity != 2)
+      {
+        throw new RuntimeException(site, $"'{memberName}' expects a callback of arity 2 but got '{value.TypeName}'.");
+      }
+
+      return callable;
+    }
+
+    private static int ExpectPositiveInt(ALKScriptValue value, ALKScriptToken site, string memberName)
+    {
+      if (!(value is IntValue intValue) || intValue.Value <= 0)
+      {
+        throw new RuntimeException(site, $"'{memberName}' expects a positive int argument but got '{value}'.");
+      }
+
+      return (int)intValue.Value;
     }
 
     /// <summary>

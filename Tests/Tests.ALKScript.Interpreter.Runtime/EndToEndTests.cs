@@ -1776,6 +1776,145 @@ record(s.doubled());
     Assert.Equal(new[] { "try: before throw", "finally: still runs" }, logged);
   }
 
+  // ── Array built-in methods ───────────────────────────────────────────────
+
+  [Fact]
+  public void Array_IndexOf_ReturnsFirstMatchingIndexOrMinusOne()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [10, 20, 30, 20];\nrecord(a.indexOf(20));\nrecord(a.indexOf(99));");
+    Assert.Equal(1L, Assert.IsType<IntValue>(r[0]).Value);
+    Assert.Equal(-1L, Assert.IsType<IntValue>(r[1]).Value);
+  }
+
+  [Fact]
+  public void Array_Includes_ReturnsTrueOrFalse()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [1, 2, 3];\nrecord(a.includes(2));\nrecord(a.includes(9));");
+    Assert.True(Assert.IsType<BoolValue>(r[0]).Value);
+    Assert.False(Assert.IsType<BoolValue>(r[1]).Value);
+  }
+
+  [Fact]
+  public void Array_Find_ReturnsFirstMatchOrNull()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [1, 2, 3, 4];\nrecord(a.find(int (int x) => { return x > 2; }));\nrecord(a.find(int (int x) => { return x > 99; }));");
+    Assert.Equal(3L, Assert.IsType<IntValue>(r[0]).Value);
+    Assert.IsType<NullValue>(r[1]);
+  }
+
+  [Fact]
+  public void Array_FindIndex_ReturnsFirstMatchIndexOrMinusOne()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [10, 20, 30];\nrecord(a.findIndex(bool (int x) => { return x > 15; }));\nrecord(a.findIndex(bool (int x) => { return x > 99; }));");
+    Assert.Equal(1L, Assert.IsType<IntValue>(r[0]).Value);
+    Assert.Equal(-1L, Assert.IsType<IntValue>(r[1]).Value);
+  }
+
+  [Fact]
+  public void Array_Some_ReturnsTrueIfAnyMatch()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [1, 2, 3];\nrecord(a.some(bool (int x) => { return x > 2; }));\nrecord(a.some(bool (int x) => { return x > 9; }));");
+    Assert.True(Assert.IsType<BoolValue>(r[0]).Value);
+    Assert.False(Assert.IsType<BoolValue>(r[1]).Value);
+  }
+
+  [Fact]
+  public void Array_Every_ReturnsTrueIfAllMatch()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [2, 4, 6];\nrecord(a.every(bool (int x) => { return x % 2 == 0; }));\nrecord(a.every(bool (int x) => { return x > 3; }));");
+    Assert.True(Assert.IsType<BoolValue>(r[0]).Value);
+    Assert.False(Assert.IsType<BoolValue>(r[1]).Value);
+  }
+
+  [Fact]
+  public void Array_Sort_SortsInPlaceUsingComparator()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [3, 1, 2];\na.sort(int (int a, int b) => { return a - b; });\nrecord(a[0]);\nrecord(a[1]);\nrecord(a[2]);");
+    Assert.Equal(1L, Assert.IsType<IntValue>(r[0]).Value);
+    Assert.Equal(2L, Assert.IsType<IntValue>(r[1]).Value);
+    Assert.Equal(3L, Assert.IsType<IntValue>(r[2]).Value);
+  }
+
+  [Fact]
+  public void Array_Reduce_FoldsWithAccumulator()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [1, 2, 3, 4];\nrecord(a.reduce(int (int acc, int x) => { return acc + x; }, 0));");
+    Assert.Equal(10L, Assert.IsType<IntValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void Array_Reverse_ReversesInPlace()
+  {
+    var r = RunFromSource("native function void record(Object v);\nvar a = [1, 2, 3];\na.reverse();\nrecord(a[0]);\nrecord(a[2]);");
+    Assert.Equal(3L, Assert.IsType<IntValue>(r[0]).Value);
+    Assert.Equal(1L, Assert.IsType<IntValue>(r[1]).Value);
+  }
+
+  // ── String built-in methods ───────────────────────────────────────────────
+
+  [Fact]
+  public void String_PadLeft_PadsToWidth()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"hi\".padLeft(5, \"0\"));");
+    Assert.Equal("000hi", Assert.IsType<StringValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void String_PadRight_PadsToWidth()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"hi\".padRight(5, \".\"));");
+    Assert.Equal("hi...", Assert.IsType<StringValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void String_Repeat_RepeatsString()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"ab\".repeat(3));");
+    Assert.Equal("ababab", Assert.IsType<StringValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void String_TrimStart_RemovesLeadingWhitespace()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"  hi  \".trimStart());");
+    Assert.Equal("hi  ", Assert.IsType<StringValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void String_TrimEnd_RemovesTrailingWhitespace()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"  hi  \".trimEnd());");
+    Assert.Equal("  hi", Assert.IsType<StringValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void String_CharAt_ReturnsSingleCharacterString()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"hello\".charAt(1));");
+    Assert.Equal("e", Assert.IsType<StringValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void String_ToInt_ParsesDecimalString()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"42\".toInt());");
+    Assert.Equal(42L, Assert.IsType<IntValue>(Assert.Single(r)).Value);
+  }
+
+  [Fact]
+  public void String_ToFloat_ParsesDecimalString()
+  {
+    var r = RunFromSource("native function void record(Object v);\nrecord(\"3.14\".toFloat());");
+    Assert.Equal(3.14, Assert.IsType<FloatValue>(Assert.Single(r)).Value, precision: 10);
+  }
+
+  [Fact]
+  public void String_ToInt_InvalidString_ThrowsRuntimeException()
+  {
+    var ex = Assert.Throws<RuntimeException>(() => RunFromSource("\"abc\".toInt();"));
+    Assert.Contains("Cannot convert", ex.Message);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>
