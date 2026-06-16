@@ -12,6 +12,15 @@ namespace ALKScript.Interpreter.Common.Evaluation
   public interface IFunctionValueFactory
   {
     /// <summary>
+    /// The identifier of the module whose declarations are currently being
+    /// evaluated, or <c>null</c> when executing global preludes or inline
+    /// (non-module) scripts. The evaluator sets this before starting each
+    /// module segment so that <see cref="Create"/> can look up
+    /// module-qualified native bindings.
+    /// </summary>
+    string? CurrentModuleSpecifier { get; set; }
+
+    /// <summary>
     /// Creates the callable value for <paramref name="declaration"/> closing
     /// over <paramref name="closure"/>. A <c>native</c> declaration with no
     /// matching host binding fails with a <see cref="RuntimeException"/>.

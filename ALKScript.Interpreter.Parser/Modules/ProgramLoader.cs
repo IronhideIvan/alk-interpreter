@@ -4,6 +4,7 @@ using System.Linq;
 using ALKScript.Interpreter.Common;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Modules;
+using ALKScript.Interpreter.Common.Token;
 
 namespace ALKScript.Interpreter.Parser.Modules
 {
@@ -109,6 +110,8 @@ namespace ALKScript.Interpreter.Parser.Modules
         importResolutions[specifier] = specifier; // core modules: identifier == specifier
       }
 
+      ValidateNoDuplicateImportLocalNames(program.Imports);
+
       return new ModuleGraph(entry, modules, globalPreludes);
     }
 
@@ -177,6 +180,8 @@ namespace ALKScript.Interpreter.Parser.Modules
         {
           ResolveImport(path, import, modules, loadingStack, importResolutions);
         }
+
+        ValidateNoDuplicateImportLocalNames(program.Imports);
 
         foreach (Stmt declaration in program.Declarations)
         {
@@ -347,6 +352,50 @@ namespace ALKScript.Interpreter.Parser.Modules
       }
 
       return null!;
+    }
+
+    /// <summary>
+    /// Validates that no local name is bound more than once across all of a
+    /// module's import declarations. Each named specifier's local name is its
+    /// alias (if present) or its original name; each namespace import's local
+    /// name is its alias. Binding the same local name twice is always an error
+    /// regardless of whether the two imports come from different modules.
+    /// </summary>
+    private static void ValidateNoDuplicateImportLocalNames(IEnumerable<ImportDecl> imports)
+    {
+      var seen = new Dictionary<string, ALKScriptToken>();
+
+      foreach (ImportDecl import in imports)
+      {
+        switch (import.Clause)
+        {
+          case NamedImportsClause namedImports:
+            foreach (ImportSpecifier specifier in namedImports.Specifiers)
+            {
+              ALKScriptToken nameToken = specifier.Alias ?? specifier.Name;
+              string localName = nameToken.Lexeme;
+
+              if (seen.ContainsKey(localName))
+              {
+                throw new ModuleLoadException(nameToken, $"Import name '{localName}' is already bound by a previous import.");
+              }
+
+              seen[localName] = nameToken;
+            }
+            break;
+
+          case NamespaceImportClause namespaceImport:
+            string alias = namespaceImport.Alias.Lexeme;
+
+            if (seen.ContainsKey(alias))
+            {
+              throw new ModuleLoadException(namespaceImport.Alias, $"Import name '{alias}' is already bound by a previous import.");
+            }
+
+            seen[alias] = namespaceImport.Alias;
+            break;
+        }
+      }
     }
 
     /// <summary>

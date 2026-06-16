@@ -48,6 +48,8 @@ namespace ALKScript.Interpreter.Evaluator
       _operationBinder = operationBinder;
     }
 
+    public string? CurrentModuleSpecifier { get; set; }
+
     public ALKScriptValue Create(FunctionDecl declaration, ScriptEnvironment closure)
     {
       if (!declaration.IsNative)
@@ -60,7 +62,7 @@ namespace ALKScript.Interpreter.Evaluator
         return CreatePendingOperationFactory(declaration.Name.Lexeme, declaration.Name, declaration.Parameters.Count, ThunkElementType(declaration.ReturnType));
       }
 
-      if (_nativeBindings.TryGetValue(declaration.Name.Lexeme, out var implementation))
+      if (_nativeBindings.TryGetValue(CurrentModuleSpecifier, declaration.Name.Lexeme, out var implementation))
       {
         return new NativeFunctionValue(declaration.Name.Lexeme, declaration.Parameters.Count, implementation, declaration: declaration);
       }

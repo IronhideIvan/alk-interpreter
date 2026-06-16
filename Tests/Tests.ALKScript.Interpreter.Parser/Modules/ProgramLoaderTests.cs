@@ -157,6 +157,85 @@ public class ProgramLoaderTests
   }
 
   [Fact]
+  public void Load_DuplicateImportLocalName_ThrowsModuleLoadException()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { log } from \"./a\";\nimport { log } from \"./b\";",
+      ["a.alk"] = "export function void log() {}",
+      ["b.alk"] = "export function void log() {}",
+    };
+
+    var exception = Assert.Throws<ModuleLoadException>(() => CreateLoader(files).Load("main.alk"));
+    Assert.Contains("already bound", exception.Message);
+    Assert.Contains("log", exception.Message);
+  }
+
+  [Fact]
+  public void Load_DuplicateImportLocalNameViaAlias_ThrowsModuleLoadException()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { log } from \"./a\";\nimport { write as log } from \"./b\";",
+      ["a.alk"] = "export function void log() {}",
+      ["b.alk"] = "export function void write() {}",
+    };
+
+    var exception = Assert.Throws<ModuleLoadException>(() => CreateLoader(files).Load("main.alk"));
+    Assert.Contains("already bound", exception.Message);
+    Assert.Contains("log", exception.Message);
+  }
+
+  [Fact]
+  public void Load_DuplicateNamespaceImportAlias_ThrowsModuleLoadException()
+  {
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import * as mod from \"./a\";\nimport * as mod from \"./b\";",
+      ["a.alk"] = "export function void log() {}",
+      ["b.alk"] = "export function void write() {}",
+    };
+
+    var exception = Assert.Throws<ModuleLoadException>(() => CreateLoader(files).Load("main.alk"));
+    Assert.Contains("already bound", exception.Message);
+    Assert.Contains("mod", exception.Message);
+  }
+
+  [Fact]
+  public void Load_DuplicateImportLocalNameFromCoreModule_ThrowsModuleLoadException()
+  {
+    var coreModules = new Dictionary<string, string>
+    {
+      ["mod-a"] = "export function void log() {}",
+      ["mod-b"] = "export function void log() {}",
+    };
+
+    var exception = Assert.Throws<ModuleLoadException>(() =>
+      CreateLoader(new Dictionary<string, string>
+      {
+        ["main.alk"] = "import { log } from \"mod-a\";\nimport { log } from \"mod-b\";",
+      }, coreModules).Load("main.alk"));
+
+    Assert.Contains("already bound", exception.Message);
+    Assert.Contains("log", exception.Message);
+  }
+
+  [Fact]
+  public void Load_ReusedImportSourceWithDistinctLocalNames_Succeeds()
+  {
+    // Importing the same exported name from the same module under two
+    // different aliases is distinct local names — should be allowed.
+    var files = new Dictionary<string, string>
+    {
+      ["main.alk"] = "import { log as logA } from \"./a\";\nimport { log as logB } from \"./a\";",
+      ["a.alk"] = "export function void log() {}",
+    };
+
+    ModuleGraph graph = CreateLoader(files).Load("main.alk");
+    Assert.NotNull(graph);
+  }
+
+  [Fact]
   public void Load_ReExport_ResolvesTargetModuleAndAddsToGraph()
   {
     var files = new Dictionary<string, string>

@@ -85,32 +85,32 @@ public sealed class ScriptHost
         _runtime.CoreModules["enemy"] = EnemyModule;
         _runtime.CoreModules["interact"] = InteractModule;
 
-        _runtime.NativeBindings["log"] = arguments =>
+        _runtime.NativeBindings["common", "log"] = arguments =>
         {
             _world.Log(((StringValue)arguments[0]).Value);
             return NullValue.Instance;
         };
 
-        _runtime.NativeBindings["randomInt"] = arguments =>
+        _runtime.NativeBindings["common", "randomInt"] = arguments =>
         {
             var min = (int)((IntValue)arguments[0]).Value;
             var max = (int)((IntValue)arguments[1]).Value;
             return new IntValue(_random.Next(min, max + 1));
         };
 
-        _runtime.NativeBindings["_selfX"] = _ => new IntValue(_currentActor!.X);
-        _runtime.NativeBindings["_selfY"] = _ => new IntValue(_currentActor!.Y);
-        _runtime.NativeBindings["_playerX"] = _ => new IntValue(_world.Player.X);
-        _runtime.NativeBindings["_playerY"] = _ => new IntValue(_world.Player.Y);
+        _runtime.NativeBindings["enemy", "_selfX"] = _ => new IntValue(_currentActor!.X);
+        _runtime.NativeBindings["enemy", "_selfY"] = _ => new IntValue(_currentActor!.Y);
+        _runtime.NativeBindings["enemy", "_playerX"] = _ => new IntValue(_world.Player.X);
+        _runtime.NativeBindings["enemy", "_playerY"] = _ => new IntValue(_world.Player.Y);
 
-        _runtime.NativeBindings["_tryMove"] = arguments =>
+        _runtime.NativeBindings["enemy", "_tryMove"] = arguments =>
         {
             var dx = (int)((IntValue)arguments[0]).Value;
             var dy = (int)((IntValue)arguments[1]).Value;
             return BoolValue.Of(_world.TryMoveEntity(_currentActor!, dx, dy));
         };
 
-        _runtime.NativeBindings["_attackPlayer"] = _ =>
+        _runtime.NativeBindings["enemy", "_attackPlayer"] = _ =>
         {
             var actor = _currentActor!;
             if (!_world.IsAdjacentToPlayer(actor)) return BoolValue.Of(false);
@@ -120,30 +120,30 @@ public sealed class ScriptHost
             return BoolValue.Of(true);
         };
 
-        _runtime.NativeBindings["playerHp"] = _ => new IntValue(_world.Player.Hp);
+        _runtime.NativeBindings["interact", "playerHp"] = _ => new IntValue(_world.Player.Hp);
 
-        _runtime.NativeBindings["healPlayer"] = arguments =>
+        _runtime.NativeBindings["interact", "healPlayer"] = arguments =>
         {
             var amount = (int)((IntValue)arguments[0]).Value;
             _world.Player.Hp = Math.Min(_world.Player.MaxHp, _world.Player.Hp + amount);
             return NullValue.Instance;
         };
 
-        _runtime.NativeBindings["damagePlayer"] = arguments =>
+        _runtime.NativeBindings["interact", "damagePlayer"] = arguments =>
         {
             var amount = (int)((IntValue)arguments[0]).Value;
             _world.Player.Hp -= amount;
             return NullValue.Instance;
         };
 
-        _runtime.NativeBindings["grantGold"] = arguments =>
+        _runtime.NativeBindings["interact", "grantGold"] = arguments =>
         {
             var amount = (int)((IntValue)arguments[0]).Value;
             _world.Player.Gold += amount;
             return NullValue.Instance;
         };
 
-        _runtime.NativeBindings["removeSelf"] = _ =>
+        _runtime.NativeBindings["interact", "removeSelf"] = _ =>
         {
             _currentInteractable!.Consumed = true;
             return NullValue.Instance;

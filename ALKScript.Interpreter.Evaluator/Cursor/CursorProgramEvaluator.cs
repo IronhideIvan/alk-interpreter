@@ -265,6 +265,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         var env = GetOrCreateModuleEnv(module);
         BindModuleDependencies(module, env);
 
+        _functionValueFactory.CurrentModuleSpecifier = module.Identifier;
         var prefix = ModuleDeclarationPrefix.GetDeclarationPrefix(module.Program.Declarations);
         if (_cursor.Start(prefix, env) == RunResult.Awaiting)
         {
@@ -275,6 +276,8 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
         _cursor.Signal = null;
       }
+
+      _functionValueFactory.CurrentModuleSpecifier = null;
     }
 
     /// <summary>Resumes a suspended segment with the settled result of the pending <c>await</c>.</summary>
@@ -316,6 +319,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           case 1:
             if (_index >= _moduleOrder!.Count)
             {
+              _functionValueFactory.CurrentModuleSpecifier = null;
               _phase = 2;
               continue;
             }
@@ -323,6 +327,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             var module = _moduleOrder[_index];
             var env = GetOrCreateModuleEnv(module);
             BindModuleDependencies(module, env);
+            _functionValueFactory.CurrentModuleSpecifier = module.Identifier;
             stepResult = _cursor.Start(module.Program.Declarations, env);
             break;
 
