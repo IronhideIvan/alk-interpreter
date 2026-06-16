@@ -272,6 +272,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
       var env = new ScriptEnvironment(ClassEnvironments.For(superclass));
       env.CurrentClass = superclass;
+      env.IsInConstructor = true;
       env.Define("this", instance);
       env.CurrentTypeArguments = instance.TypeArguments;
       if (superclass.Superclass != null)

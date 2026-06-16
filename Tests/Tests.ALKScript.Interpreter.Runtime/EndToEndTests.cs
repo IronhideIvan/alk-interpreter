@@ -1241,13 +1241,13 @@ public class EndToEndTests : RuntimeTestBase
   // ── const declarations ───────────────────────────────────────────────────
 
   [Fact]
-  public void ConstShowcase_ConstBindingsWithMutableValues_ProducesExpectedOutput()
+  public void ConstShowcase_ConstBindingsAndFrozenArrays_ProducesExpectedOutput()
   {
     // Features exercised:
     //   - 'const' with an explicit type ('const int max = 100;')
     //   - 'const var' (inferred type)
-    //   - the 'const' restriction applies to the binding, not the referenced
-    //     value: 'const int[] items = [...]' still allows 'items.push(...)'
+    //   - 'const int[] items = [...]' freezes the array: both the binding and
+    //     the array contents are immutable (push/pop/remove/index-assign throw)
 
     var logged = new List<string>();
 
@@ -1279,6 +1279,15 @@ public class EndToEndTests : RuntimeTestBase
         "done",
       },
       logged);
+  }
+
+  [Fact]
+  public void ConstShowcase_PushOnConstArray_ThrowsRuntimeException()
+  {
+    var exception = Assert.Throws<RuntimeException>(() =>
+      RunFromSource("const int[] items = [1, 2]; items.push(3);"));
+
+    Assert.Contains("'const' array", exception.Message);
   }
 
   [Fact]
@@ -1450,6 +1459,68 @@ public class EndToEndTests : RuntimeTestBase
 
     Assert.Contains("Cannot assign to readonly field 'value'", exception.Message);
     Assert.Equal(new[] { "value=0" }, logged);
+  }
+
+  [Fact]
+  public void ReadonlyShowcase_SubclassConstructorAssigningBaseReadonlyField_ThrowsRuntimeException()
+  {
+    const string source = @"
+class Base {
+  public readonly int x;
+  public new(int x) { this.x = x; }
+}
+class Sub extends Base {
+  public new(int x) {
+    base(x);
+    this.x = 99;
+  }
+}
+var s = new Sub(1);
+";
+    var exception = Assert.Throws<RuntimeException>(() => RunFromSource(source));
+
+    Assert.Contains("Cannot assign to readonly field 'x'", exception.Message);
+  }
+
+  [Fact]
+  public void ReadonlyShowcase_BaseConstructorCalledViaBase_SetsReadonlyField()
+  {
+    const string source = @"
+native function void record(Object value);
+class Base {
+  public readonly int x;
+  public new(int x) { this.x = x; }
+}
+class Sub extends Base {
+  public new(int x) { base(x); }
+}
+var s = new Sub(42);
+record(s.x);
+";
+    var results = RunFromSource(source);
+
+    Assert.Equal(42L, Assert.IsType<IntValue>(Assert.Single(results)).Value);
+  }
+
+  [Fact]
+  public void ReadonlyShowcase_SubclassMethodReadingBaseReadonlyField_Succeeds()
+  {
+    const string source = @"
+native function void record(Object value);
+class Base {
+  public readonly int x;
+  public new(int x) { this.x = x; }
+}
+class Sub extends Base {
+  public new(int x) { base(x); }
+  public function int doubled() { return this.x * 2; }
+}
+var s = new Sub(5);
+record(s.doubled());
+";
+    var results = RunFromSource(source);
+
+    Assert.Equal(10L, Assert.IsType<IntValue>(Assert.Single(results)).Value);
   }
 
   // ── Nullable type enforcement ───────────────────────────────────────────────
