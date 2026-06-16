@@ -477,6 +477,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             return StepResult.Completed(NullValue.Instance);
           }
 
+          if (array.IsFrozen) throw new RuntimeException(index.ClosingBracket, "Cannot assign to an index of a 'const' array.");
           int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count, "Array");
           array.Items[position] = value;
           return StepResult.Completed(value);
@@ -634,6 +635,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             return StepResult.Completed(NullValue.Instance);
           }
 
+          if (array.IsFrozen) throw new RuntimeException(index.ClosingBracket, "Cannot assign to an index of a 'const' array.");
           int position = ExpectIndex(indexValue, index.ClosingBracket, array.Items.Count, "Array");
           oldValue = array.Items[position];
           newValue = Step(oldValue, op);
@@ -1068,6 +1070,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         case "push":
           return new NativeFunctionValue("push", 1, arguments =>
           {
+            if (array.IsFrozen) throw new RuntimeException(name, "Cannot call 'push' on a 'const' array.");
             array.Items.Add(arguments[0]);
             return new IntValue(array.Items.Count);
           });
@@ -1075,6 +1078,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         case "pop":
           return new NativeFunctionValue("pop", 0, arguments =>
           {
+            if (array.IsFrozen) throw new RuntimeException(name, "Cannot call 'pop' on a 'const' array.");
             if (array.Items.Count == 0)
             {
               throw new RuntimeException(name, "Cannot 'pop' from an empty array.");
@@ -1117,6 +1121,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         case "remove":
           return new NativeFunctionValue("remove", 1, arguments =>
           {
+            if (array.IsFrozen) throw new RuntimeException(name, "Cannot call 'remove' on a 'const' array.");
             int index = ExpectIndex(arguments[0], name, array.Items.Count, "Array");
 
             var removed = array.Items[index];

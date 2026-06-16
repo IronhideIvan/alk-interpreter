@@ -63,12 +63,10 @@ public class AsyncEvaluationTests : EvaluatorTestBase
   }
 
   [Fact]
-  public void Evaluate_AwaitOnPlainValue_YieldsItDirectly()
+  public void Evaluate_AwaitOnPlainValue_ThrowsRuntimeException()
   {
-    var recorded = Run($"{RecordDeclaration}\nfunction void main() {{\n  var awaited = await 1;\n  record(awaited);\n}}\nmain();");
-
-    var value = Assert.IsType<IntValue>(Assert.Single(recorded));
-    Assert.Equal(1L, value.Value);
+    Assert.Throws<RuntimeException>(() =>
+      Run($"{RecordDeclaration}\nfunction void main() {{\n  var awaited = await 1;\n  record(awaited);\n}}\nmain();"));
   }
 
   [Fact]
@@ -260,10 +258,11 @@ public class AsyncEvaluationTests : EvaluatorTestBase
     // "load"'s own body suspends mid-call (its "await fetch()" parks on a
     // task that settles from a background thread) — proving suspension
     // composes through user-defined functions, not just directly-awaited
-    // natives: "main"'s "await load()" is transitively parked until "load"'s
-    // body — and therefore "fetch"'s task — settles.
+    // natives. "main" calls load() without await (load returns int, not thunk)
+    // but still suspends transitively because the cursor propagates
+    // StepResult.IsAwaiting up through the call stack.
     var recorded = Run(
-      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction int load() {{\n  var n = await fetch();\n  return n + 1;\n}}\nfunction void main() {{\n  var loaded = await load();\n  record(loaded);\n}}\nmain();",
+      $"{RecordDeclaration}\nnative function thunk<int> fetch();\nfunction int load() {{\n  var n = await fetch();\n  return n + 1;\n}}\nfunction void main() {{\n  var loaded = load();\n  record(loaded);\n}}\nmain();",
       new FuncBinder(_ => Task.Run(async () =>
       {
         await Task.Delay(20);

@@ -247,4 +247,74 @@ public class CursorLoopAndSwitchExecutorTests
 
     Assert.Equal(99L, GetInt(environment, "result"));
   }
+
+  [Fact]
+  public void Execute_ForeachStmt_IteratesStringCharacters()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("s", new StringValue("hi"));
+    environment.Define("result", new StringValue(""));
+
+    var body = new ExpressionStmt(new AssignmentExpr(
+      Nodes.Ident("result"),
+      new BinaryExpr(Nodes.Ident("result"), Nodes.Operator(ALKScriptTokenType.Plus, "+"), Nodes.Ident("ch"))));
+
+    var foreachStmt = new ForeachStmt(
+      Nodes.Token(ALKScriptTokenType.Foreach, "foreach"),
+      Nodes.Identifier("ch"),
+      Nodes.Ident("s"),
+      body);
+
+    ExecuteCompleted(cursor, foreachStmt, environment);
+
+    Assert.Equal("hi", Assert.IsType<StringValue>(environment.TryGet("result", out var v) ? v : null).Value);
+  }
+
+  [Fact]
+  public void Execute_ForeachStmt_NonArrayNonString_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+    environment.Define("x", new IntValue(42));
+
+    var foreachStmt = new ForeachStmt(
+      Nodes.Token(ALKScriptTokenType.Foreach, "foreach"),
+      Nodes.Identifier("item"),
+      Nodes.Ident("x"),
+      new ExpressionStmt(Nodes.Literal(null)));
+
+    var exception = Assert.Throws<RuntimeException>(() => cursor.Execute(foreachStmt, environment));
+
+    Assert.Contains("'foreach' requires an array or string", exception.Message);
+  }
+
+  [Fact]
+  public void Execute_ConstArrayPush_ThrowsRuntimeException()
+  {
+    var cursor = MakeCursor();
+    var environment = new ScriptEnvironment();
+
+    var decl = new VariableDecl(
+      type: null,
+      Nodes.Identifier("items"),
+      new ArrayLiteralExpr(new List<Expr> { Nodes.Literal(1L) }),
+      isConst: true);
+
+    cursor.Execute(decl, environment);
+
+    Assert.True(environment.TryGet("items", out var val));
+    var array = Assert.IsType<ArrayValue>(val);
+    Assert.True(array.IsFrozen);
+
+    var pushToken = Nodes.Token(ALKScriptTokenType.Identifier, "push");
+    var exception = Assert.Throws<RuntimeException>(() =>
+    {
+      var pushFn = (NativeFunctionValue)cursor.Eval(
+        new GetExpr(Nodes.Ident("items"), pushToken), environment).Value!;
+      pushFn.Implementation(new List<ALKScriptValue> { new IntValue(2) });
+    });
+
+    Assert.Contains("'const' array", exception.Message);
+  }
 }

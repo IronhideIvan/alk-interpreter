@@ -193,6 +193,12 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       }
 
       environment.Define(declaration.Name.Lexeme, value, declaration.Type, declaration.IsConst);
+
+      if (declaration.IsConst && value is ArrayValue constArray)
+      {
+        constArray.Freeze();
+      }
+
       return StepResult.Completed(NullValue.Instance);
     }
 
@@ -546,10 +552,24 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       }
     }
 
+    private static IReadOnlyList<ALKScriptValue> ExtractForeachItems(ALKScriptValue collection, ALKScript.Interpreter.Common.Token.ALKScriptToken keyword)
+    {
+      if (collection is ArrayValue array) return array.Items;
+
+      if (collection is StringValue str)
+      {
+        var chars = new List<ALKScriptValue>(str.Value.Length);
+        foreach (char c in str.Value) chars.Add(new StringValue(c.ToString()));
+        return chars;
+      }
+
+      throw new RuntimeException(keyword, $"'foreach' requires an array or string but got '{collection.TypeName}'.");
+    }
+
     private StepResult ExecuteForeach(ForeachStmt statement, ScriptEnvironment environment)
     {
       int startIndex;
-      ArrayValue array;
+      IReadOnlyList<ALKScriptValue> items;
       bool resumingBody = false;
       ScriptEnvironment? resumeEnvironment = null;
 
@@ -564,8 +584,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         // itself suspend, per plan §4) — a known limitation if it has
         // observable side effects.
         var collectionStep = _cursor.Eval(statement.Collection, environment);
-        array = collectionStep.Value! as ArrayValue
-          ?? throw new RuntimeException(statement.Keyword, $"'foreach' requires an array but got '{collectionStep.Value!.TypeName}'.");
+        items = ExtractForeachItems(collectionStep.Value!, statement.Keyword);
       }
       else
       {
@@ -578,12 +597,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           return StepResult.Completed(NullValue.Instance);
         }
 
-        array = collectionValue as ArrayValue
-          ?? throw new RuntimeException(statement.Keyword, $"'foreach' requires an array but got '{collectionValue.TypeName}'.");
+        items = ExtractForeachItems(collectionValue, statement.Keyword);
         startIndex = 0;
       }
 
-      for (int i = startIndex; i < array.Items.Count; i++)
+      for (int i = startIndex; i < items.Count; i++)
       {
         ScriptEnvironment loopEnvironment;
 
@@ -595,7 +613,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         else
         {
           loopEnvironment = new ScriptEnvironment(environment);
-          loopEnvironment.Define(statement.Variable.Lexeme, array.Items[i]);
+          loopEnvironment.Define(statement.Variable.Lexeme, items[i]);
         }
 
         var bodyStep = Execute(statement.Body, loopEnvironment);
