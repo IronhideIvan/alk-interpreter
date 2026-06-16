@@ -604,4 +604,35 @@ public class ExpressionTests : ParserTestBase
     var call = Assert.IsType<CallExpr>(exprStmt.Expression);
     Assert.IsType<NullConditionalGetExpr>(call.Callee);
   }
+
+  [Fact]
+  public void Parse_TypeofExpression_ParsesOperandAsUnaryExpression()
+  {
+    var program = Parse("typeof x;");
+
+    var typeofExpr = Assert.IsType<TypeofExpr>(SingleExpressionStatement(program));
+    Assert.Equal(ALKScriptTokenType.Typeof, typeofExpr.Keyword.Type);
+    var operand = Assert.IsType<IdentifierExpr>(typeofExpr.Operand);
+    Assert.Equal("x", operand.Name.Lexeme);
+  }
+
+  [Fact]
+  public void Parse_TypeofNestedInBinaryExpression_ParsesCorrectly()
+  {
+    // "typeof x == \"int\"" — typeof has higher precedence than ==
+    var program = Parse("typeof x == \"int\";");
+
+    var binary = Assert.IsType<BinaryExpr>(SingleExpressionStatement(program));
+    Assert.Equal(ALKScriptTokenType.EqualEqual, binary.Operator.Type);
+    Assert.IsType<TypeofExpr>(binary.Left);
+    Assert.IsType<LiteralExpr>(binary.Right);
+  }
+
+  [Fact]
+  public void Parse_TypeofUsedAsVariableName_ThrowsParseException()
+  {
+    // 'typeof' is a reserved keyword — it must never lex as an identifier,
+    // so 'var typeof = 1;' is a parse error.
+    Assert.Throws<ParseException>(() => Parse("var typeof = 1;"));
+  }
 }

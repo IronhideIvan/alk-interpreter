@@ -341,6 +341,51 @@ public class CursorExpressionEvaluatorTests
     Assert.False(Assert.IsType<BoolValue>(result).Value);
   }
 
+  [Theory]
+  [InlineData(42L, "int")]
+  [InlineData("hello", "string")]
+  [InlineData(null, "null")]
+  [InlineData(true, "bool")]
+  [InlineData(1.5, "float")]
+  public void Eval_Typeof_PrimitiveOperand_ReturnsTypeName(object? operand, string expectedTypeName)
+  {
+    var cursor = MakeCursor();
+    var keyword = Nodes.Token(ALKScriptTokenType.Typeof, "typeof");
+    var expr = new TypeofExpr(keyword, Nodes.Literal(operand));
+
+    var result = EvalCompleted(cursor, expr, new ScriptEnvironment());
+
+    Assert.Equal(expectedTypeName, Assert.IsType<StringValue>(result).Value);
+  }
+
+  [Fact]
+  public void Eval_Typeof_ArrayOperand_ReturnsArray()
+  {
+    var cursor = MakeCursor();
+    var keyword = Nodes.Token(ALKScriptTokenType.Typeof, "typeof");
+    var expr = new TypeofExpr(keyword, new ArrayLiteralExpr(new List<Expr> { Nodes.Literal(1L) }));
+
+    var result = EvalCompleted(cursor, expr, new ScriptEnvironment());
+
+    Assert.Equal("array", Assert.IsType<StringValue>(result).Value);
+  }
+
+  [Fact]
+  public void Eval_Typeof_InstanceOperand_ReturnsClassName()
+  {
+    var cursor = MakeCursor();
+    var classDecl = new ClassDecl(false, Nodes.Identifier("Point"), System.Array.Empty<string>(), null, System.Array.Empty<TypeNode>(), System.Array.Empty<MemberDecl>());
+    var instance = new InstanceValue(new ClassValue(classDecl, null, new ScriptEnvironment()));
+    var environment = new ScriptEnvironment();
+    environment.Define("p", instance);
+    var keyword = Nodes.Token(ALKScriptTokenType.Typeof, "typeof");
+    var expr = new TypeofExpr(keyword, Nodes.Ident("p"));
+
+    var result = EvalCompleted(cursor, expr, environment);
+
+    Assert.Equal("Point", Assert.IsType<StringValue>(result).Value);
+  }
+
   [Fact]
   public void Eval_AlreadyPendingSignal_ShortCircuitsToNull()
   {

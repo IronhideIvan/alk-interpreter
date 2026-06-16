@@ -10,10 +10,13 @@ log("max=" + max);
 const var label = "fixed";
 log("label=" + label);
 
-// ── const binding does not make the referenced value immutable ─────────────
+// ── const array: binding and contents are both frozen ───────────────────────
+//
+// Neither the variable ('items') nor the array itself may be mutated.
+// 'items = [...]'  — reassignment  → error (const binding)
+// 'items.push(x)' — array mutation → error (frozen array)
 
-const int[] items = [1, 2];
-items.push(3);
+const int[] items = [1, 2, 3];
 log("items.length=" + items.length);
 log("items[2]=" + items[2]);
 

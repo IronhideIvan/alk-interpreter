@@ -1271,6 +1271,13 @@ namespace ALKScript.Interpreter.Parser
         return new AwaitExpr(keyword, operand);
       }
 
+      if (_stream.Match(ALKScriptTokenType.Typeof))
+      {
+        ALKScriptToken keyword = _stream.Previous();
+        Expr operand = ParseUnary();
+        return new TypeofExpr(keyword, operand);
+      }
+
       if (CheckNumericCastStart())
       {
         _stream.Consume(ALKScriptTokenType.LeftParen, "Expect '('.");

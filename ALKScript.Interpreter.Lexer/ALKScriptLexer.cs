@@ -30,6 +30,7 @@ namespace ALKScript.Interpreter.Lexer
       { "null", ALKScriptTokenType.Null },
 
       { "await", ALKScriptTokenType.Await },
+      { "typeof", ALKScriptTokenType.Typeof },
 
       { "try", ALKScriptTokenType.Try },
       { "catch", ALKScriptTokenType.Catch },

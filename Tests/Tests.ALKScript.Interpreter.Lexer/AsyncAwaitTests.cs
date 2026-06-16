@@ -9,6 +9,7 @@ public class AsyncAwaitTests
   [Theory]
   [InlineData("await", ALKScriptTokenType.Await)]
   [InlineData("thunk", ALKScriptTokenType.Thunk)]
+  [InlineData("typeof", ALKScriptTokenType.Typeof)]
   public void Tokenize_AsyncAwaitKeyword_ReturnsExpectedToken(string source, ALKScriptTokenType expectedType)
   {
     var lexer = new ALKScriptLexer();

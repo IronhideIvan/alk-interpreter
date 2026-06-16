@@ -40,6 +40,9 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         case AwaitExpr awaitExpr:
           return EvalAwait(awaitExpr, environment, allowSuspend);
 
+        case TypeofExpr typeofExpr:
+          return EvalTypeof(typeofExpr, environment);
+
         case LiteralExpr literal:
           return StepResult.Completed(EvalLiteral(literal));
 
@@ -1294,6 +1297,13 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     /// <summary>
     /// Step 6/7 of the cursor-rewrite plan: <c>await</c>. If
     /// <see cref="EvaluationCursor.HasResumeValue"/> is set, this is the exact
+    private StepResult EvalTypeof(TypeofExpr expression, ScriptEnvironment environment)
+    {
+      var step = _cursor.Eval(expression.Operand, environment);
+      if (step.IsAwaiting) return step;
+      return StepResult.Completed(new StringValue(step.Value!.TypeName));
+    }
+
     /// <c>await</c> a prior <see cref="StepResult.Awaiting"/> suspended on —
     /// substitute the resumed value without re-evaluating
     /// <see cref="AwaitExpr.Operand"/> (which already ran and produced the

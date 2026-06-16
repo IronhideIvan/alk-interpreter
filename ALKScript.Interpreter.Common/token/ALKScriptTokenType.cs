@@ -32,6 +32,9 @@ namespace ALKScript.Interpreter.Common.Token
     // Keywords - async/await
     Await,
 
+    // Keywords - type inspection
+    Typeof,
+
     // Keywords - exception handling
     Try,
     Catch,
