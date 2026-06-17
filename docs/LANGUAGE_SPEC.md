@@ -30,7 +30,7 @@ The following words are reserved keywords and cannot be used as identifiers:
 if else while for foreach in do break continue
 switch case default
 function native return var const true false null
-await thunk
+await thunk typeof
 try catch finally throw
 int long float string bool void
 class new this base extends
@@ -102,13 +102,21 @@ immutable and none of these mutate the receiver.
 | `toUpper` | `() -> string` | Uppercased copy (invariant culture). |
 | `toLower` | `() -> string` | Lowercased copy (invariant culture). |
 | `trim` | `() -> string` | Removes leading/trailing whitespace. |
+| `trimStart` | `() -> string` | Removes leading whitespace only. |
+| `trimEnd` | `() -> string` | Removes trailing whitespace only. |
 | `substring` | `(int start, int count) -> string` | Returns the `count`-character substring starting at `start`. Runtime error if the range is out of bounds. |
+| `charAt` | `(int index) -> string` | Returns the single-character string at position `index`. Equivalent to `s[index]` but expressed as a method call. Runtime error if out of bounds. |
 | `indexOf` | `(string) -> int` | Index of the first occurrence (ordinal comparison), or `-1` if not found. |
 | `contains` | `(string) -> bool` | Whether the substring occurs (ordinal comparison). |
 | `startsWith` | `(string) -> bool` | Ordinal comparison. |
 | `endsWith` | `(string) -> bool` | Ordinal comparison. |
 | `split` | `(string separator) -> string[]` | Splits on every occurrence of `separator` (no separator-collapsing). |
 | `replace` | `(string old, string new) -> string` | Replaces all occurrences of `old` with `new`. |
+| `padLeft` | `(int totalWidth, string padChar) -> string` | Returns a new string right-aligned in a field of width `totalWidth`, padded on the left with `padChar` (a single-character string). No-op if the string is already at least that wide. Runtime error if `padChar` is not exactly one character. |
+| `padRight` | `(int totalWidth, string padChar) -> string` | Same as `padLeft` but pads on the right. |
+| `repeat` | `(int count) -> string` | Returns a new string consisting of the receiver repeated `count` times. Runtime error if `count` is negative. |
+| `toInt` | `() -> int` | Parses the string as a decimal integer. Runtime error (`RuntimeException`) if the string is not a valid integer. |
+| `toFloat` | `() -> float` | Parses the string as a floating-point number. Runtime error if the string is not a valid float. |
 
 ### 2.2 Arrays
 
@@ -122,11 +130,20 @@ Arrays expose a small set of built-in members, accessed like
 | Member | Signature | Behavior |
 | --- | --- | --- |
 | `length` | property, `int` | Number of elements. |
-| `push` | `(T) -> int` | Appends an element in place; returns the new length. |
-| `pop` | `() -> T` | Removes and returns the last element in place; runtime error on an empty array. |
+| `push` | `(T) -> int` | Appends an element in place; returns the new length. Runtime error on a frozen (`const`) array. |
+| `pop` | `() -> T` | Removes and returns the last element in place; runtime error on an empty array or a frozen array. |
+| `remove` | `(int) -> T` | Removes and returns the element at `index` in place; runtime error if `index` is out of bounds or the array is frozen. |
 | `join` | `(T[]) -> T[]` | Returns a new array containing this array's elements followed by `other`'s; does not mutate either operand. |
-| `slice` | `(int, int) -> T[]` | Returns a new array of `count` elements starting at `start`; does not mutate the receiver. Runtime error if the range is out of bounds. |
-| `remove` | `(int) -> T` | Removes and returns the element at `index` in place; runtime error if `index` is out of bounds. |
+| `slice` | `(int start, int count) -> T[]` | Returns a new array of `count` elements starting at `start`; does not mutate the receiver. Runtime error if the range is out of bounds. |
+| `indexOf` | `(T) -> int` | Returns the index of the first element equal to the argument (value equality), or `-1` if not found. |
+| `includes` | `(T) -> bool` | Returns `true` if any element equals the argument (value equality). |
+| `find` | `(lambda<bool, T>) -> T?` | Returns the first element for which the callback returns `true`, or `null` if none matches. |
+| `findIndex` | `(lambda<bool, T>) -> int` | Returns the index of the first element for which the callback returns `true`, or `-1` if none matches. |
+| `some` | `(lambda<bool, T>) -> bool` | Returns `true` if the callback returns `true` for at least one element. |
+| `every` | `(lambda<bool, T>) -> bool` | Returns `true` if the callback returns `true` for every element (vacuously `true` on an empty array). |
+| `sort` | `(lambda<int, T, T>?) -> T[]` | Sorts the array **in place** and returns `this`. Without a comparator, elements are sorted using their natural order (numbers ascending, strings lexicographically). With a comparator, the callback receives two elements `(a, b)` and must return a negative `int` (a before b), zero (equal), or a positive `int` (b before a). Runtime error on a frozen array. |
+| `reverse` | `() -> void` | Reverses the array **in place**. Runtime error on a frozen array. |
+| `reduce` | `(lambda<R, R, T>, R initial) -> R` | Reduces the array to a single value by calling `callback(accumulator, element)` for each element left-to-right, starting with `initial`. Does not mutate the receiver. |
 | `map` | `(lambda<R, T>) -> R[]` | Returns a new array containing the result of calling the given callback with each element in turn, in order; does not mutate the receiver. |
 | `filter` | `(lambda<bool, T>) -> T[]` | Returns a new array containing only the elements for which the given callback returns `true`, preserving order; does not mutate the receiver. Runtime error if the callback returns a non-`bool` value. |
 
@@ -241,7 +258,7 @@ are left-associative unless noted otherwise.
 | 12 | `<<` `>>` | left |
 | 13 | `+` `-` (binary) | left |
 | 14 | `*` `/` `%` | left |
-| 15 | unary `!` `-` `~`, prefix `++`/`--`, `await`, `(int)`/`(long)`/`(float)` casts | n/a (prefix) |
+| 15 | unary `!` `-` `~`, prefix `++`/`--`, `await`, `typeof`, `(int)`/`(long)`/`(float)` casts | n/a (prefix) |
 | 16 (tightest) | call `f(...)`, member `.`, `?.`, index `[...]`, postfix `++`/`--` | left |
 
 Note that `is`/`as` bind *tighter* than comparison operators but *looser*
@@ -293,10 +310,13 @@ const var label = "fixed";
   is a parse-time error.
 - After initialization, the name cannot be the target of `=`, any compound
   assignment (`+=`, `-=`, ...), or `++`/`--` — each is a runtime
-  (`RuntimeException`) error. This restriction applies to the *binding*
-  itself; it does not make the referenced value immutable, so
-  `const int[] items = [1, 2]; items.push(3);` and
-  `const var box = new Box(1); box.value = 2;` are both allowed.
+  (`RuntimeException`) error.
+- When a `const` binding holds an **array value**, the array itself is also
+  **frozen**: `push`, `pop`, `remove`, `sort`, `reverse`, and index-assignment
+  (`arr[i] = ...`) all throw at runtime. This prevents both rebinding the name
+  *and* mutating the array's contents. Non-array `const` values (class
+  instances, etc.) are not deeply immutable — e.g. `const var box = new Box(1);
+  box.value = 2;` is still allowed.
 - `const` is a property of the local/top-level binding, not of the static
   type — there is no `const`-qualified type syntax (e.g. no `const int[]`
   meaning "array of const ints").
@@ -430,6 +450,7 @@ factor     = unary { ( "*" | "/" | "%" ) unary } ;
 unary      = ( "!" | "-" | "~" ) unary
            | ( "++" | "--" ) unary
            | "await" unary
+           | "typeof" unary
            | "(" ( "int" | "long" | "float" ) ")" unary
            | call ;
 
@@ -502,6 +523,35 @@ its string representation, and substituted into the surrounding literal text.
 Interpolated strings may contain any number of `${...}` segments (including
 zero, in which case it behaves like a plain string) and may span multiple
 lines.
+
+### 6.5 `typeof` Operator
+
+`typeof expr` evaluates `expr` and returns a `string` naming the runtime type
+of the resulting value:
+
+| Runtime value | `typeof` result |
+| --- | --- |
+| `int` or `long` | `"int"` |
+| `float` | `"float"` |
+| `string` | `"string"` |
+| `bool` | `"bool"` |
+| `null` | `"null"` |
+| array | `"array"` |
+| class instance | the class name, e.g. `"Point"` |
+| enum value | the enum name, e.g. `"Color"` |
+| lambda / native function | `"lambda"` |
+| thunk | `"thunk"` |
+
+`typeof` binds at the same precedence as other unary prefix operators (level 15),
+so `typeof a + b` parses as `(typeof a) + b`.
+
+```
+var x = 42;
+log(typeof x);           // "int"
+log(typeof "hello");     // "string"
+log(typeof null);        // "null"
+log(typeof new Point(1, 2)); // "Point"
+```
 
 ---
 
@@ -726,9 +776,12 @@ never constructs one directly.
   including the entry module's top level (§4.3) — with no declaration-level
   marker required.
 - `await` on an expression that does not evaluate to a `thunk`/`thunk<T>`
-  value is a no-op: it yields the value unchanged. This is intentionally
-  lenient, since a function written to `await` a `thunk<T>` parameter/return
-  may also be called with a plain, already-resolved `T`.
+  value is a **runtime error** (`RuntimeException`). Only apply `await` to
+  values that are known to be thunks — typically the return value of a
+  `native` function declared with a `thunk<T>` return type. A script function
+  that internally awaits a thunk suspends its caller automatically via
+  `StepResult.IsAwaiting` propagation; the caller does not need (and must not
+  use) `await` on that call.
 - `await [expr1, expr2, ...]` — when the operand of `await` is an array
   literal (or array value) of `thunk`-shaped values, all of them are awaited
   concurrently (`Task.WhenAll` semantics): the result is an array of each
