@@ -418,6 +418,26 @@ namespace ALKScript.Interpreter.Parser
         throw Error(readonlyKeyword!, "'readonly' is not supported on 'static' fields.");
       }
 
+      // Operator overload: accessModifier? "static" "operator" returnType op "(" params ")" block
+      if (isStatic && _stream.Match(ALKScriptTokenType.Operator))
+      {
+        if (overrideModifier != OverrideModifier.None)
+          throw Error(_stream.Previous(), "Operator overloads cannot have override modifiers.");
+
+        TypeNode opReturnType = ParseType();
+        ALKScriptToken opToken = ParseOperatorToken();
+        List<Parameter> opParams = ParseParameterList();
+
+        if (opParams.Count < 1 || opParams.Count > 2)
+          throw Error(opToken, "Operator overloads must have exactly 1 (unary) or 2 (binary) parameters.");
+
+        BlockStmt opBody = ParseBlock();
+        return new OperatorOverloadDecl(accessModifier, opToken, opReturnType, opParams, opBody);
+      }
+
+      if (!isStatic && _stream.Check(ALKScriptTokenType.Operator))
+        throw Error(_stream.Peek(), "Operator overload methods must be 'static'.");
+
       // Property: accessModifier? "static"? overrideModifier? "property" type IDENTIFIER "{" ... "}"
       if (_stream.Match(ALKScriptTokenType.Property))
       {
@@ -1681,6 +1701,25 @@ namespace ALKScript.Interpreter.Parser
       _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after constructor arguments.");
 
       return new NewExpr(keyword, typeName, typeArguments, arguments);
+    }
+
+    private static readonly System.Collections.Generic.HashSet<ALKScriptTokenType> OverloadableOperators =
+      new System.Collections.Generic.HashSet<ALKScriptTokenType>
+      {
+        ALKScriptTokenType.Plus, ALKScriptTokenType.Minus,
+        ALKScriptTokenType.Star, ALKScriptTokenType.Slash, ALKScriptTokenType.Percent,
+        ALKScriptTokenType.EqualEqual, ALKScriptTokenType.BangEqual,
+        ALKScriptTokenType.Less, ALKScriptTokenType.LessEqual,
+        ALKScriptTokenType.Greater, ALKScriptTokenType.GreaterEqual,
+      };
+
+    private ALKScriptToken ParseOperatorToken()
+    {
+      var token = _stream.Peek();
+      if (!OverloadableOperators.Contains(token.Type))
+        throw Error(token, $"'{token.Lexeme}' is not an overloadable operator. Allowed: +, -, *, /, %, ==, !=, <, <=, >, >=.");
+      _stream.Advance();
+      return token;
     }
 
     /// <summary>

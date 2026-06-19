@@ -224,6 +224,10 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
       var op = expression.Operator;
 
+      // Check for operator overloads on either operand's class
+      var overloadStep = TryInvokeOperatorOverload(leftValue, rightValue, op.Lexeme, op);
+      if (overloadStep.HasValue) return overloadStep.Value;
+
       switch (op.Type)
       {
         case ALKScriptTokenType.Plus:
@@ -284,6 +288,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           return StepResult.Completed(BoolValue.Of(!operand.IsTruthy));
 
         case ALKScriptTokenType.Minus:
+        {
+          // Check for unary operator overload
+          var unaryOverloadStep = TryInvokeUnaryOperatorOverload(operand, "-", expression.Operator);
+          if (unaryOverloadStep.HasValue) return unaryOverloadStep.Value;
+
           switch (operand)
           {
             case IntValue intValue:
@@ -293,6 +302,7 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
             default:
               throw new RuntimeException(expression.Operator, $"Operator '-' cannot be applied to '{operand.TypeName}'.");
           }
+        }
 
         case ALKScriptTokenType.Tilde:
           switch (operand)
@@ -1008,6 +1018,85 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     }
 
     internal static string BackingFieldName(string propertyName) => "__prop_" + propertyName;
+
+    private StepResult? TryInvokeOperatorOverload(ALKScriptValue left, ALKScriptValue right, string opSymbol, ALKScriptToken site)
+    {
+      // For == and !=, handle the auto-negation rule
+      if (opSymbol == "!=" )
+      {
+        var eqOverload = FindOperatorDecl(left, "==", 2) ?? FindOperatorDecl(right, "==", 2);
+        if (eqOverload != null)
+        {
+          // Check if != is explicitly defined
+          var neqOverload = FindOperatorDecl(left, "!=", 2) ?? FindOperatorDecl(right, "!=", 2);
+          if (neqOverload == null)
+          {
+            // Auto-generate != as negation of ==
+            var eqResult = InvokeOperatorDecl(eqOverload, new System.Collections.Generic.List<ALKScriptValue> { left, right }, site);
+            if (eqResult.IsAwaiting) return eqResult;
+            if (_cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+            return StepResult.Completed(BoolValue.Of(!eqResult.Value!.IsTruthy));
+          }
+        }
+      }
+
+      var overload = FindOperatorDecl(left, opSymbol, 2) ?? FindOperatorDecl(right, opSymbol, 2);
+      if (overload == null) return null;
+
+      var result = InvokeOperatorDecl(overload, new System.Collections.Generic.List<ALKScriptValue> { left, right }, site);
+      if (result.IsAwaiting) return result;
+      return result;
+    }
+
+    private StepResult? TryInvokeUnaryOperatorOverload(ALKScriptValue operand, string opSymbol, ALKScriptToken site)
+    {
+      var overload = FindOperatorDecl(operand, opSymbol, 1);
+      if (overload == null) return null;
+      return InvokeOperatorDecl(overload, new System.Collections.Generic.List<ALKScriptValue> { operand }, site);
+    }
+
+    private static OperatorOverloadDecl? FindOperatorDecl(ALKScriptValue value, string opSymbol, int arity)
+    {
+      if (value is InstanceValue inst)
+        return inst.Class.FindOperator(opSymbol, arity);
+      return null;
+    }
+
+    private StepResult InvokeOperatorDecl(OperatorOverloadDecl overload, System.Collections.Generic.List<ALKScriptValue> arguments, ALKScriptToken site)
+    {
+      // Find the declaring class to get the right closure environment
+      // We need to find which class declares this operator
+      ClassValue? declaringClass = null;
+      if (arguments.Count > 0 && arguments[0] is InstanceValue first)
+      {
+        for (ClassValue? c = first.Class; c != null; c = c.Superclass)
+        {
+          foreach (var m in c.Declaration.Members)
+          {
+            if (ReferenceEquals(m, overload)) { declaringClass = c; break; }
+          }
+          if (declaringClass != null) break;
+        }
+      }
+      if (declaringClass == null && arguments.Count > 1 && arguments[1] is InstanceValue second)
+      {
+        for (ClassValue? c = second.Class; c != null; c = c.Superclass)
+        {
+          foreach (var m in c.Declaration.Members)
+          {
+            if (ReferenceEquals(m, overload)) { declaringClass = c; break; }
+          }
+          if (declaringClass != null) break;
+        }
+      }
+
+      if (declaringClass == null)
+        throw new RuntimeException(site, "Cannot resolve operator overload declaring class.");
+
+      var opDecl = new FunctionDecl(false, System.Array.Empty<string>(), overload.ReturnType, overload.Operator, overload.Parameters, overload.Body);
+      var opFunc = new FunctionValue(opDecl, ClassEnvironments.For(declaringClass), boundInstance: null, declaringClass);
+      return _cursor.Call(opFunc, arguments, site);
+    }
 
     private StepResult InvokePropertyGetter(PropertyDecl property, ClassValue declaringClass, InstanceValue instance, ALKScriptToken site, ScriptEnvironment environment)
     {

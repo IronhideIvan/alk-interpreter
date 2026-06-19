@@ -117,6 +117,15 @@ namespace ALKScript.Interpreter.Parser
           if (fieldDecl.Initializer != null) ValidateNoAwait(fieldDecl.Initializer);
           break;
 
+        case OperatorOverloadDecl operatorDecl:
+          ValidateStmt(operatorDecl.Body);
+          break;
+
+        case PropertyDecl propertyDecl:
+          if (propertyDecl.GetterBody != null) ValidateStmt(propertyDecl.GetterBody);
+          if (propertyDecl.SetterBody != null) ValidateStmt(propertyDecl.SetterBody);
+          break;
+
         case MethodDecl methodDecl:
           if (methodDecl.Body != null) ValidateStmt(methodDecl.Body);
           break;

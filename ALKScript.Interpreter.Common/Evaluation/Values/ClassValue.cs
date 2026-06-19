@@ -74,6 +74,27 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
       return null;
     }
 
+    /// <summary>
+    /// Finds an operator overload by operator symbol and arity, walking the
+    /// superclass chain. Returns the first match or null if not found.
+    /// </summary>
+    public OperatorOverloadDecl? FindOperator(string operatorSymbol, int arity)
+    {
+      for (ClassValue? current = this; current != null; current = current.Superclass)
+      {
+        foreach (var member in current.Declaration.Members)
+        {
+          if (member is OperatorOverloadDecl op
+            && op.Operator.Lexeme == operatorSymbol
+            && op.Parameters.Count == arity)
+          {
+            return op;
+          }
+        }
+      }
+      return null;
+    }
+
     private static string? MemberName(MemberDecl member)
     {
       switch (member)
