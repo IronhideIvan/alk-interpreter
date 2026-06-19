@@ -753,6 +753,96 @@ enum Color {
 
 ---
 
+## 7.7 Maps
+
+`map<K, V>` is a mutable key-value store. K must be `string`, `int`, or an enum type; any other key type is a runtime error. V may be any type.
+
+**Construction** — map literal using an initializer block:
+
+```
+new map<string, int> { "apples": 3, "bananas": 7 }
+new map<Color, string> { Color.Red: "red", Color.Blue: "blue" }
+new map<string, int> {}   // empty map
+```
+
+**Indexer** — `myMap[key]` (get) and `myMap[key] = value` (set/upsert). Getting a missing key throws `RuntimeException`. Setting inserts or updates.
+
+**Methods:**
+
+| Method | Signature | Behavior |
+| --- | --- | --- |
+| `add` | `(K key, V value) -> void` | Inserts; throws if key already exists. |
+| `remove` | `(K key) -> V` | Removes and returns value; throws if key doesn't exist. |
+| `has` | `(K key) -> bool` | Returns true if key exists. |
+| `keys` | `() -> K[]` | Returns all keys as an array. |
+| `values` | `() -> V[]` | Returns all values as an array. |
+
+`typeof` returns `"map"`.
+
+---
+
+## 7.8 Properties
+
+Properties are declared inside class bodies with the `property` keyword:
+
+```
+public property int health {
+    get { return this._health; }
+    set { this._health = value; }
+}
+```
+
+`value` is the implicit parameter name inside a `set` block. Get-only (no `set` block) and set-only (no `get` block) are both valid. `readonly` combined with `property` is a parse error.
+
+**Auto-property shorthand:**
+
+```
+public property int x { get; set; }   // read-write auto-property
+public property int x { get; }        // get-only auto-property
+```
+
+Auto-properties generate an invisible private backing field. Inside the declaring class's constructor only, assignment to a get-only auto-property (`this.x = value`) is valid — this mirrors `readonly` field behavior.
+
+**Interfaces** may declare properties with `{ get; }` / `{ get; set; }` syntax (auto-property shorthand form only):
+
+```
+interface IFoo {
+    property int x { get; }
+}
+```
+
+Access modifiers, `static`, `virtual`, `abstract`, and `override` follow the same rules as fields and methods.
+
+---
+
+## 7.9 Operator Overloading
+
+Static methods using the `operator` keyword in place of the method name:
+
+```
+class Vector2 {
+    public float x;
+    public float y;
+
+    public static operator Vector2 +(Vector2 a, Vector2 b) { ... }
+    public static operator Vector2 -(Vector2 a, Vector2 b) { ... }
+    public static operator Vector2 -(Vector2 a) { ... }   // unary minus: one parameter
+    public static operator bool ==(Vector2 a, Vector2 b) { ... }
+}
+```
+
+**Allowed operators:** `+`, `-` (binary and unary), `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`.
+
+**Unary vs binary `-`:** Disambiguated by parameter count — one parameter = unary, two parameters = binary.
+
+**`==` and `!=` pairing:** If only `operator ==` is defined, `!=` is automatically its negation. If `operator !=` is explicitly defined, it takes precedence.
+
+**`==` fallback:** When a type has `operator ==` defined, it takes precedence over reference equality everywhere `==` is used on that type.
+
+**Restrictions:** Operator overload methods must be `static`. Non-static operator declarations are a parse error.
+
+---
+
 ## 8. Async / Await
 
 ALKScript scripts are single-threaded and cannot create a deferred operation
