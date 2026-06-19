@@ -133,6 +133,8 @@ namespace ALKScript.Interpreter.Evaluator
           return false;
         case "thunk":
           return value.TypeName == "thunk";
+        case "map":
+          return value is MapValue;
         default:
           return MatchesNamedType(value, type.Name, environment, site);
       }

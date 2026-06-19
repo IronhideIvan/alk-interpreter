@@ -79,6 +79,15 @@ namespace ALKScript.Interpreter.Common.Token
     From,
     As,
 
+    // Keywords - map type
+    Map,
+
+    // Keywords - property
+    Property,
+
+    // Keywords - operator overloading
+    Operator,
+
     // Operators
     Plus,
     PlusPlus,

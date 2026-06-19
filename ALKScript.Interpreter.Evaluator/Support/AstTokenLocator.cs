@@ -87,6 +87,8 @@ namespace ALKScript.Interpreter.Evaluator
           return cast.Keyword;
         case LambdaExpr lambda:
           return lambda.Arrow;
+        case MapLiteralExpr mapLiteral:
+          return mapLiteral.Keyword;
         default:
           return EndOfFile;
       }

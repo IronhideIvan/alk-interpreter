@@ -663,6 +663,10 @@ namespace ALKScript.Interpreter.Parser
       {
         name = token.Lexeme;
       }
+      else if (token.Type == ALKScriptTokenType.Map)
+      {
+        name = "map";
+      }
       else
       {
         throw Error(token, "Expect a type name.");
@@ -1315,12 +1319,12 @@ namespace ALKScript.Interpreter.Parser
         }
         else if (_stream.Match(ALKScriptTokenType.Dot))
         {
-          ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property or method name after '.'.");
+          ALKScriptToken name = ConsumeMemberName("Expect a property or method name after '.'.");
           expr = new GetExpr(expr, name);
         }
         else if (_stream.Match(ALKScriptTokenType.QuestionDot))
         {
-          ALKScriptToken name = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property or method name after '?.'.");
+          ALKScriptToken name = ConsumeMemberName("Expect a property or method name after '?.'.");
           expr = new NullConditionalGetExpr(expr, name);
         }
         else if (_stream.Match(ALKScriptTokenType.LeftBracket))
@@ -1546,6 +1550,36 @@ namespace ALKScript.Interpreter.Parser
     private Expr ParseNewExpression()
     {
       ALKScriptToken keyword = _stream.Previous();
+
+      // new map<K, V> { key: value, ... }
+      if (_stream.Match(ALKScriptTokenType.Map))
+      {
+        _stream.Consume(ALKScriptTokenType.Less, "Expect '<' after 'map' in map literal.");
+        TypeNode keyType = ParseType();
+        _stream.Consume(ALKScriptTokenType.Comma, "Expect ',' between map key and value types.");
+        TypeNode valueType = ParseType();
+        _stream.Consume(ALKScriptTokenType.Greater, "Expect '>' after map type arguments.");
+        _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' to begin map literal.");
+
+        var entries = new List<(Expr, Expr)>();
+
+        while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
+        {
+          Expr entryKey = ParseExpression();
+          _stream.Consume(ALKScriptTokenType.Colon, "Expect ':' between map key and value.");
+          Expr entryValue = ParseExpression();
+          entries.Add((entryKey, entryValue));
+
+          if (!_stream.Match(ALKScriptTokenType.Comma))
+          {
+            break;
+          }
+        }
+
+        _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after map entries.");
+        return new MapLiteralExpr(keyword, keyType, valueType, entries);
+      }
+
       ALKScriptToken typeName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a type name after 'new'.");
 
       var typeArguments = new List<TypeNode>();
@@ -1575,6 +1609,21 @@ namespace ALKScript.Interpreter.Parser
       _stream.Consume(ALKScriptTokenType.RightParen, "Expect ')' after constructor arguments.");
 
       return new NewExpr(keyword, typeName, typeArguments, arguments);
+    }
+
+    /// <summary>
+    /// Consumes the next token as a member name (after '.' or '?.').
+    /// Accepts identifiers and any keyword that can be used as a member name
+    /// (e.g. array's "map" method is valid even after "map" became a keyword).
+    /// </summary>
+    private ALKScriptToken ConsumeMemberName(string errorMessage)
+    {
+      var token = _stream.Peek();
+      if (token.Type == ALKScriptTokenType.EndOfFile)
+        throw Error(token, errorMessage);
+      // Accept identifiers and keywords (contextual use as member name)
+      _stream.Advance();
+      return new ALKScriptToken(ALKScriptTokenType.Identifier, token.Lexeme, token.Line, token.Column);
     }
 
     /// <summary>

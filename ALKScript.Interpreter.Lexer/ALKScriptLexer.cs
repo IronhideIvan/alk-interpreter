@@ -70,6 +70,10 @@ namespace ALKScript.Interpreter.Lexer
       { "export", ALKScriptTokenType.Export },
       { "from", ALKScriptTokenType.From },
       { "as", ALKScriptTokenType.As },
+
+      { "map", ALKScriptTokenType.Map },
+      { "property", ALKScriptTokenType.Property },
+      { "operator", ALKScriptTokenType.Operator },
     };
 
     private string _source = string.Empty;

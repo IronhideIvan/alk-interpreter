@@ -112,6 +112,9 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         case LambdaExpr lambda:
           return StepResult.Completed(EvalLambda(lambda, environment));
 
+        case MapLiteralExpr mapLiteral:
+          return EvalMapLiteral(mapLiteral, environment);
+
         default:
           throw new RuntimeException(
             AstTokenLocator.Of(expression),
@@ -385,6 +388,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           int charPosition = ExpectIndex(indexValue, expression.ClosingBracket, stringValue.Value.Length, "String");
           return StepResult.Completed(new StringValue(stringValue.Value[charPosition].ToString()));
 
+        case MapValue map:
+          ValidateMapKey(indexValue, expression.ClosingBracket);
+          if (!map.Entries.TryGetValue(indexValue, out var mapValue))
+          {
+            throw new RuntimeException(expression.ClosingBracket, $"Key not found in map.");
+          }
+          return StepResult.Completed(mapValue);
+
         default:
           throw new RuntimeException(expression.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
       }
@@ -466,6 +477,19 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           if (indexed is StringValue)
           {
             throw new RuntimeException(index.ClosingBracket, "Cannot assign to a string index; strings are immutable.");
+          }
+
+          if (indexed is MapValue mapTarget)
+          {
+            var mapKeyStep = _cursor.Eval(index.Index, environment);
+            if (mapKeyStep.IsAwaiting) return mapKeyStep;
+            var mapKey = mapKeyStep.Value!;
+
+            if (_cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+
+            ValidateMapKey(mapKey, index.ClosingBracket);
+            mapTarget.Entries[mapKey] = value;
+            return StepResult.Completed(value);
           }
 
           var array = indexed as ArrayValue
@@ -626,6 +650,21 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           {
             throw new RuntimeException(index.ClosingBracket, "Cannot assign to a string index; strings are immutable.");
           }
+
+          if (target is MapValue mapUpdate)
+          {
+            var mapIdxStep = _cursor.Eval(index.Index, environment);
+            if (mapIdxStep.IsAwaiting) return mapIdxStep;
+            var mapIdx = mapIdxStep.Value!;
+            if (_cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+            ValidateMapKey(mapIdx, index.ClosingBracket);
+            if (!mapUpdate.Entries.TryGetValue(mapIdx, out oldValue))
+              throw new RuntimeException(index.ClosingBracket, "Key not found in map.");
+            newValue = Step(oldValue, op);
+            mapUpdate.Entries[mapIdx] = newValue;
+            return null;
+          }
+
           var array = target as ArrayValue
             ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
 
@@ -730,6 +769,25 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           {
             throw new RuntimeException(index.ClosingBracket, "Cannot assign to a string index; strings are immutable.");
           }
+
+          if (target is MapValue mapCompound)
+          {
+            var mapIdxStepC = _cursor.Eval(index.Index, environment);
+            if (mapIdxStepC.IsAwaiting) return mapIdxStepC;
+            var mapIdxC = mapIdxStepC.Value!;
+            if (_cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+            ValidateMapKey(mapIdxC, index.ClosingBracket);
+            if (!mapCompound.Entries.TryGetValue(mapIdxC, out var currentMapVal))
+              throw new RuntimeException(index.ClosingBracket, "Key not found in map.");
+            var rhsMapStep = _cursor.Eval(expression.Value, environment);
+            if (rhsMapStep.IsAwaiting) return rhsMapStep;
+            var rhsMap = rhsMapStep.Value!;
+            if (_cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+            var resultMap = ApplyCompound(currentMapVal, rhsMap, expression.Operator);
+            mapCompound.Entries[mapIdxC] = resultMap;
+            return StepResult.Completed(resultMap);
+          }
+
           var array = target as ArrayValue
             ?? throw new RuntimeException(index.ClosingBracket, $"Cannot index into a value of type '{target.TypeName}'.");
 
@@ -900,6 +958,40 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       return new FunctionValue(declaration, environment, boundInstance, environment.CurrentClass);
     }
 
+    private StepResult EvalMapLiteral(MapLiteralExpr expression, ScriptEnvironment environment)
+    {
+      var map = new MapValue(expression.KeyType, expression.ValueType);
+
+      foreach (var (keyExpr, valueExpr) in expression.Entries)
+      {
+        var keyStep = _cursor.Eval(keyExpr, environment);
+        if (keyStep.IsAwaiting) return keyStep;
+        var key = keyStep.Value!;
+
+        if (_cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+
+        ValidateMapKey(key, expression.Keyword);
+
+        var valueStep = _cursor.Eval(valueExpr, environment);
+        if (valueStep.IsAwaiting) return valueStep;
+        var value = valueStep.Value!;
+
+        if (_cursor.Signal != null) return StepResult.Completed(NullValue.Instance);
+
+        map.Entries[key] = value;
+      }
+
+      return StepResult.Completed(map);
+    }
+
+    private static void ValidateMapKey(ALKScriptValue key, ALKScriptToken site)
+    {
+      if (!(key is StringValue || key is IntValue || key is EnumValue))
+      {
+        throw new RuntimeException(site, $"Map key must be 'string', 'int', or an enum type, but got '{key.TypeName}'.");
+      }
+    }
+
     private static void EnforceFieldWritable(MemberDecl? member, ClassValue? declaringClass, ALKScriptToken site, ScriptEnvironment environment)
     {
       if (member is not FieldDecl { IsReadonly: true }) return;
@@ -1002,6 +1094,9 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
           throw new RuntimeException(name, $"Undefined static member '{name.Lexeme}' on '{target.TypeName}'.");
 
+        case MapValue mapValue:
+          return GetMapMember(mapValue, name);
+
         case ArrayValue array:
           return GetArrayMember(array, name);
 
@@ -1061,6 +1156,56 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         if (c == target) return true;
       }
       return false;
+    }
+
+    private ALKScriptValue GetMapMember(MapValue map, ALKScriptToken name)
+    {
+      switch (name.Lexeme)
+      {
+        case "add":
+          return new NativeFunctionValue("add", 2, arguments =>
+          {
+            ValidateMapKey(arguments[0], name);
+            if (map.Entries.ContainsKey(arguments[0]))
+              throw new RuntimeException(name, "Key already exists in map. Use indexer assignment to update an existing key.");
+            map.Entries[arguments[0]] = arguments[1];
+            return NullValue.Instance;
+          });
+
+        case "remove":
+          return new NativeFunctionValue("remove", 1, arguments =>
+          {
+            ValidateMapKey(arguments[0], name);
+            if (!map.Entries.TryGetValue(arguments[0], out var removed))
+              throw new RuntimeException(name, "Key not found in map.");
+            map.Entries.Remove(arguments[0]);
+            return removed;
+          });
+
+        case "has":
+          return new NativeFunctionValue("has", 1, arguments =>
+          {
+            ValidateMapKey(arguments[0], name);
+            return BoolValue.Of(map.Entries.ContainsKey(arguments[0]));
+          });
+
+        case "keys":
+          return new NativeFunctionValue("keys", 0, _ =>
+          {
+            var keys = new System.Collections.Generic.List<ALKScriptValue>(map.Entries.Keys);
+            return new ArrayValue(keys);
+          });
+
+        case "values":
+          return new NativeFunctionValue("values", 0, _ =>
+          {
+            var values = new System.Collections.Generic.List<ALKScriptValue>(map.Entries.Values);
+            return new ArrayValue(values);
+          });
+
+        default:
+          throw new RuntimeException(name, $"Undefined property '{name.Lexeme}' on 'map'.");
+      }
     }
 
     private ALKScriptValue GetArrayMember(ArrayValue array, ALKScriptToken name)

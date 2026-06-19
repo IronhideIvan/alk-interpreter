@@ -202,6 +202,10 @@ namespace ALKScript.Interpreter.Parser
           foreach (var argument in newExpr.Arguments) ValidateNoAwait(argument);
           break;
 
+        case MapLiteralExpr mapLiteralExpr:
+          foreach (var (k, v) in mapLiteralExpr.Entries) { ValidateNoAwait(k); ValidateNoAwait(v); }
+          break;
+
         case PrefixUpdateExpr prefixUpdateExpr:
           ValidateNoAwait(prefixUpdateExpr.Operand);
           break;
