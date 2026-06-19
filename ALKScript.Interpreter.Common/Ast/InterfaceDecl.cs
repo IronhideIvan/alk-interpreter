@@ -26,6 +26,26 @@ namespace ALKScript.Interpreter.Common.Ast
   }
 
   /// <summary>
+  /// A property signature declared in an interface:
+  ///   "property" type IDENTIFIER "{" "get" ";" ( "set" ";" )? "}"
+  /// </summary>
+  public class InterfacePropertySignature
+  {
+    public TypeNode Type { get; }
+    public ALKScriptToken Name { get; }
+    public bool HasGetter { get; }
+    public bool HasSetter { get; }
+
+    public InterfacePropertySignature(TypeNode type, ALKScriptToken name, bool hasGetter, bool hasSetter)
+    {
+      Type = type;
+      Name = name;
+      HasGetter = hasGetter;
+      HasSetter = hasSetter;
+    }
+  }
+
+  /// <summary>
   /// An interface declaration:
   ///   "interface" IDENTIFIER typeParameters?
   ///   ( "extends" IDENTIFIER ( "," IDENTIFIER )* )?
@@ -37,17 +57,20 @@ namespace ALKScript.Interpreter.Common.Ast
     public IReadOnlyList<string> TypeParameters { get; }
     public IReadOnlyList<ALKScriptToken> Extends { get; }
     public IReadOnlyList<InterfaceMethodSignature> Methods { get; }
+    public IReadOnlyList<InterfacePropertySignature> Properties { get; }
 
     public InterfaceDecl(
       ALKScriptToken name,
       IReadOnlyList<string> typeParameters,
       IReadOnlyList<ALKScriptToken> extends,
-      IReadOnlyList<InterfaceMethodSignature> methods)
+      IReadOnlyList<InterfaceMethodSignature> methods,
+      IReadOnlyList<InterfacePropertySignature>? properties = null)
     {
       Name = name;
       TypeParameters = typeParameters;
       Extends = extends;
       Methods = methods;
+      Properties = properties ?? System.Array.Empty<InterfacePropertySignature>();
     }
   }
 }

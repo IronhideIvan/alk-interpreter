@@ -335,6 +335,26 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
         return StepResult.Completed(NullValue.Instance);
       }
 
+      // Check for property getter before falling through to GetMember
+      if (target is InstanceValue getInst)
+      {
+        var propMember = getInst.Class.FindMember(expression.Name.Lexeme, out var propClass);
+        if (propMember is PropertyDecl propDecl && !propDecl.IsStatic)
+        {
+          EnforceAccessModifier(propDecl, propClass, expression.Name, environment);
+          return InvokePropertyGetter(propDecl, propClass!, getInst, expression.Name, environment);
+        }
+      }
+      else if (target is ClassValue staticClassGet)
+      {
+        var staticPropMember = staticClassGet.FindMember(expression.Name.Lexeme, out var staticPropClass);
+        if (staticPropMember is PropertyDecl staticPropDecl && staticPropDecl.IsStatic)
+        {
+          EnforceAccessModifier(staticPropDecl, staticPropClass, expression.Name, environment);
+          return InvokeStaticPropertyGetter(staticPropDecl, staticClassGet, expression.Name, environment);
+        }
+      }
+
       return StepResult.Completed(GetMember(target, expression.Name, environment));
     }
 
@@ -353,6 +373,17 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       if (target is NullValue)
       {
         return StepResult.Completed(NullValue.Instance);
+      }
+
+      // Check for property getter before falling through to GetMember
+      if (target is InstanceValue ncInst)
+      {
+        var ncPropMember = ncInst.Class.FindMember(expression.Name.Lexeme, out var ncPropClass);
+        if (ncPropMember is PropertyDecl ncPropDecl && !ncPropDecl.IsStatic)
+        {
+          EnforceAccessModifier(ncPropDecl, ncPropClass, expression.Name, environment);
+          return InvokePropertyGetter(ncPropDecl, ncPropClass!, ncInst, expression.Name, environment);
+        }
       }
 
       return StepResult.Completed(GetMember(target, expression.Name, environment));
@@ -440,6 +471,14 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
           if (target is ClassValue staticTargetClass)
           {
+            // Check for static property setter
+            var staticPropMemberForWrite = staticTargetClass.FindMember(get.Name.Lexeme, out var staticPropWriteClass);
+            if (staticPropMemberForWrite is PropertyDecl staticPropForWrite && staticPropForWrite.IsStatic)
+            {
+              EnforceAccessModifier(staticPropForWrite, staticPropWriteClass, get.Name, environment);
+              return InvokeStaticPropertySetter(staticPropForWrite, staticPropWriteClass!, get.Name, value, environment);
+            }
+
             var (staticDeclaringClass, staticField) = ResolveStaticField(staticTargetClass, get.Name, environment);
             TypeChecking.EnsureAssignable(staticField.Type, value, get.Name, $"static field '{get.Name.Lexeme}'", environment);
             staticDeclaringClass.StaticFields[get.Name.Lexeme] = value;
@@ -448,7 +487,17 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
           var instance = target as InstanceValue
             ?? throw new RuntimeException(get.Name, $"Cannot set property '{get.Name.Lexeme}' on a value of type '{target.TypeName}'.");
-          var fieldMemberForWrite = instance.Class.FindMember(get.Name.Lexeme, out var fieldWriteDeclaringClass);
+
+          // Check for property setter
+          var writePropertyMember = instance.Class.FindMember(get.Name.Lexeme, out var writePropertyClass);
+          if (writePropertyMember is PropertyDecl writePropertyDecl && !writePropertyDecl.IsStatic)
+          {
+            EnforceAccessModifier(writePropertyDecl, writePropertyClass, get.Name, environment);
+            return InvokePropertySetter(writePropertyDecl, writePropertyClass!, instance, get.Name, value, environment);
+          }
+
+          var fieldMemberForWrite = writePropertyMember;
+          var fieldWriteDeclaringClass = writePropertyClass;
           if (fieldMemberForWrite != null)
           {
             EnforceAccessModifier(fieldMemberForWrite, fieldWriteDeclaringClass, get.Name, environment);
@@ -956,6 +1005,97 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       InstanceValue? boundInstance = environment.TryGet("this", out var thisValue) ? thisValue as InstanceValue : null;
 
       return new FunctionValue(declaration, environment, boundInstance, environment.CurrentClass);
+    }
+
+    internal static string BackingFieldName(string propertyName) => "__prop_" + propertyName;
+
+    private StepResult InvokePropertyGetter(PropertyDecl property, ClassValue declaringClass, InstanceValue instance, ALKScriptToken site, ScriptEnvironment environment)
+    {
+      if (!property.HasGetter)
+        throw new RuntimeException(site, $"Property '{property.Name.Lexeme}' has no getter.");
+
+      if (property.GetterBody == null)
+      {
+        // Auto-property getter: read from backing field
+        var backingField = BackingFieldName(property.Name.Lexeme);
+        return StepResult.Completed(instance.Fields.TryGetValue(backingField, out var v) ? v : NullValue.Instance);
+      }
+
+      // Full property getter: invoke as a zero-parameter function
+      var getterDecl = new FunctionDecl(false, System.Array.Empty<string>(), property.Type, property.Name, System.Array.Empty<Parameter>(), property.GetterBody);
+      var getter = new FunctionValue(getterDecl, ClassEnvironments.For(declaringClass), instance, declaringClass);
+      return _cursor.Call(getter, new System.Collections.Generic.List<ALKScriptValue>(), site);
+    }
+
+    private StepResult InvokeStaticPropertyGetter(PropertyDecl property, ClassValue declaringClass, ALKScriptToken site, ScriptEnvironment environment)
+    {
+      if (!property.HasGetter)
+        throw new RuntimeException(site, $"Property '{property.Name.Lexeme}' has no getter.");
+
+      if (property.GetterBody == null)
+      {
+        var backingField = BackingFieldName(property.Name.Lexeme);
+        return StepResult.Completed(declaringClass.StaticFields.TryGetValue(backingField, out var v) ? v : NullValue.Instance);
+      }
+
+      var getterDecl = new FunctionDecl(false, System.Array.Empty<string>(), property.Type, property.Name, System.Array.Empty<Parameter>(), property.GetterBody);
+      var getter = new FunctionValue(getterDecl, ClassEnvironments.For(declaringClass), boundInstance: null, declaringClass);
+      return _cursor.Call(getter, new System.Collections.Generic.List<ALKScriptValue>(), site);
+    }
+
+    private StepResult InvokePropertySetter(PropertyDecl property, ClassValue declaringClass, InstanceValue instance, ALKScriptToken site, ALKScriptValue value, ScriptEnvironment environment)
+    {
+      if (!property.HasSetter)
+      {
+        // Get-only auto-property: allow assignment from within the declaring class's constructor
+        if (property.HasGetter && property.GetterBody == null && environment.IsInConstructor && environment.CurrentClass == declaringClass)
+        {
+          var backingField = BackingFieldName(property.Name.Lexeme);
+          instance.Fields[backingField] = value;
+          return StepResult.Completed(value);
+        }
+        throw new RuntimeException(site, $"Cannot assign to get-only property '{property.Name.Lexeme}'.");
+      }
+
+      if (property.SetterBody == null)
+      {
+        // Auto-property setter: write to backing field
+        var backingField = BackingFieldName(property.Name.Lexeme);
+        instance.Fields[backingField] = value;
+        return StepResult.Completed(value);
+      }
+
+      // Full property setter: invoke with implicit 'value' parameter
+      var valueParam = new Parameter(new TypeNode("var", System.Array.Empty<TypeNode>(), 0, false), "value");
+      var setterDecl = new FunctionDecl(false, System.Array.Empty<string>(),
+        new TypeNode("void", System.Array.Empty<TypeNode>(), 0, false),
+        property.Name, new[] { valueParam }, property.SetterBody);
+      var setter = new FunctionValue(setterDecl, ClassEnvironments.For(declaringClass), instance, declaringClass);
+      var setterStep = _cursor.Call(setter, new System.Collections.Generic.List<ALKScriptValue> { value }, site);
+      if (setterStep.IsAwaiting) return setterStep;
+      return StepResult.Completed(value);
+    }
+
+    private StepResult InvokeStaticPropertySetter(PropertyDecl property, ClassValue declaringClass, ALKScriptToken site, ALKScriptValue value, ScriptEnvironment environment)
+    {
+      if (!property.HasSetter)
+        throw new RuntimeException(site, $"Cannot assign to get-only static property '{property.Name.Lexeme}'.");
+
+      if (property.SetterBody == null)
+      {
+        var backingField = BackingFieldName(property.Name.Lexeme);
+        declaringClass.StaticFields[backingField] = value;
+        return StepResult.Completed(value);
+      }
+
+      var valueParam = new Parameter(new TypeNode("var", System.Array.Empty<TypeNode>(), 0, false), "value");
+      var setterDecl = new FunctionDecl(false, System.Array.Empty<string>(),
+        new TypeNode("void", System.Array.Empty<TypeNode>(), 0, false),
+        property.Name, new[] { valueParam }, property.SetterBody);
+      var setter = new FunctionValue(setterDecl, ClassEnvironments.For(declaringClass), boundInstance: null, declaringClass);
+      var setterStep = _cursor.Call(setter, new System.Collections.Generic.List<ALKScriptValue> { value }, site);
+      if (setterStep.IsAwaiting) return setterStep;
+      return StepResult.Completed(value);
     }
 
     private StepResult EvalMapLiteral(MapLiteralExpr expression, ScriptEnvironment environment)

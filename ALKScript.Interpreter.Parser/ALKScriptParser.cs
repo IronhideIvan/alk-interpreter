@@ -303,9 +303,29 @@ namespace ALKScript.Interpreter.Parser
       _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' before interface body.");
 
       var methods = new List<InterfaceMethodSignature>();
+      var properties = new List<InterfacePropertySignature>();
 
       while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
       {
+        // Interface property: "property" type IDENTIFIER "{" ("get" ";")? ("set" ";")? "}"
+        if (_stream.Match(ALKScriptTokenType.Property))
+        {
+          TypeNode propType = ParseType();
+          ALKScriptToken propName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property name.");
+          _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' after interface property name.");
+
+          bool hasGet = false, hasSet = false;
+          while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
+          {
+            if (IsContextualKeyword("get")) { _stream.Advance(); _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after 'get' in interface property."); hasGet = true; }
+            else if (IsContextualKeyword("set")) { _stream.Advance(); _stream.Consume(ALKScriptTokenType.Semicolon, "Expect ';' after 'set' in interface property."); hasSet = true; }
+            else throw Error(_stream.Peek(), "Expect 'get' or 'set' in interface property.");
+          }
+          _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after interface property.");
+          properties.Add(new InterfacePropertySignature(propType, propName, hasGet, hasSet));
+          continue;
+        }
+
         List<string> methodTypeParameters = ParseOptionalTypeParameters();
         TypeNode returnType = ParseType();
         ALKScriptToken methodName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a method name.");
@@ -317,7 +337,7 @@ namespace ALKScript.Interpreter.Parser
 
       _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after interface body.");
 
-      return new InterfaceDecl(name, typeParameters, extends, methods);
+      return new InterfaceDecl(name, typeParameters, extends, methods, properties);
     }
 
     private EnumDecl ParseEnumDecl()
@@ -388,7 +408,7 @@ namespace ALKScript.Interpreter.Parser
         throw Error(staticKeyword!, "'static' members cannot be 'virtual', 'abstract', or 'override'.");
       }
 
-      if (isReadonly && (overrideModifier != OverrideModifier.None || _stream.Check(ALKScriptTokenType.Native) || _stream.Check(ALKScriptTokenType.Function)))
+      if (isReadonly && (overrideModifier != OverrideModifier.None || _stream.Check(ALKScriptTokenType.Native) || _stream.Check(ALKScriptTokenType.Function) || _stream.Check(ALKScriptTokenType.Property)))
       {
         throw Error(readonlyKeyword!, "'readonly' is only valid on field declarations.");
       }
@@ -396,6 +416,58 @@ namespace ALKScript.Interpreter.Parser
       if (isStatic && isReadonly)
       {
         throw Error(readonlyKeyword!, "'readonly' is not supported on 'static' fields.");
+      }
+
+      // Property: accessModifier? "static"? overrideModifier? "property" type IDENTIFIER "{" ... "}"
+      if (_stream.Match(ALKScriptTokenType.Property))
+      {
+        if (isReadonly)
+          throw Error(readonlyKeyword!, "'readonly' cannot be combined with 'property'.");
+        TypeNode propType = ParseType();
+        ALKScriptToken propName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property name.");
+        _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' after property name.");
+
+        bool hasGetter = false;
+        BlockStmt? getterBody = null;
+        bool hasSetter = false;
+        BlockStmt? setterBody = null;
+
+        while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
+        {
+          if (IsContextualKeyword("get"))
+          {
+            _stream.Advance();
+            hasGetter = true;
+            if (_stream.Match(ALKScriptTokenType.Semicolon))
+            {
+              getterBody = null; // auto-property
+            }
+            else
+            {
+              getterBody = ParseBlock();
+            }
+          }
+          else if (IsContextualKeyword("set"))
+          {
+            _stream.Advance();
+            hasSetter = true;
+            if (_stream.Match(ALKScriptTokenType.Semicolon))
+            {
+              setterBody = null; // auto-property
+            }
+            else
+            {
+              setterBody = ParseBlock();
+            }
+          }
+          else
+          {
+            throw Error(_stream.Peek(), "Expect 'get' or 'set' in property body.");
+          }
+        }
+
+        _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after property body.");
+        return new PropertyDecl(accessModifier, propName, propType, isStatic, overrideModifier, hasGetter, getterBody, hasSetter, setterBody);
       }
 
       bool isNative = _stream.Match(ALKScriptTokenType.Native);
@@ -1610,6 +1682,13 @@ namespace ALKScript.Interpreter.Parser
 
       return new NewExpr(keyword, typeName, typeArguments, arguments);
     }
+
+    /// <summary>
+    /// Returns true if the current token is an identifier with the given lexeme
+    /// (used for contextual keywords like "get" and "set").
+    /// </summary>
+    private bool IsContextualKeyword(string keyword)
+      => _stream.Check(ALKScriptTokenType.Identifier) && _stream.Peek().Lexeme == keyword;
 
     /// <summary>
     /// Consumes the next token as a member name (after '.' or '?.').

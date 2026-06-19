@@ -184,6 +184,18 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
             instance.Fields[field.Name.Lexeme] = fieldValue;
           }
+          else if (member is PropertyDecl property && !property.IsStatic)
+          {
+            // Initialize auto-property backing fields to null
+            if (property.GetterBody == null || (property.HasSetter && property.SetterBody == null))
+            {
+              var backingField = CursorExpressionEvaluator.BackingFieldName(property.Name.Lexeme);
+              if (!instance.Fields.ContainsKey(backingField))
+              {
+                instance.Fields[backingField] = NullValue.Instance;
+              }
+            }
+          }
         }
       }
 

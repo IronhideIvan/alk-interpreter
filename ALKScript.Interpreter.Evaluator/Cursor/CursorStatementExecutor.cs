@@ -295,6 +295,18 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
           classValue.StaticFields[field.Name.Lexeme] = fieldValue;
         }
+        else if (member is PropertyDecl property && property.IsStatic)
+        {
+          // Initialize static auto-property backing fields
+          if (property.GetterBody == null || (property.HasSetter && property.SetterBody == null))
+          {
+            var backingField = CursorExpressionEvaluator.BackingFieldName(property.Name.Lexeme);
+            if (!classValue.StaticFields.ContainsKey(backingField))
+            {
+              classValue.StaticFields[backingField] = NullValue.Instance;
+            }
+          }
+        }
       }
     }
 

@@ -82,6 +82,8 @@ namespace ALKScript.Interpreter.Common.Evaluation.Values
           return method.Name.Lexeme;
         case FieldDecl field:
           return field.Name.Lexeme;
+        case PropertyDecl property:
+          return property.Name.Lexeme;
         default:
           return null;
       }
