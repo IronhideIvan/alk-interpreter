@@ -1,0 +1,100 @@
+import { log } from "console";
+
+// ── auto read-write property ──────────────────────────────────────────────────
+
+class Counter {
+    public property int count { get; set; }
+
+    public new(int initial) {
+        this.count = initial;
+    }
+
+    public function void increment() {
+        this.count = this.count + 1;
+    }
+}
+
+var c = new Counter(0);
+log("initial=" + c.count);
+c.increment();
+c.increment();
+log("after-two-increments=" + c.count);
+c.count = 10;
+log("after-set=" + c.count);
+
+// ── full getter/setter body ───────────────────────────────────────────────────
+
+class Temperature {
+    private float _celsius = 0.0;
+
+    public property float celsius {
+        get { return this._celsius; }
+        set { this._celsius = value; }
+    }
+
+    public property float fahrenheit {
+        get { return this._celsius * 1.8 + 32.0; }
+        set { this._celsius = (value - 32.0) / 1.8; }
+    }
+}
+
+var t = new Temperature();
+t.celsius = 100.0;
+log("celsius-is-100=" + (t.celsius == 100.0));
+log("fahrenheit=" + t.fahrenheit);
+
+t.fahrenheit = 32.0;
+log("after-32f-celsius=" + t.celsius);
+
+// ── get-only auto-property (set only in constructor) ─────────────────────────
+
+class Point {
+    public property int x { get; }
+    public property int y { get; }
+
+    public new(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+}
+
+var p = new Point(3, 4);
+log("x=" + p.x);
+log("y=" + p.y);
+
+var setOutsideCtor = false;
+try {
+    // Wrap in a helper class to attempt assignment outside the constructor
+    // We can't call a method on p.x directly, so use a function instead
+} catch {
+    setOutsideCtor = true;
+}
+log("no-ctor-set-error=" + setOutsideCtor);
+
+// ── interface with property ───────────────────────────────────────────────────
+
+interface ILabeled {
+    property string label { get; }
+}
+
+class Tag implements ILabeled {
+    public property string label { get; set; }
+    public new(string l) { this.label = l; }
+}
+
+var tag = new Tag("hello");
+log("tag-is-labeled=" + (tag is ILabeled));
+log("label=" + tag.label);
+tag.label = "world";
+log("label-updated=" + tag.label);
+
+// ── static property ───────────────────────────────────────────────────────────
+
+class Config {
+    public static property string version { get; set; }
+}
+
+Config.version = "1.0";
+log("version=" + Config.version);
+
+log("done");

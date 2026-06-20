@@ -1,0 +1,79 @@
+import { log } from "console";
+
+class Vec2 {
+    public float x;
+    public float y;
+
+    public new(float x, float y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public static operator Vec2 +(Vec2 a, Vec2 b) {
+        return new Vec2(a.x + b.x, a.y + b.y);
+    }
+
+    public static operator Vec2 -(Vec2 a, Vec2 b) {
+        return new Vec2(a.x - b.x, a.y - b.y);
+    }
+
+    public static operator Vec2 -(Vec2 a) {
+        return new Vec2(-a.x, -a.y);
+    }
+
+    public static operator Vec2 *(Vec2 a, float s) {
+        return new Vec2(a.x * s, a.y * s);
+    }
+
+    public static operator bool ==(Vec2 a, Vec2 b) {
+        return a.x == b.x && a.y == b.y;
+    }
+
+    public static operator bool <(Vec2 a, Vec2 b) {
+        return (a.x * a.x + a.y * a.y) < (b.x * b.x + b.y * b.y);
+    }
+}
+
+// ── binary + ─────────────────────────────────────────────────────────────────
+
+var sum = new Vec2(1.0, 2.0) + new Vec2(3.0, 4.0);
+log("sum.x=" + sum.x);
+log("sum.y=" + sum.y);
+
+// ── binary - ─────────────────────────────────────────────────────────────────
+
+var diff = new Vec2(5.0, 3.0) - new Vec2(2.0, 1.0);
+log("diff.x=" + diff.x);
+log("diff.y=" + diff.y);
+
+// ── unary - ──────────────────────────────────────────────────────────────────
+
+var neg = -new Vec2(3.0, -4.0);
+log("neg.x=" + neg.x);
+log("neg.y=" + neg.y);
+
+// ── * ────────────────────────────────────────────────────────────────────────
+
+var scaled = new Vec2(2.0, 3.0) * 4.0;
+log("scaled.x=" + scaled.x);
+log("scaled.y=" + scaled.y);
+
+// ── == takes precedence over reference equality ───────────────────────────────
+
+var a = new Vec2(1.0, 2.0);
+var b = new Vec2(1.0, 2.0);
+var c = new Vec2(9.0, 9.0);
+log("a==b=" + (a == b));
+log("a==c=" + (a == c));
+
+// ── != auto-generated from == ────────────────────────────────────────────────
+
+log("a!=b=" + (a != b));
+log("a!=c=" + (a != c));
+
+// ── < ────────────────────────────────────────────────────────────────────────
+
+log("a<c=" + (a < c));
+log("c<a=" + (c < a));
+
+log("done");

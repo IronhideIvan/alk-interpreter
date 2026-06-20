@@ -766,8 +766,12 @@ namespace ALKScript.Interpreter.Parser
 
       var typeArguments = new List<TypeNode>();
 
-      if (_stream.Match(ALKScriptTokenType.Less))
+      // Don't consume '<' as a generic-type-argument opener when it is
+      // immediately followed by '(' — that means '<' is an operator symbol
+      // (e.g. "operator <(...)") rather than the start of type arguments.
+      if (_stream.Check(ALKScriptTokenType.Less) && !_stream.CheckNext(ALKScriptTokenType.LeftParen))
       {
+        _stream.Advance(); // consume '<'
         do
         {
           typeArguments.Add(ParseType());

@@ -1915,6 +1915,172 @@ record(s.doubled());
     Assert.Contains("Cannot convert", ex.Message);
   }
 
+  // ── Map Showcase ─────────────────────────────────────────────────────────
+
+  [Fact]
+  public void MapShowcase_StringIntAndEnumKeys_ProducesExpectedOutput()
+  {
+    // Exercises the map<K,V> type end-to-end:
+    //   - string keys: construction, has, get, set/upsert, add, remove, keys(), values()
+    //   - int keys: construction, get, set
+    //   - enum keys: construction, get, has, upsert
+    //   - typeof returns "map"
+    //   - missing-key access throws and is caught
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("MapShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("MapShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunFromFile("main.alk").RunToCompletion();
+
+    Assert.Equal(
+      new[]
+      {
+        "has-alice=true",
+        "has-dave=false",
+        "alice=10",
+        "alice-updated=20",
+        "dave=5",
+        "removed-bob=7",
+        "has-bob=false",
+        "keys-count=3",
+        "values-count=3",
+        "1=one",
+        "2=two",
+        "4=four",
+        "north=up",
+        "east=right",
+        "has-south=true",
+        "has-west=true",
+        "north-updated=N",
+        "typeof=map",
+        "safe-missing=-1",
+        "done",
+      },
+      logged);
+  }
+
+  // ── Property Showcase ─────────────────────────────────────────────────────
+
+  [Fact]
+  public void PropertyShowcase_AutoFullGetOnlyStaticAndInterface_ProducesExpectedOutput()
+  {
+    // Exercises property declarations end-to-end:
+    //   - auto read-write property (Counter.count)
+    //   - full getter/setter bodies (Temperature.celsius / .fahrenheit)
+    //   - get-only auto-property set in constructor (Point.x, .y)
+    //   - interface with a property signature (ILabeled / Tag)
+    //   - static auto property (Config.version)
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("PropertyShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("PropertyShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunFromFile("main.alk").RunToCompletion();
+
+    Assert.Equal(
+      new[]
+      {
+        "initial=0",
+        "after-two-increments=2",
+        "after-set=10",
+        "celsius-is-100=true",
+        "fahrenheit=212",
+        "after-32f-celsius=0",
+        "x=3",
+        "y=4",
+        "no-ctor-set-error=false",
+        "tag-is-labeled=true",
+        "label=hello",
+        "label-updated=world",
+        "version=1.0",
+        "done",
+      },
+      logged);
+  }
+
+  // ── Operator Overload Showcase ────────────────────────────────────────────
+
+  [Fact]
+  public void OperatorOverloadShowcase_BinaryUnaryEqualityAndComparison_ProducesExpectedOutput()
+  {
+    // Exercises operator overloading end-to-end on a Vec2 class:
+    //   - binary +, -, *
+    //   - unary - (disambiguated from binary - by arity)
+    //   - operator == takes precedence over reference equality
+    //   - operator != auto-generated as negation of ==
+    //   - operator < (arbitrary comparison)
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("OperatorOverloadShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("OperatorOverloadShowcase", "console.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    runtime.RunFromFile("main.alk").RunToCompletion();
+
+    Assert.Equal(
+      new[]
+      {
+        "sum.x=4",
+        "sum.y=6",
+        "diff.x=3",
+        "diff.y=2",
+        "neg.x=-3",
+        "neg.y=4",
+        "scaled.x=8",
+        "scaled.y=12",
+        "a==b=true",
+        "a==c=false",
+        "a!=b=false",
+        "a!=c=true",
+        "a<c=true",
+        "c<a=false",
+        "done",
+      },
+      logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

@@ -1,0 +1,61 @@
+import { log } from "console";
+
+// ── string keys ──────────────────────────────────────────────────────────────
+
+var scores = new map<string, int> { "alice": 10, "bob": 7, "carol": 13 };
+
+log("has-alice=" + scores.has("alice"));
+log("has-dave=" + scores.has("dave"));
+log("alice=" + scores["alice"]);
+
+scores["alice"] = 20;
+log("alice-updated=" + scores["alice"]);
+
+scores.add("dave", 5);
+log("dave=" + scores["dave"]);
+
+var removed = scores.remove("bob");
+log("removed-bob=" + removed);
+log("has-bob=" + scores.has("bob"));
+
+log("keys-count=" + scores.keys().length);
+log("values-count=" + scores.values().length);
+
+// ── int keys ─────────────────────────────────────────────────────────────────
+
+var table = new map<int, string> { 1: "one", 2: "two", 3: "three" };
+log("1=" + table[1]);
+log("2=" + table[2]);
+
+table[4] = "four";
+log("4=" + table[4]);
+
+// ── enum keys ────────────────────────────────────────────────────────────────
+
+enum Direction { North, South, East, West }
+
+var labels = new map<Direction, string> {
+    Direction.North: "up",
+    Direction.South: "down",
+    Direction.East: "right",
+    Direction.West: "left"
+};
+
+log("north=" + labels[Direction.North]);
+log("east=" + labels[Direction.East]);
+log("has-south=" + labels.has(Direction.South));
+log("has-west=" + labels.has(Direction.West));
+
+labels[Direction.North] = "N";
+log("north-updated=" + labels[Direction.North]);
+
+// ── typeof ───────────────────────────────────────────────────────────────────
+
+log("typeof=" + typeof scores);
+
+// ── missing key: use has() before accessing ───────────────────────────────────
+
+var safeAccess = scores.has("nobody") ? scores["nobody"] : -1;
+log("safe-missing=" + safeAccess);
+
+log("done");
