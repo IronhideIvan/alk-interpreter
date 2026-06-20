@@ -1968,7 +1968,7 @@ record(s.doubled());
         "has-west=true",
         "north-updated=N",
         "typeof=map",
-        "safe-missing=-1",
+        "missing-key-threw=true",
         "done",
       },
       logged);

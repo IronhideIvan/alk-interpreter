@@ -774,7 +774,16 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
 
         if (entry.Index == 0)
         {
-          var tryStep = ExecuteBlock(statement.TryBlock.Statements, entry.Environment);
+          StepResult tryStep;
+          try
+          {
+            tryStep = ExecuteBlock(statement.TryBlock.Statements, entry.Environment);
+          }
+          catch (RuntimeException ex)
+          {
+            _cursor.Signal = Signal.Thrown(new StringValue(ex.Message));
+            return AfterTryBlock(statement, environment);
+          }
           if (tryStep.IsAwaiting)
           {
             _cursor.RecordSuspend(0, entry.Environment);
@@ -809,7 +818,16 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       }
 
       var tryEnvironment = new ScriptEnvironment(environment);
-      var newTryStep = ExecuteBlock(statement.TryBlock.Statements, tryEnvironment);
+      StepResult newTryStep;
+      try
+      {
+        newTryStep = ExecuteBlock(statement.TryBlock.Statements, tryEnvironment);
+      }
+      catch (RuntimeException ex)
+      {
+        _cursor.Signal = Signal.Thrown(new StringValue(ex.Message));
+        return AfterTryBlock(statement, environment);
+      }
       if (newTryStep.IsAwaiting)
       {
         _cursor.RecordSuspend(0, tryEnvironment);

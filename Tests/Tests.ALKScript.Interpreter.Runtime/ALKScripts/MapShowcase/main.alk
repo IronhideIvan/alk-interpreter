@@ -53,9 +53,14 @@ log("north-updated=" + labels[Direction.North]);
 
 log("typeof=" + typeof scores);
 
-// ── missing key: use has() before accessing ───────────────────────────────────
+// ── missing key throws, catchable by try/catch ───────────────────────────────
 
-var safeAccess = scores.has("nobody") ? scores["nobody"] : -1;
-log("safe-missing=" + safeAccess);
+var threw = false;
+try {
+    var x = scores["nobody"];
+} catch {
+    threw = true;
+}
+log("missing-key-threw=" + threw);
 
 log("done");

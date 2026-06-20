@@ -48,6 +48,22 @@ public class MapTests : EvaluatorTestBase
       Run($"{RecordDeclaration}var m = new map<string, int> {{}};\nrecord(m[\"missing\"]);"));
   }
 
+  [Fact]
+  public void Map_GetMissingKey_IsCatchableByScriptTryCatch()
+  {
+    var recorded = Run($@"{RecordDeclaration}
+var m = new map<string, int> {{}};
+var caught = false;
+try {{
+    var x = m[""missing""];
+}} catch {{
+    caught = true;
+}}
+record(caught);
+");
+    Assert.Equal(BoolValue.True, Assert.Single(recorded));
+  }
+
   // ── Methods ──────────────────────────────────────────────────────────────────
 
   [Fact]
