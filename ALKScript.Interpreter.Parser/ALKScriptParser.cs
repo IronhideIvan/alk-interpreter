@@ -277,6 +277,10 @@ namespace ALKScript.Interpreter.Parser
           {
             throw Error(nativeMethod.Name, $"Class '{name.Lexeme}' must be declared 'native' because it has a native member '{nativeMethod.Name.Lexeme}'.");
           }
+          if (member is PropertyDecl { IsNative: true } nativeProp)
+          {
+            throw Error(nativeProp.Name, $"Class '{name.Lexeme}' must be declared 'native' because it has a native member '{nativeProp.Name.Lexeme}'.");
+          }
         }
       }
 
@@ -438,11 +442,20 @@ namespace ALKScript.Interpreter.Parser
       if (!isStatic && _stream.Check(ALKScriptTokenType.Operator))
         throw Error(_stream.Peek(), "Operator overload methods must be 'static'.");
 
-      // Property: accessModifier? "static"? overrideModifier? "property" type IDENTIFIER "{" ... "}"
+      // Detect 'native' here so it covers both 'native property' and 'native function'.
+      ALKScriptToken? nativeKeyword = _stream.Check(ALKScriptTokenType.Native) ? _stream.Peek() : null;
+      bool isNative = _stream.Match(ALKScriptTokenType.Native);
+
+      // Property: accessModifier? "static"? overrideModifier? "native"? "property" type IDENTIFIER "{" ... "}"
       if (_stream.Match(ALKScriptTokenType.Property))
       {
         if (isReadonly)
           throw Error(readonlyKeyword!, "'readonly' cannot be combined with 'property'.");
+        if (isNative && overrideModifier == OverrideModifier.Abstract)
+          throw Error(nativeKeyword!, "'native' cannot be combined with 'abstract' on a property.");
+        if (isNative && overrideModifier == OverrideModifier.Virtual)
+          throw Error(nativeKeyword!, "'native' cannot be combined with 'virtual' on a property.");
+
         TypeNode propType = ParseType();
         ALKScriptToken propName = _stream.Consume(ALKScriptTokenType.Identifier, "Expect a property name.");
         _stream.Consume(ALKScriptTokenType.LeftBrace, "Expect '{' after property name.");
@@ -454,13 +467,21 @@ namespace ALKScript.Interpreter.Parser
 
         while (!_stream.Check(ALKScriptTokenType.RightBrace) && !_stream.IsAtEnd())
         {
+          // Reject 'native' on an individual accessor.
+          if (_stream.Check(ALKScriptTokenType.Native))
+            throw Error(_stream.Peek(), "'native' belongs on the property declaration, not on individual accessors.");
+
           if (IsContextualKeyword("get"))
           {
             _stream.Advance();
             hasGetter = true;
             if (_stream.Match(ALKScriptTokenType.Semicolon))
             {
-              getterBody = null; // auto-property
+              getterBody = null;
+            }
+            else if (isNative)
+            {
+              throw Error(_stream.Peek(), "A native property accessor cannot have a body.");
             }
             else
             {
@@ -473,7 +494,11 @@ namespace ALKScript.Interpreter.Parser
             hasSetter = true;
             if (_stream.Match(ALKScriptTokenType.Semicolon))
             {
-              setterBody = null; // auto-property
+              setterBody = null;
+            }
+            else if (isNative)
+            {
+              throw Error(_stream.Peek(), "A native property accessor cannot have a body.");
             }
             else
             {
@@ -487,10 +512,8 @@ namespace ALKScript.Interpreter.Parser
         }
 
         _stream.Consume(ALKScriptTokenType.RightBrace, "Expect '}' after property body.");
-        return new PropertyDecl(accessModifier, propName, propType, isStatic, overrideModifier, hasGetter, getterBody, hasSetter, setterBody);
+        return new PropertyDecl(accessModifier, propName, propType, isStatic, overrideModifier, hasGetter, getterBody, hasSetter, setterBody, isNative);
       }
-
-      bool isNative = _stream.Match(ALKScriptTokenType.Native);
 
       if (overrideModifier != OverrideModifier.None || isNative || _stream.Check(ALKScriptTokenType.Function))
       {

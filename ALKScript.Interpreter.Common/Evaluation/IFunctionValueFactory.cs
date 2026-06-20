@@ -2,6 +2,7 @@ using System;
 using ALKScript.Interpreter.Common.Ast;
 using ALKScript.Interpreter.Common.Evaluation.Scheduling;
 using ALKScript.Interpreter.Common.Evaluation.Values;
+using ALKScript.Interpreter.Common.Token;
 
 namespace ALKScript.Interpreter.Common.Evaluation
 {
@@ -48,6 +49,26 @@ namespace ALKScript.Interpreter.Common.Evaluation
     /// no matching host binding is registered.
     /// </summary>
     ALKScriptValue CreateMethod(MethodDecl declaration, ClassValue declaringClass, ScriptEnvironment closure, InstanceValue? boundInstance);
+
+    /// <summary>
+    /// Invokes the host getter for a <c>native property</c> declared on
+    /// <paramref name="declaringClass"/>. The getter is looked up in
+    /// <see cref="ScriptNativeMethodBindings"/> under the key
+    /// <c>("ClassName", "get_&lt;propertyName&gt;")</c> and called with
+    /// <paramref name="instance"/> and no arguments. Throws
+    /// <see cref="RuntimeException"/> if no binding is registered.
+    /// </summary>
+    ALKScriptValue InvokeNativePropertyGetter(string className, string propertyName, InstanceValue instance, ALKScriptToken site);
+
+    /// <summary>
+    /// Invokes the host setter for a <c>native property</c> declared on
+    /// <paramref name="declaringClass"/>. The setter is looked up in
+    /// <see cref="ScriptNativeMethodBindings"/> under the key
+    /// <c>("ClassName", "set_&lt;propertyName&gt;")</c> and called with
+    /// <paramref name="instance"/> and <paramref name="value"/> as its sole argument.
+    /// Throws <see cref="RuntimeException"/> if no binding is registered.
+    /// </summary>
+    ALKScriptValue InvokeNativePropertySetter(string className, string propertyName, InstanceValue instance, ALKScriptValue value, ALKScriptToken site);
 
     /// <summary>
     /// Fires off any <c>async native</c> operations that were called but never

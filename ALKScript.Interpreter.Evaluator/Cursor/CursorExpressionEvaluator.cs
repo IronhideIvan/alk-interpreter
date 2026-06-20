@@ -1103,6 +1103,13 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
       if (!property.HasGetter)
         throw new RuntimeException(site, $"Property '{property.Name.Lexeme}' has no getter.");
 
+      if (property.IsNative)
+      {
+        return StepResult.Completed(
+          _functionValueFactory.InvokeNativePropertyGetter(
+            declaringClass.Declaration.Name.Lexeme, property.Name.Lexeme, instance, site));
+      }
+
       if (property.GetterBody == null)
       {
         // Auto-property getter: read from backing field
@@ -1136,7 +1143,11 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
     {
       if (!property.HasSetter)
       {
-        // Get-only auto-property: allow assignment from within the declaring class's constructor
+        // Native get-only: never writable from script
+        if (property.IsNative)
+          throw new RuntimeException(site, $"Cannot assign to get-only native property '{property.Name.Lexeme}'.");
+
+        // Script get-only auto-property: allow only from the declaring class's constructor
         if (property.HasGetter && property.GetterBody == null && environment.IsInConstructor && environment.CurrentClass == declaringClass)
         {
           var backingField = BackingFieldName(property.Name.Lexeme);
@@ -1144,6 +1155,13 @@ namespace ALKScript.Interpreter.Evaluator.Cursor
           return StepResult.Completed(value);
         }
         throw new RuntimeException(site, $"Cannot assign to get-only property '{property.Name.Lexeme}'.");
+      }
+
+      if (property.IsNative)
+      {
+        return StepResult.Completed(
+          _functionValueFactory.InvokeNativePropertySetter(
+            declaringClass.Declaration.Name.Lexeme, property.Name.Lexeme, instance, value, site));
       }
 
       if (property.SetterBody == null)

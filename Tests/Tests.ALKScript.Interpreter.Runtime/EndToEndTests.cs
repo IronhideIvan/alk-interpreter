@@ -2081,6 +2081,71 @@ record(s.doubled());
       logged);
   }
 
+  // ── Native Property Showcase ─────────────────────────────────────────────
+
+  [Fact]
+  public void NativePropertyShowcase_ReadWriteAndGetOnly_ProducesExpectedOutput()
+  {
+    // Two-module program: "sensor" exports a native class Sensor with
+    //   calibration  — read-write native property (float)
+    //   reading      — read-only native property (float)
+    //
+    // The host backs calibration with a mutable field on the instance and
+    // supplies a fixed reading value.  main.alk:
+    //   - reads calibration before any set (default 0)
+    //   - sets and re-reads calibration twice
+    //   - reads the read-only property
+    //   - verifies that assigning to the read-only property is caught by try/catch
+
+    var logged = new List<string>();
+
+    var runtime = CreateRuntimeForEvaluation(
+      files: new Dictionary<string, string>
+      {
+        ["main.alk"] = ReadScript("NativePropertyShowcase", "main.alk"),
+      },
+      coreModules: new Dictionary<string, string>
+      {
+        ["console"] = ReadScript("NativePropertyShowcase", "console.alk"),
+        ["sensor"]  = ReadScript("NativePropertyShowcase", "sensor.alk"),
+      });
+
+    runtime.NativeBindings["log"] = args =>
+    {
+      logged.Add(((StringValue)args[0]).Value);
+      return NullValue.Instance;
+    };
+
+    // calibration is backed by a float stored in instance.Fields["_calibration"].
+    runtime.NativeMethodBindings["Sensor", "get_calibration"] = (inst, _) =>
+    {
+      if (!inst.Fields.TryGetValue("_calibration", out var v)) return new FloatValue(0.0);
+      return v;
+    };
+    runtime.NativeMethodBindings["Sensor", "set_calibration"] = (inst, args) =>
+    {
+      inst.Fields["_calibration"] = args[0];
+      return NullValue.Instance;
+    };
+
+    // reading is a fixed value supplied entirely by the host.
+    runtime.NativeMethodBindings["Sensor", "get_reading"] = (inst, _) => new FloatValue(42.0);
+
+    runtime.RunFromFile("main.alk").RunToCompletion();
+
+    Assert.Equal(
+      new[]
+      {
+        "calibration-default=0",
+        "calibration-set=1.5",
+        "calibration-updated=3",
+        "reading=42",
+        "set-readonly-threw=true",
+        "done",
+      },
+      logged);
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /// <summary>

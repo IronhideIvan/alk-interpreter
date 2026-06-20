@@ -1,0 +1,9 @@
+// A native class with both a read-write and a read-only native property.
+// The host backs these with real C# state (see the test).
+export native class Sensor {
+    // Read-write: the host stores the calibration offset
+    public native property float calibration { get; set; }
+
+    // Read-only: the host computes or supplies the raw reading
+    public native property float reading { get; }
+}

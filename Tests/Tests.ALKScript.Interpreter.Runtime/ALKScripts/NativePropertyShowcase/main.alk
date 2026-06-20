@@ -1,0 +1,30 @@
+import { log } from "console";
+import { Sensor } from "sensor";
+
+var s = new Sensor();
+
+// ── read-write native property ────────────────────────────────────────────────
+
+log("calibration-default=" + s.calibration);
+
+s.calibration = 1.5;
+log("calibration-set=" + s.calibration);
+
+s.calibration = 3.0;
+log("calibration-updated=" + s.calibration);
+
+// ── read-only native property ─────────────────────────────────────────────────
+
+log("reading=" + s.reading);
+
+// ── attempting to set a get-only native property throws ───────────────────────
+
+var threw = false;
+try {
+    s.reading = 999.0;
+} catch {
+    threw = true;
+}
+log("set-readonly-threw=" + threw);
+
+log("done");

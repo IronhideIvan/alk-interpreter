@@ -843,6 +843,44 @@ class Vector2 {
 
 ---
 
+## 7.10 Native Properties
+
+A property declared `native` on a `native` class has no script-defined accessor bodies — the host implements them:
+
+```
+native class Sensor {
+    public native property float calibration { get; set; }
+    public native property float reading { get; }
+}
+```
+
+**Syntax rules:**
+
+- The `native` keyword goes on the property declaration itself, not on individual accessors (`native get;` is a parse error).
+- A native property uses the auto-property shorthand accessor form (`get;` / `set;`). Block bodies on a native property are a parse error.
+- `native` cannot be combined with `abstract` or `virtual` on a property (parse error).
+- A class containing any native property must itself be declared `native` (consistent with the rule for native methods; parse error otherwise).
+
+**Runtime behaviour:**
+
+- A get-only native property (`{ get; }`) throws `RuntimeException` if script code attempts to assign to it, exactly like a non-native get-only property. (The constructor exception that applies to non-native get-only auto-properties does not apply to native properties — there is no script constructor body to set them from.)
+- A read-write native property (`{ get; set; }`) is readable and writable from script.
+
+**Host binding:** Native property accessors are registered through the same `NativeMethodBindings` table used for native methods, using a naming convention:
+
+- Getter: key `"get_<propertyName>"` on the declaring class name.
+- Setter: key `"set_<propertyName>"` on the declaring class name.
+
+```csharp
+runtime.NativeMethodBindings["Sensor", "get_calibration"] = (inst, _) => ...;
+runtime.NativeMethodBindings["Sensor", "set_calibration"] = (inst, args) => { ...; return NullValue.Instance; };
+runtime.NativeMethodBindings["Sensor", "get_reading"]     = (inst, _) => ...;
+```
+
+The getter delegate receives the instance and an empty argument list. The setter delegate receives the instance and a single-element argument list containing the assigned value.
+
+---
+
 ## 8. Async / Await
 
 ALKScript scripts are single-threaded and cannot create a deferred operation

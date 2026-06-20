@@ -150,6 +150,26 @@ namespace ALKScript.Interpreter.Evaluator
     private static ALKScriptValue TagThunkElementType(ALKScriptValue value, TypeNode? elementType) =>
       value is ThunkValue thunkValue ? thunkValue.WithElementType(elementType) : value;
 
+    public ALKScriptValue InvokeNativePropertyGetter(string className, string propertyName, InstanceValue instance, ALKScriptToken site)
+    {
+      string key = "get_" + propertyName;
+      if (_nativeMethodBindings.TryGetValue(className, key, out var implementation))
+      {
+        return implementation(instance, System.Array.Empty<ALKScriptValue>());
+      }
+      throw new RuntimeException(site, $"Native property getter '{className}.{propertyName}' has no host implementation registered (expected binding key '{className}.{key}').");
+    }
+
+    public ALKScriptValue InvokeNativePropertySetter(string className, string propertyName, InstanceValue instance, ALKScriptValue value, ALKScriptToken site)
+    {
+      string key = "set_" + propertyName;
+      if (_nativeMethodBindings.TryGetValue(className, key, out var implementation))
+      {
+        return implementation(instance, new ALKScriptValue[] { value });
+      }
+      throw new RuntimeException(site, $"Native property setter '{className}.{propertyName}' has no host implementation registered (expected binding key '{className}.{key}').");
+    }
+
     public void DiscardPending(Action<Exception> onFault)
     {
       if (_operationBinder == null) return;

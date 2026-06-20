@@ -34,6 +34,9 @@ namespace ALKScript.Interpreter.Common.Ast
     /// </summary>
     public BlockStmt? SetterBody { get; }
 
+    /// <summary>Whether this property's accessors are implemented by the host, not by script bodies.</summary>
+    public bool IsNative { get; }
+
     /// <summary>
     /// Whether this is an abstract property (no body on either accessor, just ";").
     /// </summary>
@@ -48,7 +51,8 @@ namespace ALKScript.Interpreter.Common.Ast
       bool hasGetter,
       BlockStmt? getterBody,
       bool hasSetter,
-      BlockStmt? setterBody)
+      BlockStmt? setterBody,
+      bool isNative = false)
       : base(accessModifier)
     {
       Name = name;
@@ -59,6 +63,7 @@ namespace ALKScript.Interpreter.Common.Ast
       GetterBody = getterBody;
       HasSetter = hasSetter;
       SetterBody = setterBody;
+      IsNative = isNative;
     }
   }
 }
